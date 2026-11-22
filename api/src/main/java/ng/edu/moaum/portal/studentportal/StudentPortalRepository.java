@@ -103,6 +103,18 @@ class StudentPortalRepository {
                 .query(String.class).optional();
     }
 
+    /** V766: the password of the online inter-university transfer application that admitted the student, carried over at the first
+     *  sign-in as an applicant account's is — only for a record that transfer made: an applicant's password never opens the record of a
+     *  student who was on the register before them */
+    Optional<String> transferApplicantHash(UUID student) {
+        return jdbc.sql("""
+                SELECT acc.password_hash FROM admissions.iut_application ap JOIN admissions.iut_account acc ON acc.id = ap.account_id
+                  JOIN people.university_transfer t ON t.id = ap.transfer_id AND t.created_student AND t.student_id = ap.student_id
+                 WHERE ap.student_id = :s AND ap.state = 'ADMITTED'
+                 ORDER BY ap.updated_at DESC LIMIT 1
+                """).param("s", student).query(String.class).optional();
+    }
+
     UUID openAccount(UUID student, String hash, boolean mustChange) {
         UUID id = UUID.randomUUID();
         jdbc.sql("INSERT INTO iam.student_account (id, student_id, password_hash, must_change) VALUES (:id, :s, :h, :m) ON CONFLICT (student_id) DO UPDATE SET password_hash = EXCLUDED.password_hash, must_change = EXCLUDED.must_change, failed_attempts = 0, locked_until = NULL, temp_expires_at = NULL, temp_issued_by = NULL, temp_used_at = NULL")

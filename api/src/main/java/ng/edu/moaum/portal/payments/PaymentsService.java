@@ -269,7 +269,7 @@ public class PaymentsService {
         /* an applicant's fee reference, or a student's (V026): the account is the applicant's account or the student's own id */
         PaymentsRepository.Reference r = repo.byReference(reference)
                 .or(() -> repo.studentReference(reference))
-                .or(() -> repo.pgReference(reference)).or(() -> repo.jupebReference(reference))
+                .or(() -> repo.pgReference(reference)).or(() -> repo.jupebReference(reference)).or(() -> repo.iutReference(reference))
                 .orElseThrow(() -> new NotFound("fee reference", reference));
         if (!owns(r, account)) {
             throw new NotFound("fee reference", reference);
@@ -304,6 +304,10 @@ public class PaymentsService {
         if (transfer(r) && !repo.transferPayable(r.reference())) {
             throw new DomainRuleViolation("TRANSFER_REFERENCE_STALE", "This reference is no longer for what you owe. Pay the transfer fee from the transfer page.",
                     new DomainRuleViolation.Remedy("The transfer page draws the reference for the balance owed now. A payment already made is never charged again.", "You"));
+        }
+        /* V766: a transfer application fee reference is taken to a gateway only while its application is a draft with the fee unsettled */
+        if ("IUT_APPLICATION".equals(r.kind()) && !repo.iutPayable(r.reference())) {
+            throw iutStale();
         }
         String g = gateway == null ? (paystackOn() ? "paystack" : flutterwaveOn() ? "flutterwave" : quicktellerOn() ? "quickteller"
                 : repo.quicktellerLink(r.reference()).isPresent() ? "paydirect" : "") : gateway.trim().toLowerCase();
@@ -415,6 +419,39 @@ public class PaymentsService {
                 : "https://webpay.interswitchng.com/collections/api/v1/gettransaction.json";
     }
 
+    /** the identifier a WebPAY requery's answer is recorded under, for every kind of reference (the gateway event, the receipt's note,
+     *  the ICT payment support desk): its payment reference when the answer carries one (blank included), else its Retrieval Reference
+     *  Number, else the transaction reference asked — the rule as it always stood, unchanged by V766 */
+    static String webpayProviderRef(Map<?, ?> a, String txnRef) {
+        return a.get("PaymentReference") != null ? String.valueOf(a.get("PaymentReference"))
+                : a.get("RetrievalReferenceNumber") != null ? String.valueOf(a.get("RetrievalReferenceNumber")) : txnRef;
+    }
+
+    /** every identifier WebPAY's requery answer gives the payment it confirms: its payment reference, its Retrieval Reference Number
+     *  and the transaction reference asked, in that order, blank ones dropped. Interswitch's settlement report may list the payment by
+     *  any one of them, so a transfer applicant's reference keeps them all (V766, round 6: v5v-2) */
+    static java.util.List<String> webpayIdentifiers(Map<?, ?> answer, String txnRef) {
+        return identifiers(answer.get("PaymentReference"), answer.get("RetrievalReferenceNumber"), txnRef);
+    }
+
+    /** what a WebPAY requery passes to settle as the payment's identifiers: every one for a transfer applicant's reference (its
+     *  gateway_refs), nothing for any other kind, whose confirmation records providerRef alone as it always did (V766, round 7) */
+    static java.util.List<String> webpayGatewayRefs(String kind, Map<?, ?> answer, String txnRef) {
+        return "IUT_APPLICATION".equals(kind) ? webpayIdentifiers(answer, txnRef) : null;
+    }
+
+    /** the identifiers given, in order, each once, the blank ones dropped */
+    static java.util.List<String> identifiers(Object... given) {
+        java.util.LinkedHashSet<String> out = new java.util.LinkedHashSet<>();
+        for (Object g : given) {
+            String s = g == null ? "" : String.valueOf(g).trim();
+            if (!s.isEmpty()) {
+                out.add(s);
+            }
+        }
+        return java.util.List.copyOf(out);
+    }
+
     /** the fee named as the gateway shows it to the payer, by the reference's kind */
     static String feeName(String kind) {
         return switch (kind == null ? "" : kind) {
@@ -427,8 +464,15 @@ public class PaymentsService {
             case "JUPEB_STATUS_CHECKING" -> "JUPEB admission status checking fee";
             case "JUPEB_ACCEPTANCE" -> "JUPEB acceptance fee";
             case "JUPEB_SCHOOL_FIRST", "JUPEB_SCHOOL_SECOND", "JUPEB_SCHOOL_FULL" -> "JUPEB school fees";
+            case "IUT_APPLICATION" -> "Inter-university transfer application fee";
             default -> "application fee";
         };
+    }
+
+    /** V766: a transfer application fee reference that may no longer be paid (admissions.iut_reference_payable) */
+    static DomainRuleViolation iutStale() {
+        return new DomainRuleViolation("IUT_REFERENCE_STALE", "This reference can no longer be paid: the application fee is already settled or no longer charged, or the application was withdrawn or decided.",
+                new DomainRuleViolation.Remedy("Your application page shows where you stand. A payment already made is never charged again.", "You"));
     }
 
     /** where the gateway returns the payer after this kind of fee: the page that shows it paid */
@@ -439,6 +483,7 @@ public class PaymentsService {
             case "CHECKING" -> "/applicant/admission";
             case "PG_APPLICATION", "PG_CHECKING", "PG_ACCEPTANCE" -> "/pg/portal";
             case "JUPEB_APPLICATION", "JUPEB_STATUS_CHECKING", "JUPEB_ACCEPTANCE", "JUPEB_SCHOOL_FIRST", "JUPEB_SCHOOL_SECOND", "JUPEB_SCHOOL_FULL" -> "/jupeb/portal";
+            case "IUT_APPLICATION" -> "/transfer/portal";
             default -> "/applicant/fee";
         };
     }
@@ -502,7 +547,7 @@ public class PaymentsService {
 
     /** a reference wherever it lives: an applicant's fee, a student's fee, a postgraduate applicant's fee, a JUPEB candidate's fee */
     private PaymentsRepository.Reference anyReference(String reference) {
-        return repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference)).or(() -> repo.jupebReference(reference)).orElse(null);
+        return repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference)).or(() -> repo.jupebReference(reference)).or(() -> repo.iutReference(reference)).orElse(null);
     }
 
     /** the merchant a reference is paid to: the College of Health Sciences' own when the payer's programme is in that College */
@@ -550,6 +595,10 @@ public class PaymentsService {
         // V727: as at the checkout, a transfer fee reference is paid only while it is for what the application owes now
         if (transfer(r) && !repo.transferPayable(r.reference())) {
             return notice("This reference is no longer for what you owe", "Pay the transfer fee from the transfer page; it draws the reference for the balance owed now. A payment already made is never charged again.");
+        }
+        // V766: as at the checkout, a transfer application fee reference is paid only while its application is a draft with the fee unsettled
+        if ("IUT_APPLICATION".equals(r.kind()) && !repo.iutPayable(r.reference())) {
+            return notice("This reference can no longer be paid", "The application fee is already settled or no longer charged, or the application was withdrawn or decided; your application page shows where you stand. A payment already made is never charged again.");
         }
         WebpayMerchant m = merchantFor(q, r.reference());
         long kobo = r.amount().movePointRight(2).longValueExact();
@@ -854,7 +903,10 @@ public class PaymentsService {
         boolean staleSummer = c.valid() && !reference.isEmpty() && laneRepo.summerReference(reference) && !laneRepo.summerPayable(reference);
         // V752: a SIWES reference is paid at the bank only while the window is open, the student eligible and the fee unpaid
         boolean staleSiwes = c.valid() && !reference.isEmpty() && laneRepo.siwesReference(reference) && !laneRepo.siwesPayable(reference);
-        boolean valid = c.valid() && !staleTransfer && !staleSummer && !staleSiwes;
+        // V766: a transfer application fee reference is paid at the bank only while its application is a draft with the fee unsettled
+        // (finance.paydirect_customer already says so; this holds the door whatever the customer's answer says)
+        boolean staleIut = c.valid() && !reference.isEmpty() && reference.startsWith("MOAUM-IUTAPP-") && !laneRepo.iutPayable(reference);
+        boolean valid = c.valid() && !staleTransfer && !staleSummer && !staleSiwes && !staleIut;
         Map<String, Object> said = new LinkedHashMap<>();
         said.put("merchantReference", m.field("MerchantReference"));
         said.put("paymentItemCode", m.field("PaymentItemCode"));
@@ -866,6 +918,8 @@ public class PaymentsService {
             said.put("why", "SUMMER_REFERENCE_STALE: the Summer Semester's registration is closed, or the reference is no longer for what is owed");
         } else if (staleSiwes) {
             said.put("why", "SIWES_REFERENCE_STALE: the SIWES registration fee is already paid, SIWES registration is closed, or the student is not eligible");
+        } else if (staleIut) {
+            said.put("why", "IUT_REFERENCE_STALE: the application fee is already settled or no longer charged, or the application was withdrawn or decided");
         } else if (c.why() != null) {
             said.put("why", c.why());
         }
@@ -1063,7 +1117,8 @@ public class PaymentsService {
         boolean success = status.isEmpty() || "0".equals(status) || "00".equals(status);
         String channel = "Quickteller" + (channelName.isEmpty() ? "" : " · " + (channelName.length() > 40 ? channelName.substring(0, 40) : channelName));
         Map<String, Object> answer = settle("paydirect", "WEBHOOK", "notification", reference, amount == null ? BigDecimal.ZERO : amount, status.isEmpty() ? "0" : status, success,
-                logId.isEmpty() ? PayDirectMessages.get(said, "PaymentReference") : logId, payload, channel);
+                logId.isEmpty() ? PayDirectMessages.get(said, "PaymentReference") : logId, payload, channel,
+                identifiers(logId, PayDirectMessages.get(said, "PaymentReference")));
         return String.valueOf(answer.get("outcome"));
     }
 
@@ -1281,7 +1336,15 @@ public class PaymentsService {
     /** the same, with the channel the receipt names when it is not a card gateway's (Quickteller's biller page names its own) */
     Map<String, Object> settle(String gateway, String source, String event, String reference, BigDecimal paid, String status, boolean success,
                                String providerRef, String payload, String channelLabel) {
-        PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference)).or(() -> repo.jupebReference(reference)).orElse(null);
+        return settle(gateway, source, event, reference, paid, status, success, providerRef, payload, channelLabel, null);
+    }
+
+    /** the same, with every identifier the gateway gave the payment when it gave more than providerRef (WebPAY's requery, PAYDirect's
+     *  notice): a transfer applicant's reference keeps them all, so Interswitch's settlement row of the payment is known to be it
+     *  whichever it carries (V766, round 6) */
+    Map<String, Object> settle(String gateway, String source, String event, String reference, BigDecimal paid, String status, boolean success,
+                               String providerRef, String payload, String channelLabel, java.util.List<String> gatewayRefs) {
+        PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference)).or(() -> repo.jupebReference(reference)).or(() -> repo.iutReference(reference)).orElse(null);
         String outcome;
         Map<String, Object> answer;
         if (r == null) {
@@ -1304,6 +1367,7 @@ public class PaymentsService {
                         case "FEES" -> repo.confirmStudent(reference, channel, note);
                         case "PG_APPLICATION", "PG_CHECKING", "PG_ACCEPTANCE" -> repo.confirmPg(reference, channel);
                         case "JUPEB_APPLICATION", "JUPEB_STATUS_CHECKING", "JUPEB_ACCEPTANCE", "JUPEB_SCHOOL_FIRST", "JUPEB_SCHOOL_SECOND", "JUPEB_SCHOOL_FULL" -> repo.confirmJupeb(reference, channel);
+                        case "IUT_APPLICATION" -> repo.confirmIut(reference, channel, note, gatewayRefs != null ? gatewayRefs : identifiers(providerRef));
                         default -> repo.confirm(reference, channel, note);
                     }));
             outcome = "already confirmed".equals(settled) ? "ALREADY_SETTLED" : "SETTLED";
@@ -1388,7 +1452,7 @@ public class PaymentsService {
 
     public Map<String, Object> verify(String referenceIn, String source) {
         String reference = referenceIn == null ? "" : referenceIn.trim().toUpperCase();
-        PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference)).or(() -> repo.jupebReference(reference))
+        PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference)).or(() -> repo.jupebReference(reference)).or(() -> repo.iutReference(reference))
                 .orElseThrow(() -> new NotFound("fee reference", reference));
         if (r.confirmedAt() != null) {
             return Map.of("outcome", "already confirmed", "reference", reference);
@@ -1456,9 +1520,10 @@ public class PaymentsService {
                 }
                 boolean success = "00".equals(String.valueOf(rc));
                 BigDecimal paid = a.get("Amount") == null ? BigDecimal.ZERO : new BigDecimal(String.valueOf(a.get("Amount"))).movePointLeft(2);
-                String providerRef = a.get("PaymentReference") != null ? String.valueOf(a.get("PaymentReference"))
-                        : a.get("RetrievalReferenceNumber") != null ? String.valueOf(a.get("RetrievalReferenceNumber")) : txnRef;
-                out = settle("quickteller", source, "verify", reference, paid, String.valueOf(rc), success, providerRef, mapper.writeValueAsString(a));
+                String providerRef = webpayProviderRef(a, txnRef);
+                // V766: a transfer applicant's reference also keeps every identifier WebPAY gave the payment (its gateway_refs)
+                out = settle("quickteller", source, "verify", reference, paid, String.valueOf(rc), success, providerRef, mapper.writeValueAsString(a), null,
+                        webpayGatewayRefs(r.kind(), a, txnRef));
                 if (success) {
                     AuditContextHolder.with(new AuditContext(NOBODY, "bursar", "reconciler checked " + reference, null, null), () -> tx.execute(st -> { repo.checked(reference); return null; }));
                     return out;
@@ -1478,7 +1543,7 @@ public class PaymentsService {
     /** whether a reference stands confirmed: the payer's own, or any for an office — read from the record, no gateway asked (V299) */
     public Map<String, Object> stateFor(UUID account, boolean office, String referenceIn) {
         String reference = referenceIn == null ? "" : referenceIn.trim().toUpperCase();
-        PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference)).or(() -> repo.jupebReference(reference))
+        PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference)).or(() -> repo.jupebReference(reference)).or(() -> repo.iutReference(reference))
                 .orElseThrow(() -> new NotFound("fee reference", reference));
         if (!office && !owns(r, account)) {
             throw new NotFound("fee reference", reference);
@@ -1509,7 +1574,7 @@ public class PaymentsService {
     public Map<String, Object> claimPaydirect(UUID account, boolean office, String referenceIn, String logId, java.time.LocalDate paidOn,
                                               BigDecimal amount, String channel, String note) {
         String reference = referenceIn == null ? "" : referenceIn.trim().toUpperCase();
-        PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference)).or(() -> repo.jupebReference(reference))
+        PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference)).or(() -> repo.jupebReference(reference)).or(() -> repo.iutReference(reference))
                 .orElseThrow(() -> new NotFound("fee reference", reference));
         if (!office && !owns(r, account)) {
             throw new NotFound("fee reference", reference);
@@ -1566,7 +1631,7 @@ public class PaymentsService {
     /** the student's own reference, or an office's: who may ask */
     public Map<String, Object> verifyFor(UUID account, boolean office, String reference) {
         if (!office) {
-            PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference)).or(() -> repo.jupebReference(reference))
+            PaymentsRepository.Reference r = repo.byReference(reference).or(() -> repo.studentReference(reference)).or(() -> repo.pgReference(reference)).or(() -> repo.jupebReference(reference)).or(() -> repo.iutReference(reference))
                     .orElseThrow(() -> new NotFound("fee reference", reference));
             if (!owns(r, account)) {
                 throw new NotFound("fee reference", reference);

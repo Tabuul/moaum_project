@@ -4,6 +4,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { FeeSchedule, type Schedule, type OpenReference, type FeeGroup, type ProgrammeOption, type ApplicantFees, type FeeItem, type PgStageOption } from "./FeeSchedule";
 import type { GstFeePage } from "@/lib/gst";
 import type { SiwesFeeView } from "@/lib/siwes";
+import type { IutFeeView } from "./IutFeePanel";
 import { sessionByDate } from "@/lib/sessions";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +33,8 @@ export default async function FeesPage({ searchParams }: { searchParams: Promise
   const gstFee = await api<GstFeePage>(`/api/v1/gst/fee?session=${encodeURIComponent(session)}`);
   // V752: the SIWES registration fee of the session (a fee of its own, beside the GST fee; never a school-fee line)
   const siwesFee = await api<SiwesFeeView>(`/api/v1/finance/siwes/fee?session=${encodeURIComponent(session)}`);
+  // V766: the inter-university transfer application fee of the session (published per session, nothing allowed)
+  const iutFee = await api<IutFeeView>(`/api/v1/finance/transfer-applications/fee?session=${encodeURIComponent(session)}`);
   // V401: the Bursary's rule for a session whose applicant fees are not stated
   const feePolicy = await api<{ policy: "CARRY" | "REFUSE" }>("/api/v1/finance/applicant-fee-policy");
   // V648: what the office may do with the fee setup — edit, remove, deactivate, read the history, export
@@ -52,6 +55,7 @@ export default async function FeesPage({ searchParams }: { searchParams: Promise
           applicantFees={applicantFees.ok ? applicantFees.data : null}
           gstFee={gstFee.ok ? gstFee.data : null}
           siwesFee={siwesFee.ok ? siwesFee.data : null}
+          iutFee={iutFee.ok ? iutFee.data : null}
           feePolicy={feePolicy.ok ? feePolicy.data.policy : null}
           feeItems={feeItems.ok ? feeItems.data : []}
           sessions={sessions.ok ? sessions.data.map((s) => s.name) : [session]}

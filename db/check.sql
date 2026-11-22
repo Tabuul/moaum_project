@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 675
+\set EXPECTED 676
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -41396,6 +41396,259 @@ BEGIN
                                  'rows of rolled-back uploads still reading HELD 0 of 31 rows of 20 rolled-back uploads', 'held results standing under a rolled-back upload 0',
                                  'closed uploads whose stored counts are not what their ledger and rows read 0 of 26 (0 left running)'), false), msg8);
 END $$;
+-- ── V766: inter-university transfer applications online. In a session that takes new students, made-up officers (two of the
+--          Academic Office and the Registry, the Bursar, the Head of the programme's department and the Head of another) and made-up
+--          applicants at the public door: the window opens only with a programme and a published fee; a programme not opened, a second
+--          live application under one JAMB number and an upload before the fee refused; submitted only paid and with the required
+--          documents; the documents checked before the department; the recommendation held to its own department and a level the
+--          window opens; the approval a batch of one (source APPLICATION) its approver cannot decide; another officer's rejection
+--          returns it to the Registry untold, another officer's approval admits the student and the application follows; places
+--          filled refused; a closed window refuses a new application and lets a started one submit; a fee of nothing settled at
+--          registration. The block undoes its writes ──
+DO $$
+DECLARE
+    S text; prog text; pdept text; odept text; d uuid; tok text; msg text := ''; r jsonb; v jsonb;
+    off1 uuid := '00000000-0000-0000-0000-0000000766e1'; off2 uuid := '00000000-0000-0000-0000-0000000766e2'; bur uuid := '00000000-0000-0000-0000-0000000766e3';
+    hod uuid := '00000000-0000-0000-0000-0000000766e4'; hod_other uuid := '00000000-0000-0000-0000-0000000766e5';
+    nobody uuid := '00000000-0000-0000-0000-000000000000'; today date := (now() AT TIME ZONE 'Africa/Lagos')::date;
+    a1 uuid; acc1 uuid; a2 uuid; acc2 uuid; a3 uuid; acc3 uuid; a4 uuid; acc4 uuid; ref1 text; ref2 text; tr uuid; n_before int; st people.student;
+    f jsonb := jsonb_build_object('surname', 'Checkiut', 'otherNames', 'Grace Ene', 'sex', 'F', 'dateOfBirth', '2004-03-09', 'universityCode', 'ZZIUTCHK',
+                                  'otherMatricNo', 'UJ/2023/SC/7661', 'otherProgramme', 'B.Sc. Biochemistry', 'otherLevel', 300, 'otherEntrySession', '2023/2024',
+                                  'otherCgpa', '3.85', 'otherCgpaScale', 5, 'reason', 'My family has moved to Makurdi this year.');
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', off1::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'CHECK V766', true);
+    -- a session no transfer window or fee has touched (a database the ITs ran on keeps their windows: the preamble leaves them), so
+    -- each step meets only what the block makes
+    S := coalesce((SELECT s.name FROM policy.academic_session s WHERE s.name = '2026/2027' AND s.state IN ('PLANNED', 'CURRENT') AND s.merged_into IS NULL
+                      AND NOT EXISTS (SELECT 1 FROM admissions.iut_window w WHERE w.session = s.name) AND NOT EXISTS (SELECT 1 FROM finance.iut_fee x WHERE x.session = s.name)),
+                  (SELECT s.name FROM policy.academic_session s WHERE s.state IN ('PLANNED', 'CURRENT') AND s.merged_into IS NULL
+                      AND NOT EXISTS (SELECT 1 FROM admissions.iut_window w WHERE w.session = s.name) AND NOT EXISTS (SELECT 1 FROM finance.iut_fee x WHERE x.session = s.name)
+                    ORDER BY s.name LIMIT 1));
+    IF S IS NULL THEN
+        S := '9766/9767';
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) SELECT gen_random_uuid(), S, DATE '9766-10-01', DATE '9767-08-31', 'PLANNED'
+         WHERE NOT EXISTS (SELECT 1 FROM policy.academic_session x WHERE x.name = S);
+    END IF;
+    -- the public door files into the latest open window: any other left open is closed here (undone with the rest)
+    UPDATE admissions.iut_window SET state = 'CLOSED' WHERE state = 'OPEN' AND session <> S;
+    SELECT p.code, p.dept_code INTO prog, pdept FROM ref.programme p
+     WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code IS NOT NULL AND 200 = ANY (people.programme_levels(p.code))
+     ORDER BY p.code LIMIT 1;
+    SELECT dd.code INTO odept FROM ref.department dd WHERE dd.code <> pdept AND dd.ended_on IS NULL ORDER BY dd.code LIMIT 1;
+    INSERT INTO ref.university (code, name, country) VALUES ('ZZIUTCHK', 'University of the V766 Check', 'Nigeria');
+    INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES
+        (off1, 'CHECK/V766/1', 'CHECKV766', 'Academic One', 'off1.v766@example.com'), (off2, 'CHECK/V766/2', 'CHECKV766', 'Registrar Two', 'off2.v766@example.com'),
+        (bur, 'CHECK/V766/3', 'CHECKV766', 'Bursar', 'bur.v766@example.com'), (hod, 'CHECK/V766/4', 'CHECKV766', 'Head', 'hod.v766@example.com'),
+        (hod_other, 'CHECK/V766/5', 'CHECKV766', 'Other Head', 'hod2.v766@example.com');
+    INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from) VALUES
+        (gen_random_uuid(), hod, 'hod', 'department', pdept, 'check V766', off1, current_date),
+        (gen_random_uuid(), hod_other, 'hod', 'department', odept, 'check V766', off1, current_date);
+
+    -- 1 · the window opens with a programme and a published fee only
+    tok := 'not-refused';   -- a statement that does not refuse leaves this, never the token before it
+    BEGIN PERFORM admissions.iut_set_window(S, 'OPEN', today, today + 30, NULL, NULL); EXCEPTION WHEN OTHERS THEN tok := split_part(SQLERRM, ':', 1); END;
+    msg := '1 ' || tok;
+    PERFORM admissions.iut_add_lines(S, prog, ARRAY[200], 1);
+    tok := 'not-refused';
+    BEGIN PERFORM admissions.iut_set_window(S, 'OPEN', today, today + 30, NULL, NULL); EXCEPTION WHEN OTHERS THEN tok := split_part(SQLERRM, ':', 1); END;
+    msg := msg || ' ' || tok;
+    -- 2 · a draft fee is not published; published, the window opens
+    PERFORM set_config('moaum.actor_id', bur::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.iut_fee_state(S, 5000, 'check V766');
+    PERFORM set_config('moaum.actor_id', off1::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    tok := 'not-refused';
+    BEGIN PERFORM admissions.iut_set_window(S, 'OPEN', today, today + 30, NULL, NULL); EXCEPTION WHEN OTHERS THEN tok := split_part(SQLERRM, ':', 1); END;
+    msg := msg || ' | 2 ' || tok;
+    PERFORM set_config('moaum.actor_id', bur::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.iut_fee_publish(S);
+    PERFORM set_config('moaum.actor_id', off1::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    msg := msg || ' ' || (admissions.iut_set_window(S, 'OPEN', today, today + 30, 'The transfer window is closed.', NULL)->>'status');
+
+    -- 3 · the public door: a level not opened refused; made; a second live application under the JAMB number refused
+    PERFORM set_config('moaum.actor_id', nobody::text, true);
+    PERFORM set_config('moaum.actor_office', 'applicant', true);
+    tok := 'not-refused';
+    BEGIN PERFORM admissions.iut_apply(f || jsonb_build_object('email', 'v766a@example.com', 'phone', '08030007661', 'jambRegNo', '976600007661AB', 'programme', prog, 'level', 300),
+                                       '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345', NULL);
+    EXCEPTION WHEN OTHERS THEN tok := split_part(SQLERRM, ':', 1); END;
+    msg := msg || ' | 3 ' || tok;
+    r := admissions.iut_apply(f || jsonb_build_object('email', 'v766a@example.com', 'phone', '08030007661', 'jambRegNo', '976600007661AB', 'programme', prog, 'level', 200),
+                              '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345', NULL);
+    a1 := (r->>'applicationId')::uuid; acc1 := (r->>'accountId')::uuid;
+    msg := msg || ' ' || (SELECT state FROM admissions.iut_application WHERE id = a1) || ' ' || CASE WHEN r->>'applicationNo' ~ '^IUT/APP/[0-9]{4}/[0-9]{6}$' THEN 'numbered' ELSE r->>'applicationNo' END
+               || ' ' || (r->>'feeDue')::numeric::int;
+    tok := 'not-refused';
+    BEGIN PERFORM admissions.iut_apply(f || jsonb_build_object('email', 'v766b@example.com', 'phone', '08030007662', 'jambRegNo', '976600007661AB', 'programme', prog, 'level', 200),
+                                       '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345', NULL);
+    EXCEPTION WHEN OTHERS THEN tok := split_part(SQLERRM, ':', 1); END;
+    msg := msg || ' ' || tok;
+
+    -- 4 · no upload before the fee; one reference drawn twice; confirmed through the Bursary's lane
+    PERFORM set_config('moaum.actor_id', acc1::text, true);
+    tok := 'not-refused';
+    BEGIN PERFORM admissions.iut_add_document(a1, 'TRANSCRIPT', 't.pdf', 'application/pdf', 5, encode(sha256('%PDF-'::bytea), 'hex'), NULL, '%PDF-'::bytea);
+    EXCEPTION WHEN OTHERS THEN tok := split_part(SQLERRM, ':', 1); END;
+    ref1 := admissions.iut_fee_reference_draw(a1)->>'reference';
+    msg := msg || ' | 4 ' || tok || ' ' || CASE WHEN ref1 = admissions.iut_fee_reference_draw(a1)->>'reference' THEN 'one-reference' ELSE 'two-references' END;
+    PERFORM set_config('moaum.actor_id', nobody::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM admissions.iut_confirm_fee(ref1, 'PAYSTACK', NULL);
+    msg := msg || ' ' || (SELECT a.fee_basis || ' ' || left(f2.receipt_no, 4) FROM admissions.iut_application a JOIN admissions.iut_fee_reference f2 ON f2.application_id = a.id
+                           WHERE a.id = a1 AND f2.settles);
+
+    -- 5 · submitted only with the required documents
+    PERFORM set_config('moaum.actor_id', acc1::text, true);
+    PERFORM set_config('moaum.actor_office', 'applicant', true);
+    PERFORM admissions.iut_add_document(a1, 'TRANSCRIPT', 't.pdf', 'application/pdf', 5, encode(sha256('%PDF-'::bytea), 'hex'), NULL, '%PDF-'::bytea);
+    tok := 'not-refused';
+    BEGIN PERFORM admissions.iut_submit(a1, '127.0.0.1'); EXCEPTION WHEN OTHERS THEN tok := split_part(SQLERRM, ':', 1); END;
+    msg := msg || ' | 5 ' || tok;
+    PERFORM admissions.iut_add_document(a1, k, lower(k) || '.pdf', 'application/pdf', 5, encode(sha256('%PDF-'::bytea), 'hex'), NULL, '%PDF-'::bytea)
+       FROM unnest(ARRAY['RELEASE_LETTER', 'JAMB_ADMISSION_LETTER', 'OLEVEL_RESULT']) k;
+    msg := msg || ' ' || (admissions.iut_submit(a1, '127.0.0.1')->>'state');
+
+    -- 6 · the documents checked before the department
+    PERFORM set_config('moaum.actor_id', off1::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    tok := 'not-refused';
+    BEGIN PERFORM admissions.iut_act(a1, 'SEND_TO_HOD', NULL, 'SUBMITTED'); EXCEPTION WHEN OTHERS THEN tok := split_part(SQLERRM, ':', 1); END;
+    msg := msg || ' | 6 ' || tok;
+    FOR d IN SELECT x.id FROM admissions.iut_document x WHERE x.application_id = a1 AND x.superseded_at IS NULL LOOP
+        PERFORM admissions.iut_review_document(d, 'ACCEPTED', NULL);
+    END LOOP;
+    msg := msg || ' ' || (admissions.iut_act(a1, 'SEND_TO_HOD', NULL, 'SUBMITTED')->>'state');
+
+    -- 7 · the recommendation: its own department, a level the window opens
+    PERFORM set_config('moaum.actor_id', hod_other::text, true);
+    PERFORM set_config('moaum.actor_office', 'hod', true);
+    tok := 'not-refused';
+    BEGIN PERFORM admissions.iut_recommend(a1, true, 200, NULL); EXCEPTION WHEN OTHERS THEN tok := split_part(SQLERRM, ':', 1); END;
+    msg := msg || ' | 7 ' || tok;
+    PERFORM set_config('moaum.actor_id', hod::text, true);
+    tok := 'not-refused';
+    BEGIN PERFORM admissions.iut_recommend(a1, true, 300, NULL); EXCEPTION WHEN OTHERS THEN tok := split_part(SQLERRM, ':', 1); END;
+    msg := msg || ' ' || tok || ' ' || (admissions.iut_recommend(a1, true, 200, 'Credits mapped to 200 Level', 'WITH_HOD')->>'state');
+
+    -- 8 · approved: a batch of one, source APPLICATION, its approver cannot decide it
+    PERFORM set_config('moaum.actor_id', off1::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    n_before := (SELECT count(*) FROM platform.notice n WHERE n.about_kind = 'iut_application' AND n.about_id = a1 AND n.template_key LIKE 'IUT_APPLICATION:%');
+    v := admissions.iut_approve(a1, 'SEN/V766/1', NULL, 'RECOMMENDED');
+    tr := (v->>'transferId')::uuid;
+    msg := msg || ' | 8 ' || (v->>'state') || ' ' || (SELECT b.source || ' ' || CASE WHEN b.prepared_by = off1 THEN 'prepared-by-approver' ELSE 'prepared-by-other' END
+                                                       FROM people.university_transfer_batch b WHERE b.id = (v->>'batchId')::uuid);
+    tok := 'not-refused';
+    BEGIN PERFORM people.decide_university_transfer(tr, true, NULL); EXCEPTION WHEN OTHERS THEN tok := split_part(SQLERRM, ':', 1); END;
+    msg := msg || ' ' || tok;
+
+    -- 9 · another officer rejects the transfer: back to the Registry, the applicant not told
+    PERFORM set_config('moaum.actor_id', off2::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM people.decide_university_transfer(tr, false, 'The university is recorded under the wrong campus');
+    msg := msg || ' | 9 ' || (SELECT a.state || ' ' || coalesce(a.transfer_id::text, 'no-transfer') FROM admissions.iut_application a WHERE a.id = a1)
+               || ' ' || CASE WHEN (SELECT count(*) FROM platform.notice n WHERE n.about_kind = 'iut_application' AND n.about_id = a1 AND n.template_key LIKE 'IUT_APPLICATION:%') = n_before
+                              THEN 'untold' ELSE 'told' END;
+
+    -- 10 · approved again; another officer approves: admitted, the application follows, the applicant told
+    PERFORM set_config('moaum.actor_id', off1::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    tr := (admissions.iut_approve(a1, NULL, NULL, 'RECOMMENDED')->>'transferId')::uuid;
+    PERFORM set_config('moaum.actor_id', off2::text, true);
+    PERFORM set_config('moaum.actor_office', 'registrar', true);
+    PERFORM people.decide_university_transfer(tr, true, NULL);
+    SELECT * INTO st FROM people.student s WHERE s.id = (SELECT a.student_id FROM admissions.iut_application a WHERE a.id = a1);
+    msg := msg || ' | 10 ' || (SELECT state FROM admissions.iut_application WHERE id = a1) || ' ' || coalesce(st.entry_mode || ':' || st.status || ':' || st.current_level, 'no-student')
+               || ' ' || CASE WHEN EXISTS (SELECT 1 FROM platform.notice n WHERE n.about_kind = 'iut_application' AND n.about_id = a1 AND n.template_key = 'IUT_APPLICATION:ADMITTED')
+                              THEN 'told' ELSE 'untold' END;
+
+    -- 11 · the line's one place taken: a second applicant left in DRAFT, a third recommended is refused at the approval
+    PERFORM set_config('moaum.actor_id', nobody::text, true);
+    PERFORM set_config('moaum.actor_office', 'applicant', true);
+    r := admissions.iut_apply(f || jsonb_build_object('email', 'v766c@example.com', 'phone', '08030007663', 'jambRegNo', '976600007663AB', 'programme', prog, 'level', 200),
+                              '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345', NULL);
+    a2 := (r->>'applicationId')::uuid; acc2 := (r->>'accountId')::uuid;
+    r := admissions.iut_apply(f || jsonb_build_object('email', 'v766d@example.com', 'phone', '08030007664', 'jambRegNo', '976600007664AB', 'programme', prog, 'level', 200),
+                              '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345', NULL);
+    a3 := (r->>'applicationId')::uuid; acc3 := (r->>'accountId')::uuid;
+    PERFORM set_config('moaum.actor_id', acc2::text, true);
+    ref2 := admissions.iut_fee_reference_draw(a2)->>'reference';
+    PERFORM set_config('moaum.actor_id', acc3::text, true);
+    ref1 := admissions.iut_fee_reference_draw(a3)->>'reference';
+    PERFORM set_config('moaum.actor_id', bur::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM admissions.iut_confirm_fee(ref2, 'MANUAL', 'check V766');
+    PERFORM admissions.iut_confirm_fee(ref1, 'MANUAL', 'check V766');
+    PERFORM set_config('moaum.actor_id', acc3::text, true);
+    PERFORM set_config('moaum.actor_office', 'applicant', true);
+    PERFORM admissions.iut_add_document(a3, k, lower(k) || '.pdf', 'application/pdf', 5, encode(sha256('%PDF-'::bytea), 'hex'), NULL, '%PDF-'::bytea)
+       FROM unnest(ARRAY['TRANSCRIPT', 'RELEASE_LETTER', 'JAMB_ADMISSION_LETTER', 'OLEVEL_RESULT']) k;
+    PERFORM admissions.iut_submit(a3, NULL);
+    PERFORM set_config('moaum.actor_id', off1::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    FOR d IN SELECT x.id FROM admissions.iut_document x WHERE x.application_id = a3 AND x.superseded_at IS NULL LOOP
+        PERFORM admissions.iut_review_document(d, 'ACCEPTED', NULL);
+    END LOOP;
+    PERFORM admissions.iut_act(a3, 'SEND_TO_HOD', NULL, NULL);
+    PERFORM set_config('moaum.actor_id', hod::text, true);
+    PERFORM set_config('moaum.actor_office', 'hod', true);
+    PERFORM admissions.iut_recommend(a3, true, 200, NULL);
+    PERFORM set_config('moaum.actor_id', off1::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    tok := 'not-refused';
+    BEGIN PERFORM admissions.iut_approve(a3, NULL, NULL); EXCEPTION WHEN OTHERS THEN tok := split_part(SQLERRM, ':', 1); END;
+    msg := msg || ' | 11 ' || tok;
+
+    -- 12 · closed: a new application refused; the second applicant's draft, made before, still uploads and submits
+    PERFORM admissions.iut_set_window(S, 'CLOSED', today, today + 30, 'The transfer window is closed.', NULL);
+    PERFORM set_config('moaum.actor_id', nobody::text, true);
+    PERFORM set_config('moaum.actor_office', 'applicant', true);
+    tok := 'not-refused';
+    BEGIN PERFORM admissions.iut_apply(f || jsonb_build_object('email', 'v766e@example.com', 'phone', '08030007665', 'jambRegNo', '976600007665AB', 'programme', prog, 'level', 200),
+                                       '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345', NULL);
+    EXCEPTION WHEN OTHERS THEN tok := split_part(SQLERRM, ':', 1); END;
+    msg := msg || ' | 12 ' || tok;
+    PERFORM set_config('moaum.actor_id', acc2::text, true);
+    PERFORM admissions.iut_add_document(a2, k, lower(k) || '.pdf', 'application/pdf', 5, encode(sha256('%PDF-'::bytea), 'hex'), NULL, '%PDF-'::bytea)
+       FROM unnest(ARRAY['TRANSCRIPT', 'RELEASE_LETTER', 'JAMB_ADMISSION_LETTER', 'OLEVEL_RESULT']) k;
+    msg := msg || ' ' || (admissions.iut_submit(a2, NULL)->>'state');
+
+    -- 13 · a fee of nothing: settled at registration
+    PERFORM set_config('moaum.actor_id', bur::text, true);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.iut_fee_state(S, 0, 'check V766: no fee');
+    PERFORM finance.iut_fee_publish(S);
+    PERFORM set_config('moaum.actor_id', off1::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM admissions.iut_set_line(S, prog, 200, NULL, true);
+    PERFORM admissions.iut_set_window(S, 'OPEN', today, today + 30, NULL, NULL);
+    PERFORM set_config('moaum.actor_id', nobody::text, true);
+    PERFORM set_config('moaum.actor_office', 'applicant', true);
+    r := admissions.iut_apply(f || jsonb_build_object('email', 'v766f@example.com', 'phone', '08030007666', 'jambRegNo', '976600007666AB', 'programme', prog, 'level', 200),
+                              '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345', NULL);
+    a4 := (r->>'applicationId')::uuid; acc4 := (r->>'accountId')::uuid;
+    PERFORM set_config('moaum.actor_id', acc4::text, true);
+    msg := msg || ' | 13 ' || (SELECT a.fee_basis || ' ' || CASE WHEN a.fee_settled_at IS NOT NULL THEN 'settled' ELSE 'unsettled' END FROM admissions.iut_application a WHERE a.id = a4)
+               || ' ' || (admissions.iut_fee_reference_draw(a4)->>'settled') || ' ' || (r->>'feeDue');
+    RAISE EXCEPTION 'the V766 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS tok = MESSAGE_TEXT;
+    IF tok <> 'the V766 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V766: an inter-university transfer applied for online — the window opens only with programmes and a published fee; a programme not opened, a second live application under one JAMB number and an upload before the fee refused; submitted only paid and with the required documents; documents checked before the department; the recommendation held to its own department and a level the window opens; the approval a batch of one (source APPLICATION) its approver cannot decide; another officer''s approval admits the student (TRANSFER, ADMITTED, the level recommended) and the application follows, a rejection there returns it to the Registry untold; places filled refused; a closed window refuses a new application and lets a started one submit; a zero fee settled at registration',
+      coalesce(msg = '1 IUT_WINDOW_NO_PROGRAMMES IUT_WINDOW_FEE_UNPUBLISHED | 2 IUT_WINDOW_FEE_UNPUBLISHED OPEN | 3 IUT_PROGRAMME_NOT_OPEN DRAFT numbered 5000 IUT_JAMB_TAKEN'
+                   || ' | 4 IUT_FEE_UNPAID one-reference PAID RCT- | 5 IUT_DOCUMENTS_MISSING SUBMITTED | 6 IUT_DOCUMENTS_UNCHECKED WITH_HOD'
+                   || ' | 7 IUT_HOD_OTHER_DEPARTMENT IUT_LEVEL_NOT_OPEN RECOMMENDED | 8 APPROVED APPLICATION prepared-by-approver UNIVERSITY_TRANSFER_SAME_OFFICER'
+                   || ' | 9 RECOMMENDED no-transfer untold | 10 ADMITTED TRANSFER:ADMITTED:200 told | 11 IUT_PLACES_FILLED | 12 IUT_WINDOW_CLOSED SUBMITTED'
+                   || ' | 13 NONE_DUE settled true 0', false), msg);
+END $$;
+
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran

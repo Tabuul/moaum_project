@@ -203,6 +203,21 @@ class VerifyController {
                      LIMIT 1
                     """).param("ref", reference).query().listOfRows();
         }
+        if (rows.isEmpty()) {
+            // V766: an inter-university transfer applicant's fee: its own references, a receipt in the University's series, no passport;
+            // named by its own kind (IUT_APPLICATION), as its receipt is — a Post-UTME transfer applicant's APPLICATION fee is another
+            rows = jdbc.sql("""
+                    SELECT f.reference, f.receipt_no, 'IUT_APPLICATION' AS kind, f.amount, f.channel, f.confirmed_at, a.session, a.application_no,
+                           trim(upper(a.surname) || ', ' || a.other_names) AS name, p.name AS programme, 'TRANSFER' AS entry_mode,
+                           NULL::text AS passport, NULL::uuid AS passport_object
+                      FROM admissions.iut_fee_reference f
+                      JOIN admissions.iut_application a ON a.id = f.application_id
+                      LEFT JOIN ref.programme p ON p.code = a.programme_code
+                     WHERE (f.reference = upper(btrim(:ref)) OR upper(coalesce(f.receipt_no, '')) = upper(btrim(:ref))) AND f.confirmed_at IS NOT NULL
+                     ORDER BY f.reference = upper(btrim(:ref)) DESC
+                     LIMIT 1
+                    """).param("ref", reference).query().listOfRows();
+        }
         if (rows.isEmpty() || !codes.signed(c, CheckCodes.Kind.APPLICANT_RECEIPT, String.valueOf(rows.get(0).get("reference")))) {
             out.put("genuine", false);
             return out;
@@ -886,6 +901,38 @@ class VerifyController {
         out.put("genuine", true);
         out.putAll(rows.get(0));
         out.remove("before_cutover");
+        return out;
+    }
+
+    /**
+     * V766: the acknowledgement of a submitted inter-university transfer application, by the code signed over its number. An
+     * application number carries slashes (IUT/APP/2026/000001), and an encoded slash (%2F) in a path is refused by the request
+     * firewall, so the number is read as the rest of the path, slashes and all, or as the query parameter {@code no}. It attests the
+     * submission only: who applied, for what, from where and when — never the application's state or a decision.
+     */
+    @GetMapping({"/transfer-application", "/transfer-application/{*number}"})
+    @Transactional(readOnly = true)
+    Map<String, Object> transferApplication(@PathVariable(required = false) String number, @RequestParam(required = false) String no,
+                                            @RequestParam(required = false) String t, HttpServletRequest request) {
+        String n = no != null && !no.isBlank() ? no : number == null ? "" : number.replaceFirst("^/+", "");
+        return checked(request, () -> transferApplicationAnswer(n, t));
+    }
+
+    private Map<String, Object> transferApplicationAnswer(String applicationNo, String t) {
+        String no = applicationNo == null ? "" : applicationNo.trim().toUpperCase();
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (no.isEmpty() || !codes.signed(t, CheckCodes.Kind.IUT_ACKNOWLEDGEMENT, no)) { out.put("genuine", false); return out; }
+        List<Map<String, Object>> rows = jdbc.sql("""
+                SELECT a.application_no, a.surname || ', ' || a.other_names AS applicant_name, a.session, p.name AS programme, a.level,
+                       coalesce(u.name, a.university_named) AS university, a.submitted_at AS submitted_on
+                  FROM admissions.iut_application a
+                  LEFT JOIN ref.programme p ON p.code = a.programme_code
+                  LEFT JOIN ref.university u ON u.code = a.university_code
+                 WHERE a.application_no = :n AND a.submitted_at IS NOT NULL
+                """).param("n", no).query().listOfRows();
+        if (rows.isEmpty()) { out.put("genuine", false); return out; }
+        out.put("genuine", true);
+        out.putAll(rows.get(0));
         return out;
     }
 }

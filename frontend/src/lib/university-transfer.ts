@@ -97,7 +97,9 @@ export interface Transfer {
   matched_by: string | null; prepared_by_name: string | null; prepared_at: string; decided_by_name: string | null; decided_at: string | null; decision_note: string | null;
   // V763
   other_matric_no?: string | null; other_entry_session?: string | null; other_cgpa?: number | string | null; other_cgpa_scale?: number | null; documents?: string[];
-  remarks?: string | null; source?: "FILE" | "FORM";
+  remarks?: string | null; source?: "FILE" | "FORM" | "APPLICATION";
+  /** V766: the online application the transfer was approved from (or, for one the deciding officer rejected, the application it came from) */
+  application?: { id: string; applicationNo: string } | null;
 }
 
 export const TRANSFER: Record<Transfer["status"], [string, "ok" | "warn" | "bad"]> = {
@@ -122,7 +124,7 @@ export function cgpaWords(cgpa: number | string | null | undefined, scale: numbe
 export function reportRows(rows: Transfer[]): (string | number)[][] {
   return rows.map((t, i) => [i + 1, t.batch_ref, DIRECTION[t.direction], t.student ?? "", t.matric_no ?? "", t.jamb_reg_no ?? "", t.university,
     t.other_programme ?? "", t.other_level ?? "", t.other_matric_no ?? "", cgpaWords(t.other_cgpa, t.other_cgpa_scale), t.programme ?? t.programme_code ?? "",
-    t.level ?? "", t.effective_session, t.source === "FORM" ? "Form" : "File", outcome(t), t.decided_by_name ?? "", t.decided_at ? t.decided_at.slice(0, 10) : ""]);
+    t.level ?? "", t.effective_session, t.source === "FORM" ? "Form" : t.source === "APPLICATION" ? "Online application" : "File", outcome(t), t.decided_by_name ?? "", t.decided_at ? t.decided_at.slice(0, 10) : ""]);
 }
 
 // ── V763: the inter-university transfer form ───────────────────────────────────────────────────────────────────────────

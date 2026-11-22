@@ -7,7 +7,8 @@
  *  the valid rows are prepared as one batch (IUT/YYYY/NNNNNN) that another officer of the Academic Office or the Registry decides on
  *  this screen, transfer by transfer or all at once. Nothing on a record changes until then. The list of universities is kept here.
  *  V763: one student is registered on the form (/transfers/inter-university/form) as a batch of one, decided here like any other;
- *  a batch says whether a file or the form made it, a transfer shows the particulars the form gives, and ?batch= opens one. */
+ *  a batch says whether a file or the form made it, a transfer shows the particulars the form gives, and ?batch= opens one. V766: a
+ *  batch the Registry approved from an online application says so (source APPLICATION), and its transfer links the application. */
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -32,7 +33,7 @@ export interface University { code: string; name: string; country: string; activ
 export interface Batch {
   id: string; ref: string; effective_session: string; filename: string | null; reason: string; approval_ref: string | null; total: number; prepared: number;
   left_out: number; incoming: number; outgoing: number; pending: number; completed: number; rejected: number; prepared_by: string; prepared_by_name: string | null;
-  prepared_office: string; prepared_at: string; status: string; source?: "FILE" | "FORM";
+  prepared_office: string; prepared_at: string; status: string; source?: "FILE" | "FORM" | "APPLICATION";
 }
 type BatchDetail = Batch & { transfers: Transfer[]; leftOut: { row_no: number; uploaded: Record<string, string>; messages: { code: string; text?: string }[] }[] };
 
@@ -207,7 +208,9 @@ export function UniversityTransfer({ structure, batches, universities, office, m
         The student is looked for first by the matriculation or JAMB number, so no one is placed twice: a student already on the register is that record, an applicant
         under the JAMB number is linked, and only otherwise is a record made — admitted by transfer, at the level the row states, its matriculation number to follow
         under Matriculation Management. A student going out keeps the record and its history; the status becomes Transferred out. Every row is decided by another
-        officer of the Academic Office or the Registry; nothing changes before then.
+        officer of the Academic Office or the Registry; nothing changes before then. Students of other universities also apply online at /transfer/apply; the
+        Registry approves them on <Link className="lnk" href="/transfers/inter-university/applications">Transfer applications</Link>, and each comes here as a batch of
+        one for another officer&apos;s decision.
       </Note>
       <Tabs label="Inter-university transfer" value={tab} onChange={setTab} items={[{ id: "upload", label: "New upload" }, { id: "batches", label: "Batches", count: batches.length },
         { id: "transfers", label: "Transfers" }, { id: "universities", label: "Universities", count: universities.filter((u) => u.active).length }]} />
@@ -327,7 +330,7 @@ export function UniversityTransfer({ structure, batches, universities, office, m
           {batches.length ? (
             <DTable cols={["S/N|num", "Batch", "Session", "Incoming|num", "Outgoing|num", "Waiting|num", "Completed|num", "Status", "By", "Prepared", "|num"]} rows={batches.map((b, i) => [
               <span key="n" className="tnum sub2">{i + 1}</span>,
-              <span key="r"><span className="tnum b600">{b.ref}</span><div className="sub2">{b.source === "FORM" ? "Registered on the form" : b.filename ?? "From a file"}</div></span>,
+              <span key="r"><span className="tnum b600">{b.ref}</span><div className="sub2">{b.source === "FORM" ? "Registered on the form" : b.source === "APPLICATION" ? "Applied online" : b.filename ?? "From a file"}</div></span>,
               <span key="s" className="tnum">{b.effective_session}</span>,
               <span key="i" className="tnum">{b.incoming}</span>,
               <span key="o" className="tnum">{b.outgoing}</span>,
@@ -405,7 +408,7 @@ export function UniversityTransfer({ structure, batches, universities, office, m
         </Panel>
       )}
       {open ? (
-        <Modal wide title={`${open.ref} · ${BATCH[open.status]?.[0] ?? open.status}`} sub={`${open.effective_session} · ${open.source === "FORM" ? "registered on the form" : open.filename ?? "no file name"} · prepared by ${open.prepared_by_name ?? open.prepared_office}, ${when(open.prepared_at)}`}
+        <Modal wide title={`${open.ref} · ${BATCH[open.status]?.[0] ?? open.status}`} sub={`${open.effective_session} · ${open.source === "FORM" ? "registered on the form" : open.source === "APPLICATION" ? "applied online" : open.filename ?? "no file name"} · prepared by ${open.prepared_by_name ?? open.prepared_office}, ${when(open.prepared_at)}`}
           onClose={() => setOpen(null)}
           foot={<>
             {open.pending && mayKeep ? (
@@ -431,7 +434,9 @@ export function UniversityTransfer({ structure, batches, universities, office, m
             <span key="u">{t.university}{t.other_programme ? <div className="sub2">{t.other_programme}{t.other_level ? ` · ${t.other_level}` : ""}</div> : null}
               {thereWords(t) ? <div className="sub2 tnum">{thereWords(t)}</div> : null}
               {t.documents?.length ? <div className="sub2">Seen: {documentWords(t.documents)}</div> : null}
-              {t.remarks ? <div className="sub2">{t.remarks}</div> : null}</span>,
+              {t.remarks ? <div className="sub2">{t.remarks}</div> : null}
+              {/* V766: approved from an online application: its page holds the documents and the department's recommendation */}
+              {t.application ? <div className="sub2">Applied online: <Link className="lnk" href={`/transfers/inter-university/applications/${t.application.id}`}>{t.application.applicationNo}</Link></div> : null}</span>,
             <span key="h" className="tnum">{t.programme_code ? `${t.programme_code} · ${t.level ?? "—"}` : "—"}</span>,
             <span key="o"><Pil kind={TRANSFER[t.status][1]}>{outcome(t)}</Pil>{t.decision_note ? <div className="sub2">{t.decision_note}</div> : null}</span>,
             t.status === "PENDING_APPROVAL" && mayKeep && !pendingMine ? (

@@ -72,6 +72,13 @@ class PublicDoorsIT {
             ResponseEntity<Map> signIn = it.call(token, HttpMethod.POST, "/api/v1/jupeb/sign-in", Map.of("identifier", "nobody@example.com", "password", "not-the-password"));
             assertThat(status(signIn)).as("JUPEB sign-in with " + token).isEqualTo(422);
             assertThat(signIn.getBody().get("code")).isEqualTo("AUTH_BAD_CREDENTIALS");
+            // V766: the inter-university transfer application's doors: its options, the application and the sign-in
+            assertThat(status(it.get(token, "/api/v1/public/inter-university-transfer"))).as("transfer options with " + token).isEqualTo(200);
+            assertThat(status(it.call(token, HttpMethod.POST, "/api/v1/transfer-applications/apply", Map.of()))).as("transfer apply with " + token).isEqualTo(400);
+            ResponseEntity<Map> transferSignIn = it.call(token, HttpMethod.POST, "/api/v1/transfer-applications/sign-in",
+                    Map.of("identifier", "nobody@example.com", "password", "not-the-password"));
+            assertThat(status(transferSignIn)).as("transfer sign-in with " + token).isEqualTo(422);
+            assertThat(transferSignIn.getBody().get("code")).isEqualTo("AUTH_BAD_CREDENTIALS");
         }
     }
 }

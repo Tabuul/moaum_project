@@ -233,6 +233,19 @@ class ApplicationWindowsIT {
         assertThat(((Map) publicWindows(SESSION).get("postUtme")).get("status")).isEqualTo("OPEN");
     }
 
+    /** V766: the feed carries the inter-university transfer application's window, in the shape of every other door — the Academic
+     *  Office's own window (admissions.iut_window), which the Director's acts do not reach */
+    @Test
+    void theInterUniversityTransferApplicationIsInTheFeed() {
+        Map<String, Object> iut = (Map<String, Object>) publicWindows(null).get("interUniversityTransfer");
+        assertThat(iut).containsEntry("type", "INTER_UNIVERSITY_TRANSFER_APPLICATION").containsEntry("label", "Inter-university transfer application")
+                .containsEntry("applicationPath", "/transfer/apply").containsKeys("status", "open");
+        assertThat(String.valueOf(iut.get("applicationUrl"))).endsWith("/transfer/apply");
+        assertThat(iut.get("status")).isIn("OPEN", "CLOSED", "SCHEDULED", "EXPIRED");
+        assertThat(iut.get("open")).isEqualTo("OPEN".equals(iut.get("status")));
+        assertThat(act("INTER_UNIVERSITY_TRANSFER_APPLICATION", SESSION, "CLOSE", "not the Director's window").getStatusCode().value()).isNotEqualTo(200);
+    }
+
     /** V378: Post-UTME is filed under the intake session — the first planned session after the current one — while JUPEB, naming
      *  no session of its own, keeps the University's current one. Set up in a transaction that is rolled back, so the calendar
      *  every other test reads is left as it was. */

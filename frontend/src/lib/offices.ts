@@ -92,6 +92,7 @@ export const ROLE_LABELS: Record<string, [string, string]> = {
   student: ["Student", "The register"],
   pgapplicant: ["Postgraduate applicant", "School of Postgraduate Studies"],
   jupebcandidate: ["JUPEB candidate", "JUPEB programme"],
+  iutapplicant: ["Transfer applicant", "Inter-university transfer"],
   jupeb: ["JUPEB Office", "JUPEB programme"],
   cce: ["Centre for Continuing Education", "CCE · part-time programmes"],
   alumni: ["Alumni Relations Office", "Final clearance and the alumni register"],

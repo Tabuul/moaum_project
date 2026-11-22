@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { API_URL } from "@/lib/api";
 import { OFFICE_COOKIE } from "@/lib/offices";
 import { SESSION_COOKIE, cookieOptions } from "@/lib/session";
+import { IUT_COOKIE } from "@/lib/transfer-application";
 
 /** a JUPEB candidate's new password against the emailed reset token (V339); they are signed in with it, on their own portal */
 export async function POST(request: NextRequest) {
@@ -22,6 +23,8 @@ export async function POST(request: NextRequest) {
   const response = NextResponse.json({ applicationNo: signed.applicationNo, name: `${signed.surname}, ${signed.otherNames}`, home: "/jupeb/portal" });
   response.cookies.set(SESSION_COOKIE, signed.token, cookieOptions(seconds));
   response.cookies.set(OFFICE_COOKIE, "applicant", { ...cookieOptions(seconds), httpOnly: false });
+  /* V766: a transfer applicant's cookie left on this browser would send this applicant's home to /transfer/portal */
+  response.cookies.delete(IUT_COOKIE);
   response.cookies.set("moaum_jupeb", "1", { ...cookieOptions(seconds), httpOnly: false });
   return response;
 }

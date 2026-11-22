@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { api } from "@/lib/api";
 import { ME_CORE } from "@/lib/student-portal";
 import { sessionToken } from "@/lib/session";
-import { SIGN_IN_TITLE, ssoOption } from "./login/options";
+import { SIGN_IN_TITLE, ssoOption, transferOpen } from "./login/options";
 import { SignIn } from "./login/SignIn";
 import { Shell, type Me } from "@/components/proto/Shell";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -36,6 +36,7 @@ import type { MySheet, PipelineView, SheetListing } from "@/lib/results";
 import type { ClinicDesk } from "@/lib/health";
 import { currentSession } from "@/lib/sessions";
 import { officeHome } from "@/lib/home-routes";
+import { IUT_COOKIE } from "@/lib/transfer-application";
 
 export const dynamic = "force-dynamic";
 
@@ -53,12 +54,19 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function DashboardPage() {
   /* no session: the sign-in here, not a redirect to /login — one round trip fewer on a slow link */
-  if (!(await sessionToken())) return <SignIn sso={await ssoOption()} />;
+  if (!(await sessionToken())) {
+    const [sso, transfer] = await Promise.all([ssoOption(), transferOpen()]);
+    return <SignIn sso={sso} transferOpen={transfer} />;
+  }
   const [me, sessions] = await Promise.all([api<Me>("/api/v1/iam/me"), api<{ name: string; state: string }[]>("/api/v1/ref/sessions")]);
   const office = me.ok ? me.data.activeOffice : null;
   /* an applicant's home is their application, not an office's dashboard */
-  /* a JUPEB candidate signs in as an applicant too (V339); the sign-in leaves a cookie that sends them to their own portal */
-  if (office === "applicant") redirect((await cookies()).get("moaum_jupeb") ? "/jupeb/portal" : "/applicant");
+  /* a JUPEB candidate signs in as an applicant too (V339); the sign-in leaves a cookie that sends them to their own portal; and so does a
+     transfer applicant (V766), whose portal is their inter-university transfer application */
+  if (office === "applicant") {
+    const jar = await cookies();
+    redirect(jar.get("moaum_jupeb") ? "/jupeb/portal" : jar.get(IUT_COOKIE) ? "/transfer/portal" : "/applicant");
+  }
   if (office === "student") {
     /* V603: the student's dashboard as the API resolves it from the programme on the record — the College's own student area
        for a programme the College runs (MBBS) from 200 Level; every other student, College of Health Sciences or not, keeps

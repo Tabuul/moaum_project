@@ -68,6 +68,8 @@ class SecurityConfig {
             "/api/v1/pg/apply", "/api/v1/pg/programmes", "/api/v1/pg/status",
             "/api/v1/pg/sign-in", "/api/v1/pg/referee/**",
             "/api/v1/jupeb/options", "/api/v1/jupeb/apply", "/api/v1/jupeb/sign-in", "/api/v1/jupeb/forgot", "/api/v1/jupeb/reset",
+            // V766: a student of another university applies for an inter-university transfer on their own, and signs back in
+            "/api/v1/transfer-applications/apply", "/api/v1/transfer-applications/sign-in",
             "/api/v1/verify/**", "/api/v1/helpdesk/track", "/api/v1/helpdesk/sign-in-help", "/api/v1/helpdesk/sign-in-help/check", "/api/v1/public/**",
             "/api/v1/examiners/invitation/*", "/api/v1/examiners/activate",
             // V385: the Post-UTME CBT door and result checking — public, verified by JAMB number and a second factor, throttled

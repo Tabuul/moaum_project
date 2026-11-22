@@ -111,6 +111,18 @@ public class PasswordResetService {
             Map<String, Object> a = pg.get(0);
             return new Subject("PGAPPLICANT", (UUID) a.get("id"), (String) a.get("email"), (String) a.get("phone"), "postgraduate application account");
         }
+        // V766: an inter-university transfer applicant: by the e-mail of the account, or an application number of theirs (the latest first)
+        var iut = jdbc.sql("""
+                SELECT acc.id, acc.email, acc.phone FROM admissions.iut_account acc
+                  JOIN admissions.iut_application ap ON ap.account_id = acc.id
+                 WHERE lower(acc.email) = :e OR upper(ap.application_no) = :k
+                 ORDER BY ap.created_at DESC
+                 LIMIT 1
+                """).param("k", upper).param("e", lower).query().listOfRows();
+        if (!iut.isEmpty()) {
+            Map<String, Object> a = iut.get(0);
+            return new Subject("IUTAPPLICANT", (UUID) a.get("id"), (String) a.get("email"), (String) a.get("phone"), "transfer application account");
+        }
         return null;
     }
 
@@ -268,6 +280,9 @@ public class PasswordResetService {
                 // V706: a reset by the University (the application number) is spent by the applicant's own password
                 case "PGAPPLICANT" -> jdbc.sql("UPDATE admissions.pg_applicant SET password_hash = :h, must_change_password = false, failed_attempts = 0, locked_until = NULL WHERE id = :s")
                         .param("h", pwHash).param("s", subject).update();
+                // V766: an inter-university transfer applicant's account
+                case "IUTAPPLICANT" -> jdbc.sql("UPDATE admissions.iut_account SET password_hash = :h, failed_attempts = 0, locked_until = NULL, password_changed_at = now() WHERE id = :s")
+                        .param("h", pwHash).param("s", subject).update();
                 // V706: and a reset to the JAMB number (or a temporary password) is spent by it
                 default -> jdbc.sql("""
                         UPDATE admissions.applicant_account SET password_hash = :h, must_change_password = false, temp_expires_at = NULL, failed_attempts = 0, locked_until = NULL
@@ -293,6 +308,8 @@ public class PasswordResetService {
             case "STAFF" -> "SELECT c.username AS n FROM iam.credential c WHERE c.person_id = :s UNION ALL SELECT p.staff_number FROM iam.person p WHERE p.id = :s";
             case "STUDENT" -> "SELECT unnest(ARRAY[matric_no, admission_no, jamb_reg_no]) AS n FROM people.student WHERE id = :s";
             case "PGAPPLICANT" -> "SELECT ap.application_no AS n FROM admissions.pg_application ap WHERE ap.applicant_id = :s";
+            // V766: the transfer applicant's JAMB and application numbers
+            case "IUTAPPLICANT" -> "SELECT unnest(ARRAY[ap.jamb_reg_no, ap.application_no]) AS n FROM admissions.iut_application ap WHERE ap.account_id = :s";
             default -> """
                     SELECT unnest(ARRAY[a.jamb_key, ap.application_no, pl.legacy_application_no]) AS n
                       FROM admissions.applicant_account a LEFT JOIN admissions.application ap ON ap.account_id = a.id

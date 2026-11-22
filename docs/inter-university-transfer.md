@@ -8,6 +8,11 @@ spreadsheet. Such transfers are approved by the Senate under the University's tr
 (`/transfers/inter-university/form`), under the same rules and the same decision by another officer; see
 [The form](#the-form).
 
+*Nov 2026 (V766).* A student of another university also **applies online**, on their own, at `/transfer/apply`. The Registry checks
+the documents, the Head of Department recommends, and the Registry approves the application into a transfer of one (batch source
+`APPLICATION`), which comes here for another officer's decision like any other. See
+[Inter-university transfer applications online](inter-university-transfer-applications.md).
+
 The student is always looked for first, so no one is placed twice. An incoming student who is already on the register is that
 record; an applicant under the JAMB number is linked to the new record; only otherwise is a record made. An outgoing student
 keeps the record and every row of its history; only the status changes.
@@ -45,7 +50,8 @@ University is not on it: it is this University's own former name.
    (`people.university_transfer`). While any row is invalid, the batch is refused unless the officer ticks *Prepare the valid rows
    alone*. The invalid rows are then kept with their reasons (`people.university_transfer_left_out`).
 4. **Decide.** Another officer of the Academic Office or the Registry approves or rejects (**Batches → Open**): the whole batch,
-   or one transfer at a time. A rejection needs a note. Each transfer is checked again on the records as they stand. One that is
+   or one transfer at a time. A batch says where it came from: a file, the form, or (V766) an online application, whose
+   transfer links the application. A rejection needs a note. Each transfer is checked again on the records as they stand. One that is
    refused now (because a record changed since) is said with the reason and left waiting; the others are decided. **Nothing on
    any record changes before this.**
 
@@ -168,7 +174,7 @@ Points to look at: `APPLICANT_LINKED` (an applicant under the JAMB number become
 | `GET /template?faculty=&department=&programme=&level=` | an outgoing template's rows |
 | `POST /validate {rows, session}` | check the rows |
 | `POST {rows, session, reason, approvalRef, filename, validRowsOnly}` | prepare the batch |
-| `GET` and `GET /{id}` | the batches, and one with its transfers and the rows left out |
+| `GET` and `GET /{id}` | the batches, and one with its transfers and the rows left out; V766: each transfer approved from an online application carries `application {id, applicationNo}` |
 | `POST /{id}/decide {approve, note}` | decide every waiting transfer of a batch |
 | `POST /transfers/{id}/decide {approve, note}` | decide one transfer |
 | `GET /transfers?q=&direction=&student=` | the transfers by search, direction or student (the report) |
@@ -182,3 +188,8 @@ The form's fields: `direction`, `matricNo`, `jambRegNo`, `surname`, `otherNames`
 Registry's (not Records').
 
 A file takes up to 1,000 rows. `people.university_transfer.programme_code` is classed KEEP for the V574 programme merge.
+
+`people.university_transfer_batch.source` is `FILE` (a spreadsheet), `FORM` (V763, one student on the form) or `APPLICATION`
+(V766, an online application the Registry approved: `admissions.iut_application.transfer_id`). When the deciding officer rejects
+such a transfer, the application goes back to the Registry's desk (recommended again) and the applicant is not told; the
+Registry approves it again, as a new batch of one, or rejects it with words the applicant reads.

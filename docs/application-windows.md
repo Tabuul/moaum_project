@@ -80,6 +80,30 @@ Both are session-wide (no semester, no late period), carry their own closure mes
 `/api/v1/public/application-windows` as `postUtmeCbt` and `postUtmeResults`. Nobody is told when they open: the
 examination's own publication tells the candidates. See `docs/putme-cbt.md`.
 
+## The inter-university transfer application (V766)
+
+The online inter-university transfer application (`/transfer/apply`) has a window too, but it is **the Academic Office's, not the
+Director's**: it is opened and closed per session on Transfer Applications → *Window and programmes*
+(`admissions.iut_window`, beside the programmes and levels taking transfer students), not on Application Registration Control and
+not in `policy.portal_window`. It is **closed until first opened**, and it opens only with a programme accepting and the session's
+application fee published by the Bursar (a fee of nothing counts). Closing stops new applications only, as above. See
+`docs/inter-university-transfer-applications.md`.
+
+It appears on the same feed as `interUniversityTransfer`, in the same shape (type `INTER_UNIVERSITY_TRANSFER_APPLICATION`, label
+"Inter-university transfer application", `applicationPath` `/transfer/apply`):
+
+```json
+"interUniversityTransfer": {
+  "type": "INTER_UNIVERSITY_TRANSFER_APPLICATION", "label": "Inter-university transfer application", "session": "2026/2027",
+  "status": "OPEN", "open": true, "opensAt": "2026-11-19T23:00:00Z", "closesAt": "2027-01-15T22:59:59Z", "message": null,
+  "applicationPath": "/transfer/apply", "applicationUrl": "https://<portal>/transfer/apply"
+}
+```
+
+The programmes and levels open, the fee and the documents asked are read from `GET /api/v1/public/inter-university-transfer`
+(no sign-in, any origin). While it is open, the sign-in page carries one line under the collaboration line: "A student of another
+university? Apply for an inter-university transfer".
+
 ## Where it is recorded
 
 Every act is a row in `policy.portal_window_event` (what it was, what it became, who, when, why), shown in the

@@ -152,6 +152,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/deferments", "icon": "cal", "label": "Deferments" },
           { "id": "t/clearance", "icon": "check", "label": "Department Clearance" },
           { "id": "t/transfers", "icon": "swap", "label": "Inter-Departmental Transfer" },
+          { "id": "t/iuthod", "icon": "swap", "label": "Transfer Applicants (other universities)" },
           { "id": "t/transferfees", "icon": "card", "label": "Transfer Fees" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
           { "id": "r/siwes", "icon": "swap", "label": "SIWES Supervision" },
@@ -250,6 +251,7 @@ export const MENUS: Record<string, Menu> = {
         "items": [
           { "id": "t/deferments", "icon": "cal", "label": "Deferments" },
           { "id": "t/transfers", "icon": "swap", "label": "Inter-Departmental Transfer Applications" },
+          { "id": "t/iuthod", "icon": "swap", "label": "Transfer Applicants (other universities)" },
           { "id": "t/transferfees", "icon": "card", "label": "Transfer Fees" },
           { "id": "t/clearance", "icon": "check", "label": "Faculty Clearance" },
           { "id": "t/records", "icon": "chart", "label": "Records & Queries" },
@@ -481,6 +483,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/historicalfees", "icon": "cap", "label": "Historical Fees & Clearance" },
           { "id": "t/legacywallet", "icon": "swap", "label": "Old E-Wallet Balances" },
           { "id": "t/siwespayments", "icon": "card", "label": "SIWES Fee Payments" },
+          { "id": "t/iutpayments", "icon": "card", "label": "Transfer Application Payments" },
           { "id": "t/auditpayroll", "icon": "chart", "label": "Payroll Variance", "badge": "6" },
           { "id": "t/auditassets", "icon": "box", "label": "Assets Register", "badge": "!" }
         ]
@@ -546,6 +549,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/historicalfees", "icon": "cap", "label": "Historical Fees & Clearance" },
           { "id": "t/legacywallet", "icon": "swap", "label": "Old E-Wallet Balances" },
           { "id": "t/siwespayments", "icon": "card", "label": "SIWES Fee Payments" },
+          { "id": "t/iutpayments", "icon": "card", "label": "Transfer Application Payments" },
           { "id": "t/auditpayroll", "icon": "chart", "label": "Payroll Variance", "badge": "6" },
           { "id": "t/auditassets", "icon": "box", "label": "Assets Register", "badge": "!" }
         ]
@@ -691,6 +695,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/transferbulk", "icon": "swap", "label": "Bulk Inter-Departmental Transfer" },
           { "id": "t/iut", "icon": "swap", "label": "Inter-University Transfer" },
           { "id": "t/iutform", "icon": "swap", "label": "Inter-University Transfer Form" },
+          { "id": "t/iutapps", "icon": "swap", "label": "Transfer Applications" },
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
           { "id": "t/coursereview", "icon": "check", "label": "Course Ownership Review" },
           { "id": "t/coursechanges", "icon": "clock", "label": "Course Code & Title Changes" },
@@ -871,7 +876,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/reconcile", "icon": "swap", "label": "Reconciliation", "badge": "12" },
           { "id": "prelim/config", "icon": "card", "label": "Preliminary & Proficiency Fees" },
           { "id": "t/summerfees", "icon": "card", "label": "Summer Semester Fees" },
-          { "id": "t/siwespayments", "icon": "card", "label": "SIWES Fee Payments" }
+          { "id": "t/siwespayments", "icon": "card", "label": "SIWES Fee Payments" },
+          { "id": "t/iutpayments", "icon": "card", "label": "Transfer Application Payments" }
         ]
       },
       {
@@ -913,7 +919,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/spillover", "icon": "chart", "label": "Spillover Students" },
           { "id": "t/payments", "icon": "card", "label": "Payments Query" },
           { "id": "t/studentpaymenthistory", "icon": "card", "label": "Payment History" },
-          { "id": "t/siwespayments", "icon": "card", "label": "SIWES Fee Payments" }
+          { "id": "t/siwespayments", "icon": "card", "label": "SIWES Fee Payments" },
+          { "id": "t/iutpayments", "icon": "card", "label": "Transfer Application Payments" }
         ]
       },
       {
@@ -1372,6 +1379,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/transferbulk", "icon": "swap", "label": "Bulk Inter-Departmental Transfer" },
           { "id": "t/iut", "icon": "swap", "label": "Inter-University Transfer" },
           { "id": "t/iutform", "icon": "swap", "label": "Inter-University Transfer Form" },
+          { "id": "t/iutapps", "icon": "swap", "label": "Transfer Applications" },
           { "id": "t/transferfees", "icon": "card", "label": "Transfer Fees" },
           { "id": "t/oldtransfers", "icon": "swap", "label": "Old-Portal Transfers" },
           { "id": "t/contactupload", "icon": "upload", "label": "Student Contacts Upload" },
@@ -1530,7 +1538,8 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/summer", "icon": "cal", "label": "Summer Semester" },
           { "id": "t/siwesreg", "icon": "cal", "label": "SIWES Registration" },
           { "id": "t/summerfees", "icon": "card", "label": "Summer Semester Fees" },
-          { "id": "t/siwespayments", "icon": "card", "label": "SIWES Fee Payments" }
+          { "id": "t/siwespayments", "icon": "card", "label": "SIWES Fee Payments" },
+          { "id": "t/iutpayments", "icon": "card", "label": "Transfer Application Payments" }
         ]
       },
       {
@@ -1574,6 +1583,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/transferbulk", "icon": "swap", "label": "Bulk Inter-Departmental Transfer" },
           { "id": "t/iut", "icon": "swap", "label": "Inter-University Transfer" },
           { "id": "t/iutform", "icon": "swap", "label": "Inter-University Transfer Form" },
+          { "id": "t/iutapps", "icon": "swap", "label": "Transfer Applications" },
           { "id": "t/transferfees", "icon": "card", "label": "Transfer Fees" },
           { "id": "t/oldtransfers", "icon": "swap", "label": "Old-Portal Transfers" },
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
@@ -1700,6 +1710,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/transferbulk", "icon": "swap", "label": "Bulk Inter-Departmental Transfer" },
           { "id": "t/iut", "icon": "swap", "label": "Inter-University Transfer" },
           { "id": "t/iutform", "icon": "swap", "label": "Inter-University Transfer Form" },
+          { "id": "t/iutapps", "icon": "swap", "label": "Transfer Applications" },
           { "id": "t/allcourses", "icon": "book", "label": "All Courses" },
           { "id": "t/coursereview", "icon": "check", "label": "Course Ownership Review" },
           { "id": "t/coursechanges", "icon": "clock", "label": "Course Code & Title Changes" },
@@ -2563,6 +2574,20 @@ export const MENUS: Record<string, Menu> = {
           { "id": "pg/apply", "icon": "doc", "label": "Apply Form" },
           { "id": "pg/summary", "icon": "print", "label": "Application Summary" },
           { "id": "pg/password", "icon": "shield", "label": "Change Password" }
+        ]
+      }
+    ]
+  },
+  "iutapplicant": {
+    "label": "Transfer Applicant",
+    "home": "iut/portal",
+    "groups": [
+      {
+        "name": "My transfer application",
+        "open": true,
+        "items": [
+          { "id": "iut/portal", "icon": "doc", "label": "Application" },
+          { "id": "iut/password", "icon": "shield", "label": "Change Password" }
         ]
       }
     ]

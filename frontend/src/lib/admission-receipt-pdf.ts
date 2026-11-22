@@ -31,7 +31,7 @@ export function admissionReceiptPdf(r: AdmissionReceipt, origin: string): Uint8A
   p.textCenter(A4.w / 2, y, `Receipt no ${r.receipt_no ?? r.reference}`, 9.5, false, [0.35, 0.35, 0.35]);
   y -= 30;
   const rows: [string, string][] = [
-    ["Received from", `${r.surname.toUpperCase()}, ${r.other_names}`],
+    ["Received from", `${r.surname.toUpperCase()}${r.other_names ? `, ${r.other_names}` : ""}`],
     ...(r.jamb_reg_no ? [["JAMB registration number", r.jamb_reg_no] as [string, string]] : []),
     ["Application number", r.application_no],
     ["Programme applied for", r.programme ?? "—"],

@@ -16,8 +16,8 @@ function samePath(p: string | null): string {
   return p && p.startsWith("/") && !p.startsWith("//") && !p.startsWith("/\\") ? p : "/";
 }
 
-export function SignIn({ sso }: { sso: SsoOption }) {
+export function SignIn({ sso, transferOpen = false }: { sso: SsoOption; transferOpen?: boolean }) {
   const search = useSyncExternalStore(noChange, () => window.location.search, () => "");
   const q = new URLSearchParams(search);
-  return <Login next={samePath(q.get("next"))} sso={sso} ssoProblem={q.get("sso") || null} reason={q.get("reason") || null} />;
+  return <Login next={samePath(q.get("next"))} sso={sso} ssoProblem={q.get("sso") || null} reason={q.get("reason") || null} transferOpen={transferOpen} />;
 }

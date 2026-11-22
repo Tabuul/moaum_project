@@ -164,6 +164,38 @@ class PaymentsRepository {
         return jdbc.sql("SELECT jupeb.confirm_fee(:r, :c)").param("r", reference).param("c", channel).query(String.class).single();
     }
 
+    /* ── V766: an inter-university transfer applicant's fee reference: the account is the transfer applicant's own, a separate confirm ── */
+
+    Optional<Reference> iutReference(String reference) {
+        return jdbc.sql("""
+                SELECT f.id, f.application_id, a.account_id, 'IUT_APPLICATION' AS kind, f.reference, f.amount,
+                       f.expires_at, f.confirmed_at, acc.email, a.application_no, NULL::uuid AS applicant_account_id
+                  FROM admissions.iut_fee_reference f
+                  JOIN admissions.iut_application a ON a.id = f.application_id
+                  JOIN admissions.iut_account acc ON acc.id = a.account_id
+                 WHERE f.reference = upper(btrim(:r))
+                """).param("r", reference).query(Reference.class).optional();
+    }
+
+    /** confirms a transfer application fee reference; idempotent ('already confirmed'). The first payment of an application in
+     *  progress settles it; any other is owed back (admissions.iut_confirm_fee). The gateway's note and every identifier it gave the
+     *  payment (the PAYDirect notice's Payment Log Id and payment reference; WebPAY's payment reference, RRN and the transaction
+     *  reference asked; a card gateway's transaction id), the receipt's first, are kept on the reference: a bank credit proposed for it
+     *  is posted as this payment only when its settlement row or collections line carries one of them. Sent one to a line, as the
+     *  house sends a list (no identifier holds a line break) */
+    String confirmIut(String reference, String channel, String note, List<String> gatewayRefs) {
+        String ids = gatewayRefs == null || gatewayRefs.isEmpty() ? null
+                : String.join("\n", gatewayRefs.stream().map(g -> g == null ? "" : g.replaceAll("[\\r\\n]+", " ")).toList());
+        return jdbc.sql("SELECT admissions.iut_confirm_fee(:r, :c, :n, string_to_array(:g, E'\\n'))").param("r", reference).param("c", channel)
+                .param("n", note, Types.VARCHAR).param("g", ids, Types.VARCHAR).query(String.class).single();
+    }
+
+    /** whether a transfer application fee reference may still be paid — unconfirmed and unexpired, its application a draft with the
+     *  fee unsettled (admissions.iut_reference_payable) */
+    boolean iutPayable(String reference) {
+        return jdbc.sql("SELECT admissions.iut_reference_payable(:r)").param("r", reference).query(Boolean.class).single();
+    }
+
     /* ── V037: the gateway's words kept, the attempts, what stands for a reference ── */
 
     /* ── V474: each notified PAYDirect payment recorded before it is settled ── */
@@ -266,7 +298,10 @@ class PaymentsRepository {
                         UNION ALL
                         SELECT pa.programme_code FROM admissions.pg_fee_reference fr JOIN admissions.pg_application pa ON pa.id = fr.application_id WHERE fr.reference = upper(btrim(:r))
                         UNION ALL
-                        SELECT ja.programme_code FROM jupeb.fee_reference jf JOIN jupeb.application ja ON ja.id = jf.application_id WHERE jf.reference = upper(btrim(:r))) x
+                        SELECT ja.programme_code FROM jupeb.fee_reference jf JOIN jupeb.application ja ON ja.id = jf.application_id WHERE jf.reference = upper(btrim(:r))
+                        UNION ALL
+                        -- V766: the programme a transfer applicant applies for
+                        SELECT ia.programme_code FROM admissions.iut_fee_reference f JOIN admissions.iut_application ia ON ia.id = f.application_id WHERE f.reference = upper(btrim(:r))) x
                   JOIN ref.programme p ON p.code = x.code
                   JOIN ref.faculty f ON f.code = p.faculty_code
                  LIMIT 1
@@ -292,8 +327,8 @@ class PaymentsRepository {
     private static final String HANGING = """
                 SELECT a.id, a.reference, a.gateway, a.kind, a.opened_at, a.checked_at, a.checks, st.amount, st.expires_at,
                        extract(epoch FROM now() - a.opened_at)::int / 60 AS minutes,
-                       coalesce(s.surname || ', ' || s.other_names, c.surname || ', ' || c.other_names) AS payer,
-                       coalesce(s.matric_no, s.admission_no, ap.application_no) AS number,
+                       coalesce(s.surname || ', ' || s.other_names, c.surname || ', ' || c.other_names, ia.surname || ', ' || ia.other_names) AS payer,
+                       coalesce(s.matric_no, s.admission_no, ap.application_no, ia.application_no) AS number,
                        cl.payment_log_id AS receipt_log_id, cl.paid_on::text AS receipt_paid_on, cl.amount AS receipt_amount, cl.channel AS receipt_channel
                   FROM finance.gateway_attempt a
                   LEFT JOIN LATERAL finance.reference_state(a.reference) st ON true
@@ -302,6 +337,9 @@ class PaymentsRepository {
                   LEFT JOIN admissions.fee_reference fr ON fr.reference = a.reference
                   LEFT JOIN admissions.application ap ON ap.id = fr.application_id
                   LEFT JOIN admissions.candidate c ON c.id = ap.candidate_id
+                  -- V766: a transfer applicant's fee
+                  LEFT JOIN admissions.iut_fee_reference ifr ON ifr.reference = a.reference
+                  LEFT JOIN admissions.iut_application ia ON ia.id = ifr.application_id
                   LEFT JOIN finance.paydirect_claim cl ON cl.reference = a.reference
                  WHERE a.opened_at > now() - interval '3 days' AND st.confirmed_at IS NULL
                    AND a.id = (SELECT x.id FROM finance.gateway_attempt x WHERE x.reference = a.reference ORDER BY x.opened_at DESC LIMIT 1)
@@ -436,14 +474,14 @@ class PaymentsRepository {
                 ),
                 p AS (SELECT DISTINCT ON (upper(p.reference)) upper(p.reference) AS ref, p.surname, p.other_names, p.number, p.faculty, p.department, p.programme,
                              p.level, p.session, p.purpose, p.amount AS due, p.confirmed_at, p.channel, p.student_id, p.application_id, p.pg_application_id,
-                             p.jupeb_application_id, p.source AS payer_kind
+                             p.jupeb_application_id, p.iut_application_id, p.source AS payer_kind
                         FROM reporting.payments p
                        WHERE p.reference = ANY ((SELECT array_agg(DISTINCT t.reference) FROM t WHERE t.reference IS NOT NULL)::text[])
                        ORDER BY upper(p.reference), p.confirmed_at DESC NULLS LAST)
                 SELECT t.reference, t.at, t.gateway, t.how, t.why, coalesce(t.amount, p.due) AS amount, p.due, t.event_id,
                        nullif(btrim(coalesce(p.surname, '') || ', ' || coalesce(p.other_names, ''), ', '), '') AS payer, p.number, p.faculty, p.department,
                        p.programme, p.level, p.session, p.purpose, p.confirmed_at, p.channel, p.payer_kind,
-                       coalesce(sc.phone, aa.phone, pa.phone, ja.phone) AS phone, coalesce(sc.email, aa.email, pa.email, ja.email) AS email,
+                       coalesce(sc.phone, aa.phone, pa.phone, ja.phone, ic.phone) AS phone, coalesce(sc.email, aa.email, pa.email, ja.email, ic.email) AS email,
                        told.told_at, told.told_case
                   FROM t
                   LEFT JOIN p ON p.ref = upper(t.reference)
@@ -456,6 +494,9 @@ class PaymentsRepository {
                   LEFT JOIN admissions.pg_application pga ON pga.id = p.pg_application_id
                   LEFT JOIN admissions.pg_applicant pa ON pa.id = pga.applicant_id
                   LEFT JOIN jupeb.application ja ON ja.id = p.jupeb_application_id
+                  -- V766: a transfer applicant's account
+                  LEFT JOIN admissions.iut_application iap ON iap.id = p.iut_application_id
+                  LEFT JOIN admissions.iut_account ic ON ic.id = iap.account_id
                  ORDER BY t.at DESC
                 """).query().listOfRows();
     }

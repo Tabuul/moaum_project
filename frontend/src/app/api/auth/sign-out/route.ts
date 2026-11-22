@@ -4,6 +4,7 @@ import { OFFICE_COOKIE } from "@/lib/offices";
 import { SESSION_COOKIE } from "@/lib/session";
 import { SUPPORT_RETURN_COOKIE } from "@/lib/support-view";
 import { leaveSupportView } from "../support-view/leave";
+import { IUT_COOKIE } from "@/lib/transfer-application";
 
 /** ends the server-side session, then the cookie */
 export async function POST(request: NextRequest) {
@@ -17,5 +18,6 @@ export async function POST(request: NextRequest) {
   response.cookies.set(SESSION_COOKIE, "", { path: "/", maxAge: 0 });
   response.cookies.set(OFFICE_COOKIE, "", { path: "/", maxAge: 0 });
   response.cookies.set("moaum_jupeb", "", { path: "/", maxAge: 0 });
+  response.cookies.set(IUT_COOKIE, "", { path: "/", maxAge: 0 });
   return response;
 }

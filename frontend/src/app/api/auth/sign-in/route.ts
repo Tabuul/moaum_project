@@ -2,14 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { API_URL } from "@/lib/api";
 import { OFFICE_COOKIE } from "@/lib/offices";
 import { SESSION_COOKIE, cookieOptions } from "@/lib/session";
+import { IUT_APPLICATION_NO, IUT_COOKIE } from "@/lib/transfer-application";
 
 /**
  * One door for everybody. The number typed says who is signing in:
  *   MOAUM/XXX/YY/NNNN                 a student, on the matriculation number
  *   12 digits + 2–3 letters, APP/…    an applicant, on the JAMB or application number
+ *   IUT/APP/YYYY/NNNNNN               a transfer applicant from another university (V766), on the transfer application number
  *   anything else                     a member of staff, on the staff number or email —
  *                                     and, failing that, an applicant on an email address, a
- *                                     postgraduate applicant on the old portal's number (V709), a JUPEB
+ *                                     postgraduate applicant on the old portal's number (V709), a JUPEB candidate or a
+ *                                     transfer applicant (V766) on the email they applied with, a JUPEB
  *                                     student uploaded from the old portal on its number (V718), or a
  *                                     preliminary applicant migrated from the old portal on its number (V737)
  * The token goes into a cookie the browser cannot read; the office cookie says
@@ -28,13 +31,16 @@ const PG_APPLICATION = /^PG\/[0-9]{2}\/[0-9]{6}$/i;
 const JUPEB_APPLICATION = /^JUPEB\/APP\/[0-9]{4}\/[0-9]{6}$/i;
 /* a JUPEB candidate's token is an applicant's; this cookie tells the home page to open the JUPEB portal for them */
 const JUPEB_COOKIE = "moaum_jupeb";
+/* V766: a transfer application number, IUT/APP/YYYY/NNNNNN — the shape LEGACY_MATRIC below would also take, so it is read first; the
+   transfer applicant's token is an applicant's, and the transfer cookie (IUT_COOKIE) sends their home to /transfer/portal */
+const IUT_APPLICATION = IUT_APPLICATION_NO;
 /* a legacy old-portal matriculation number carried over from the old portal — BSU/…, MOAU/…, and the
    like: two-to-six letters, one to four more segments, then digits. It opens the student door too, so a
    migrated student signs in; a rare staff number of the same shape falls back to the staff door, then the postgraduate and
    applicant doors (an old-portal application number of the same shape, V709 and V737). */
 const LEGACY_MATRIC = /^[A-Z]{2,6}(\/[A-Z0-9]{2,6}){1,4}\/[0-9]{2,7}$/i;
 
-type Kind = "staff" | "student" | "applicant" | "pgapplicant" | "jupeb";
+type Kind = "staff" | "student" | "applicant" | "pgapplicant" | "jupeb" | "iutapplicant";
 
 async function upstream(path: string, body: unknown, request: NextRequest): Promise<Response | null> {
   return fetch(`${API_URL}${path}`, {
@@ -80,6 +86,7 @@ export async function POST(request: NextRequest) {
   let kind: Kind = MATRIC.test(identifier) || ADMISSION.test(identifier) ? "student"
     : PG_APPLICATION.test(identifier) ? "pgapplicant"
     : JUPEB_APPLICATION.test(identifier) ? "jupeb"
+    : IUT_APPLICATION.test(identifier) ? "iutapplicant"
     : JAMB.test(identifier) || APPLICATION.test(identifier) ? "applicant" : "staff";
   /* a legacy old-portal matric was not matched above (only MOAUM/… is) — route it to the student door,
      and fall back to staff if it turns out to be a staff number of the same shape */
@@ -93,6 +100,8 @@ export async function POST(request: NextRequest) {
     r = await upstream("/api/v1/pg/sign-in", { identifier, password }, request);
   } else if (kind === "jupeb") {
     r = await upstream("/api/v1/jupeb/sign-in", { identifier, password }, request);
+  } else if (kind === "iutapplicant") {
+    r = await upstream("/api/v1/transfer-applications/sign-in", { identifier, password }, request);
   } else if (legacyMatric) {
     const asStudent = await upstream("/api/v1/student-auth/sign-in", { matricNo: identifier, password }, request);
     if (asStudent && asStudent.ok) {
@@ -163,8 +172,16 @@ export async function POST(request: NextRequest) {
           if (jupeb && jupeb.ok) {
             r = jupeb;
             kind = "jupeb";
-          } else if (jupeb && (await knowsTheAccount(jupeb))) {
-            known.push(jupeb);
+          } else {
+            if (jupeb && (await knowsTheAccount(jupeb))) known.push(jupeb);
+            /* and the transfer applicant from another university, on the email they applied with (V766) */
+            const iut = await upstream("/api/v1/transfer-applications/sign-in", { identifier, password }, request);
+            if (iut && iut.ok) {
+              r = iut;
+              kind = "iutapplicant";
+            } else if (iut && (await knowsTheAccount(iut))) {
+              known.push(iut);
+            }
           }
         }
       }
@@ -235,6 +252,11 @@ export async function POST(request: NextRequest) {
     /* V718: a student uploaded from the old portal signed in on the application number: the portal asks their own password first */
     mustChange = signed.mustChange === true;
     home = "/jupeb/portal";
+  } else if (kind === "iutapplicant") {
+    /* V766: the transfer applicant's own portal; their password is their own from the start */
+    office = "applicant";
+    name = `${signed.surname}, ${signed.otherNames}`;
+    home = "/transfer/portal";
   } else {
     const offices = (signed.offices as { code: string }[] | undefined) ?? [];
     office = preferredOffice && offices.some((o) => o.code === preferredOffice) ? preferredOffice : offices[0]?.code ?? "";
@@ -247,5 +269,7 @@ export async function POST(request: NextRequest) {
   if (office) response.cookies.set(OFFICE_COOKIE, office, { ...cookieOptions(seconds), httpOnly: false });
   if (kind === "jupeb") response.cookies.set(JUPEB_COOKIE, "1", { ...cookieOptions(seconds), httpOnly: false });
   else response.cookies.delete(JUPEB_COOKIE);
+  if (kind === "iutapplicant") response.cookies.set(IUT_COOKIE, "1", { ...cookieOptions(seconds), httpOnly: false });
+  else response.cookies.delete(IUT_COOKIE);
   return response;
 }

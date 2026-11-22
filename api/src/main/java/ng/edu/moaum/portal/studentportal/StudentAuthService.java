@@ -189,8 +189,10 @@ public class StudentAuthService {
             }
             StudentPortalRepository.Account a = repo.account(s.id()).orElse(null);
             if (a == null) {
-                /* the applicant account, carried over on first sign-in */
-                String applicantHash = repo.applicantHash(s.candidateId()).orElse(null);
+                /* the applicant account, carried over on first sign-in. V766: an online inter-university transfer application's account
+                   first — a candidate V588 linked by the JAMB number (CREATE_FROM_APPLICANT) is an old Post-UTME account whose password the
+                   student has likely forgotten, while the transfer application is the one that admitted them */
+                String applicantHash = repo.transferApplicantHash(s.id()).or(() -> repo.applicantHash(s.candidateId())).orElse(null);
                 if (applicantHash == null) {
                     repo.event(matricNo, s.id(), "NO_ACCOUNT", ip);
                     return new DomainRuleViolation("AUTH_NO_STUDENT_ACCOUNT", "No portal account has been opened for this number yet.",

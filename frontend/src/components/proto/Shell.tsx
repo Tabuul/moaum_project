@@ -45,6 +45,15 @@ export const ROUTES: Record<string, string> = {
   "t/oldtransfers": "/transfers/old-portal",   // V727
   "t/iut": "/transfers/inter-university",
   "t/iutform": "/transfers/inter-university/form",   // V763
+  /* V766: the online inter-university transfer applications — the Registry's desk, the department's, the Bursary's payments, and the
+     applicant's own portal */
+  "t/iutapps": "/transfers/inter-university/applications",
+  "t/iutapp": "/transfers/inter-university/applications",
+  "t/iuthod": "/hod/transfer-applications",
+  "t/iuthodapp": "/hod/transfer-applications",
+  "t/iutpayments": "/finance/transfer-application-payments",
+  "iut/portal": "/transfer/portal",
+  "iut/password": "/transfer/portal/password",
   "t/student": "/students",
   "t/biochange": "/students/biodata-changes",
   "r/classlist": "/registration/class-list",
@@ -554,6 +563,13 @@ const OVERRIDES: Record<string, string> = {
   "t/iutform": "Inter-university transfer form",
   "t/regcorrection": "Course registration correction",
   "t/legacyuploads": "Old portal uploads",
+  "t/iutapps": "Transfer applications",
+  "t/iutapp": "Transfer application",
+  "t/iuthod": "Transfer applicants",
+  "t/iuthodapp": "Transfer application",
+  "t/iutpayments": "Transfer application payments",
+  "iut/portal": "My transfer application",
+  "iut/password": "Change password",
   "t/legacywallet": "Old e-wallet balances",
   "t/legacyrecon": "Legacy financial reconciliation",
   "t/feehistoryrecon": "School fees history reconciliation",

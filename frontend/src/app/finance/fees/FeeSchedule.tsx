@@ -22,6 +22,7 @@ import { ProblemNotice } from "@/components/ProblemNotice";
 import { notify, notifyProblem, toast } from "@/components/proto/Toast";
 import { GstFeePanel } from "./GstFeePanel";
 import { SiwesFeePanel } from "./SiwesFeePanel";
+import { IutFeePanel, type IutFeeView } from "./IutFeePanel";
 import type { SiwesFeeView } from "@/lib/siwes";
 import { PortalFeeGatePanel } from "@/app/finance/intake-fees/PortalFeeGate";
 import { PgFees } from "./PgFees";
@@ -94,7 +95,7 @@ function transferFeeRevision(v: Record<string, unknown>): TransferFeeRevision {
 const naira = (n: number | string) => `₦${Number(n).toLocaleString("en-NG")}`;
 const whenStated = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : null);
 
-export function FeeSchedule({ session, schedule, open, faculties, feeGroups, programmes, applicantFees, feeItems, sessions, actingOffice, gstFee = null, siwesFee = null, feePolicy = null, permissions = null, pgStages = [] }: { gstFee?: GstFeePage | null; siwesFee?: SiwesFeeView | null; feePolicy?: "CARRY" | "REFUSE" | null; permissions?: string[] | null; pgStages?: PgStageOption[]; session: string; schedule: Schedule; open: OpenReference[]; faculties: { code: string; name: string }[]; feeGroups: FeeGroup[]; programmes: ProgrammeOption[]; applicantFees: ApplicantFees | null; feeItems: FeeItem[]; sessions: string[]; actingOffice: string | null }) {
+export function FeeSchedule({ session, schedule, open, faculties, feeGroups, programmes, applicantFees, feeItems, sessions, actingOffice, gstFee = null, siwesFee = null, iutFee = null, feePolicy = null, permissions = null, pgStages = [] }: { gstFee?: GstFeePage | null; siwesFee?: SiwesFeeView | null; iutFee?: IutFeeView | null; feePolicy?: "CARRY" | "REFUSE" | null; permissions?: string[] | null; pgStages?: PgStageOption[]; session: string; schedule: Schedule; open: OpenReference[]; faculties: { code: string; name: string }[]; feeGroups: FeeGroup[]; programmes: ProgrammeOption[]; applicantFees: ApplicantFees | null; feeItems: FeeItem[]; sessions: string[]; actingOffice: string | null }) {
   const router = useRouter();
   const queryNav = useQueryNav();
   const may = actingOffice === "bursar" || actingOffice === "super";
@@ -871,6 +872,8 @@ export function FeeSchedule({ session, schedule, open, faculties, feeGroups, pro
       <GstFeePanel session={session} data={gstFee} faculties={faculties} programmes={programmes} may={actingOffice === "bursar" || actingOffice === "super"} />
       {/* V752: the SIWES registration fee, beside the GST fee — a fee of its own, never a school-fee line */}
       <SiwesFeePanel session={session} data={siwesFee} actingOffice={actingOffice} />
+      {/* V766: the inter-university transfer application fee, beside the SIWES fee — published per session, nothing allowed */}
+      <IutFeePanel session={session} data={iutFee} actingOffice={actingOffice} />
       <Panel title="Applicant · Post-UTME fees" right={applicantFees?.stated ? `Stated for ${session}` : applicantFees?.carriedFrom ? `Carried forward from ${applicantFees.carriedFrom} — not yet stated for ${session}` : `Built-in figures (nothing stated yet)`}>
         <PBody>
         {applicantFees && !applicantFees.stated && applicantFees.windowOpen ? (

@@ -8,6 +8,7 @@ import java.util.concurrent.TimeUnit;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -30,21 +31,28 @@ import ng.edu.moaum.portal.shared.ApplicationWindows;
  *                     "status": "OPEN", "open": true, "opensAt": null, "closesAt": "2026-11-30T22:59:00Z", "message": null,
  *                     "applicationPath": "/apply", "applicationUrl": "https://portal.example/apply" },
  *   "postgraduate": { "type": "POSTGRADUATE_APPLICATION", "label": "Postgraduate application", ... "applicationPath": "/pg/apply" },
+ *   "interUniversityTransfer": { "type": "INTER_UNIVERSITY_TRANSFER_APPLICATION", "label": "Inter-university transfer application",
+ *                     "session": "2026/2027", "status": "OPEN", "open": true, "opensAt": "2026-11-20T00:00+01:00",
+ *                     "closesAt": "2027-01-15T23:59:59+01:00", "message": null, "applicationPath": "/transfer/apply", ... },
  *   "now": "2026-10-04T09:00:00Z"
  * }
  * </pre>
- * {@code status} is OPEN, CLOSED, SCHEDULED or EXPIRED; {@code message} is set only while the window is not open.
+ * {@code status} is OPEN, CLOSED, SCHEDULED or EXPIRED; {@code message} is set only while the window is not open. V766: the
+ * inter-university transfer application's window is the Academic Office's (admissions.iut_window, not the Director's): its session is
+ * the one whose window is open, else the latest opened; its programmes, fee and documents are at /api/v1/public/inter-university-transfer.
  */
 @RestController
 @RequestMapping("/api/v1/public")
 class ApplicationWindowsPublicController {
 
     private final ApplicationWindows windows;
+    private final JdbcClient jdbc;
     private final String portalUrl;
 
-    ApplicationWindowsPublicController(ApplicationWindows windows,
+    ApplicationWindowsPublicController(ApplicationWindows windows, JdbcClient jdbc,
                                        @Value("${moaum.portal-url:https://moaum-portal-production.up.railway.app}") String portalUrl) {
         this.windows = windows;
+        this.jdbc = jdbc;
         this.portalUrl = portalUrl == null ? "" : portalUrl.replaceAll("/+$", "");
     }
 
@@ -67,8 +75,43 @@ class ApplicationWindowsPublicController {
         String putme = all.get(ApplicationWindows.POST_UTME).session();
         out.put("postUtmeCbt", view(windows.read(ApplicationWindows.POST_UTME_CBT, putme), "/post-utme/cbt"));
         out.put("postUtmeResults", view(windows.read(ApplicationWindows.POST_UTME_RESULTS, putme), "/post-utme/results"));
+        // V766: the inter-university transfer application, on the Academic Office's own window (admissions.iut_public)
+        out.put("interUniversityTransfer", transfer());
         out.put("now", OffsetDateTime.now());
         return ResponseEntity.ok().cacheControl(CacheControl.maxAge(60, TimeUnit.SECONDS).cachePublic()).body(out);
+    }
+
+    /** V766: the inter-university transfer application's window in the shape of the others: the session iut_public names (the one
+     *  open, else the latest opened), opensAt from the opening day's start in Lagos, closesAt at the closing day's end */
+    private Map<String, Object> transfer() {
+        Map<String, Object> w = jdbc.sql("""
+                SELECT x->>'session' AS session, coalesce(x->'window'->>'status', 'CLOSED') AS status,
+                       ((x->'window'->>'opensOn')::date::timestamp AT TIME ZONE 'Africa/Lagos') AS opens_at,
+                       (((x->'window'->>'closesOn')::date + time '23:59:59') AT TIME ZONE 'Africa/Lagos') AS closes_at,
+                       x->'window'->>'message' AS message
+                  FROM (SELECT admissions.iut_public(NULL) AS x) p
+                """).query().singleRow();
+        boolean open = "OPEN".equals(w.get("status"));
+        Map<String, Object> v = new LinkedHashMap<>();
+        v.put("type", "INTER_UNIVERSITY_TRANSFER_APPLICATION");
+        v.put("label", "Inter-university transfer application");
+        v.put("session", w.get("session"));
+        v.put("status", w.get("status"));
+        v.put("open", open);
+        v.put("opensAt", at(w.get("opens_at")));
+        v.put("closesAt", at(w.get("closes_at")));
+        v.put("message", open ? null : w.get("message"));
+        v.put("applicationPath", "/transfer/apply");
+        v.put("applicationUrl", portalUrl + "/transfer/apply");
+        return v;
+    }
+
+    /** a timestamp as the other doors give theirs (ApplicationWindows.at) */
+    private static OffsetDateTime at(Object v) {
+        if (v instanceof OffsetDateTime o) return o;
+        if (v instanceof java.sql.Timestamp ts) return ts.toInstant().atOffset(java.time.ZoneOffset.UTC);
+        if (v instanceof java.time.Instant i) return i.atOffset(java.time.ZoneOffset.UTC);
+        return null;
     }
 
     private Map<String, Object> view(ApplicationWindows.Window w, String path) {

@@ -13,6 +13,7 @@ import type { Problem } from "@/lib/api";
 import { Note } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { AuthLayout } from "@/components/auth/AuthLayout";
+import { IUT_APPLICATION_NO } from "@/lib/transfer-application";
 import css from "./Login.module.css";
 
 const MATRIC = /^MOAUM\/[A-Z]{2,4}\/[0-9]{2}\/[0-9]{4}$/i;
@@ -31,6 +32,7 @@ function whoIs(id: string): string {
   if (MATRIC.test(s)) return "A student, on the matriculation number";
   if (JUPEB.test(s)) return "A JUPEB applicant or student, on the JUPEB application number";
   if (PG_APPLICATION.test(s)) return "A postgraduate applicant, on the PG application number";
+  if (IUT_APPLICATION_NO.test(s)) return "A transfer applicant, on the transfer application number";
   if (JAMB.test(s) || APPLICATION.test(s)) return "An applicant, on the JAMB or application number";
   if (s.includes("@")) return "A member of staff or an applicant, on the email address";
   return "A member of staff on the staff number, or a postgraduate or JUPEB student on the old portal's number";
@@ -51,13 +53,15 @@ function Icon({ name, className }: { name: "shield" | "user" | "lock" | "eye" | 
   );
 }
 
-export function Login({ next, sso, ssoProblem = null, reason = null }: {
+export function Login({ next, sso, ssoProblem = null, reason = null, transferOpen = false }: {
   next: string; sso: { enabled: boolean; label: string } | null; ssoProblem?: string | null;
   /** V437: why the person is back here — "idle" when the session ended for inactivity; V724: "held-fees" when the student portal's
    *  fee gate sent a fresh admit back to pay on the applicant dashboard */
   reason?: string | null;
   /** V312: which application windows are open — no longer shown here: the sign-in page is for signing in alone, and applicants reach their application pages directly */
   applications?: { postUtme: boolean; postgraduate: boolean } | null;
+  /** V766: the inter-university transfer application is open — its line is drawn under the collaboration line */
+  transferOpen?: boolean;
 }) {
   const router = useRouter();
   const [uid, setUid] = useState("");
@@ -159,6 +163,8 @@ export function Login({ next, sso, ssoProblem = null, reason = null }: {
           </div>
           {/* V658: an organisation proposing a collaboration starts here, with no account */}
           <p className={css.partner}>Proposing a partnership or collaboration? <Link href="/partnerships/collaboration">Collaborate with the University</Link></p>
+          {/* V766: a student of another university applies here, only while the Academic Office has the transfer window open */}
+          {transferOpen ? <p className={css.partner}>A student of another university? <Link href="/transfer/apply">Apply for an inter-university transfer</Link></p> : null}
           {/* on a phone the brand card hides its motto, so the links stay here; on a wide screen they sit under the motto */}
           <p className={`${css.foot} ${css.legalNarrow}`}><Link href="/privacy-policy">Privacy policy</Link> · <Link href="/privacy-policy#s-cookies">Cookies</Link></p>
         </div>

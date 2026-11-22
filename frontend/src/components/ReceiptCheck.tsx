@@ -11,7 +11,7 @@ import { applicantReceiptVerifyPath } from "@/lib/applicant-receipt";
 
 export function ReceiptCheck({ reference, source, pdf }: {
   reference: string;
-  /** the API address (through the BFF) of the receipt, which carries check_code */
+  /** the API address (through the BFF) of the receipt, which carries check_code (checkCode for a transfer application's, V766) */
   source: string;
   /** the receipt's PDF route; "&download=1" asks for it as a file */
   pdf: string;
@@ -21,10 +21,12 @@ export function ReceiptCheck({ reference, source, pdf }: {
     let live = true;
     fetch(source, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
-      .then(async (x: { check_code?: string | null } | null) => {
-        if (!x?.check_code) return;
-        const qr = await QRCode.toDataURL(`${window.location.origin}${applicantReceiptVerifyPath(reference, x.check_code)}`, { errorCorrectionLevel: "M", margin: 1, width: 220 });
-        if (live) setCheck({ code: x.check_code, qr });
+      .then(async (x: { check_code?: string | null; checkCode?: string | null } | null) => {
+        // V766: the transfer application's receipt names it checkCode
+        const code = x?.check_code ?? x?.checkCode ?? null;
+        if (!code) return;
+        const qr = await QRCode.toDataURL(`${window.location.origin}${applicantReceiptVerifyPath(reference, code)}`, { errorCorrectionLevel: "M", margin: 1, width: 220 });
+        if (live) setCheck({ code, qr });
       })
       .catch(() => undefined);
     return () => { live = false; };

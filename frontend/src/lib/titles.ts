@@ -46,6 +46,13 @@ export const TITLES: Record<string, string> = {
   "t/transferbulk": "Bulk inter-departmental transfer",
   "t/iut": "Inter-university transfer",
   "t/iutform": "Inter-university transfer form",
+  "t/iutapps": "Transfer applications",   // V766
+  "t/iutapp": "Transfer application",
+  "t/iuthod": "Transfer applicants",
+  "t/iuthodapp": "Transfer application",
+  "t/iutpayments": "Transfer application payments",
+  "iut/portal": "My transfer application",
+  "iut/password": "Change password",
   "t/helpdeskagents": "Support Agents & Queues",
   "t/helpdeskoffice": "Support Escalations",
   "s/dashboard": "Dashboard",

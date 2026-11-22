@@ -234,8 +234,18 @@ class UniversityTransferController {
                 .orElseThrow(() -> new NotFound("inter-university transfer", id));
         @SuppressWarnings("unchecked")
         Map<String, Object> out = new LinkedHashMap<>((Map<String, Object>) parse(batch));
-        out.put("transfers", parse(jdbc.sql("SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.row_no), '[]')::text FROM people.university_transfers(:id, NULL, NULL, NULL, 5000) x")
-                .param("id", id).query(String.class).single()));
+        // V766: a transfer the Registry approved from an online application names it — through the application's transfer, or, for a
+        // transfer another officer rejected (the application's link then cleared), through the application's history
+        out.put("transfers", parse(jdbc.sql("""
+                SELECT coalesce(jsonb_agg(CASE WHEN ap.id IS NULL THEN to_jsonb(x)
+                                               ELSE to_jsonb(x) || jsonb_build_object('application', jsonb_build_object('id', ap.id, 'applicationNo', ap.application_no)) END
+                                          ORDER BY x.row_no), '[]')::text
+                  FROM people.university_transfers(:id, NULL, NULL, NULL, 5000) x
+                  LEFT JOIN LATERAL (SELECT a.id, a.application_no FROM admissions.iut_application a
+                                      WHERE a.transfer_id = x.id
+                                         OR a.id = (SELECT e.application_id FROM admissions.iut_event e WHERE e.transfer_id = x.id ORDER BY e.at LIMIT 1)
+                                      LIMIT 1) ap ON true
+                """).param("id", id).query(String.class).single()));
         out.put("leftOut", parse(jdbc.sql("""
                 SELECT coalesce(jsonb_agg(jsonb_build_object('row_no', l.row_no, 'uploaded', l.uploaded, 'messages', l.messages) ORDER BY l.row_no), '[]')::text
                   FROM people.university_transfer_left_out l WHERE l.batch_id = :id""").param("id", id).query(String.class).single()));

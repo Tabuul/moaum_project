@@ -57,7 +57,12 @@ public class Throttle {
         /* V658: an enquiry's private link asked for again by its reference and e-mail, counted every request, so references cannot be walked */
         PARTNERSHIP_LINK(5, "PTN_SLOW_DOWN", "Too many link requests from this connection", "Wait; a new link already sent replaces the earlier one."),
         /* V658: an enquiry followed by its private link, counted every look */
-        PARTNERSHIP_STATUS(120, "PTN_SLOW_DOWN", "Too many look-ups from this connection", "Wait a few minutes and open the link again.");
+        PARTNERSHIP_STATUS(120, "PTN_SLOW_DOWN", "Too many look-ups from this connection", "Wait a few minutes and open the link again."),
+        /* V766: the public inter-university transfer application, counted every call (a robot's refused ones too) */
+        IUT_APPLY(30, "APP_THROTTLED", "Too many applications from this connection", "Wait; each student applies once."),
+        /* V766: the transfer applicant's sign-in, counted on wrong passwords of accounts that exist (PG_SIGN_IN's rule). The reset is
+           asked by the application number: an e-mail also on a Post-UTME or postgraduate account resets that account first */
+        IUT_SIGN_IN(20, "AUTH_THROTTLED", "Too many failed sign-ins from this connection", "Wait, or choose Forgot password and give your transfer application number (IUT/APP/…).");
 
         final int limit;
         final String code;

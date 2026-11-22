@@ -55,6 +55,8 @@ test("a transfer's outcome is said in words, and the report numbers its rows", (
     "2026/2027", "File", "Transferred out", "ZZREG, A", "2026-10-20"]);
   const formed = { ...t, direction: "INCOMING", other_matric_no: "UJ/2022/SC/0042", other_cgpa: "3.5", other_cgpa_scale: 5, source: "FORM" } as unknown as Transfer;
   assert.deepEqual(reportRows([formed])[0].slice(9, 15), ["UJ/2022/SC/0042", "3.50 of 5", "B.Sc. Economics", 300, "2026/2027", "Form"]);
+  // V766: a transfer the Registry approved from an online application
+  assert.equal(reportRows([{ ...formed, source: "APPLICATION" } as Transfer])[0][14], "Online application");
   assert.equal(cgpaWords(null, null), "");
   assert.equal(cgpaWords(3.2, 4), "3.20 of 4");
 });
