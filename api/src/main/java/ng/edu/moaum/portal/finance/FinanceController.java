@@ -371,38 +371,54 @@ class FinanceController {
                     'nextSession', finance.next_session(:s),
                     'count', (SELECT count(*) FROM o),
                     'excess', (SELECT coalesce(sum(excess), 0) FROM o),
-                    'undecided', (SELECT count(*) FROM o WHERE decision IS NULL),
-                    'undecidedExcess', (SELECT coalesce(sum(excess), 0) FROM o WHERE decision IS NULL),
+                    'undecided', (SELECT count(*) FROM o WHERE remaining >= 1),
+                    'undecidedExcess', (SELECT coalesce(sum(remaining), 0) FROM o WHERE remaining >= 1),
                     'oldPortal', (SELECT count(*) FROM o WHERE old_portal),
-                    'heldForBank', (SELECT count(*) FROM o JOIN dc ON dc.student_id = o.student_id WHERE o.decision IS NULL AND dc.waiting),
-                    'decided', (SELECT coalesce(json_object_agg(t.decision, t.n), '{}'::json) FROM (SELECT decision, count(*) AS n FROM o WHERE decision IS NOT NULL GROUP BY decision) t),
+                    'heldForBank', (SELECT count(*) FROM o JOIN dc ON dc.student_id = o.student_id WHERE o.remaining >= 1 AND dc.waiting),
+                    'decided', (SELECT coalesce(json_object_agg(t.decision, t.n), '{}'::json) FROM (SELECT decision, count(*) AS n FROM o WHERE decision IS NOT NULL AND remaining < 1 GROUP BY decision) t),
                     'rows', (SELECT coalesce(json_agg(r), '[]'::json) FROM (
                         SELECT o.student_id, number, name, programme_code, faculty_code, level, due, paid, excess, decision, decided, reference, to_session,
-                               decided_at::text AS decided_at, refund_state, old_portal,
+                               decided_at::text AS decided_at, refund_state, old_portal, remaining, decision_count, refunded_by_hand,
                                CASE WHEN dc.student_id IS NULL THEN NULL WHEN dc.waiting THEN 'CHECK_WITH_BANK' ELSE 'BANK_CHECKED' END AS double_charge
                           FROM o LEFT JOIN dc ON dc.student_id = o.student_id
-                         ORDER BY (decision IS NULL) DESC, excess DESC, number LIMIT :n) r))::text
+                         ORDER BY (remaining >= 1) DESC, excess DESC, number LIMIT :n) r))::text
                 """).param("s", ses).param("n", n).query(String.class).single();
         return json.readValue(text, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
     }
 
     public record DecideOverpaid(@NotBlank @Pattern(regexp = "^[0-9]{4}/[0-9]{4}$") String session,
                                  @NotBlank @Pattern(regexp = "CARRY|REFUND") String decision, List<UUID> students,
-                                 @NotBlank @Size(min = 10, max = 500) String reason, Integer limit) { }
+                                 @NotBlank @Size(min = 10, max = 500) String reason, Integer limit,
+                                 /** V781: the officer's confirmation that the fee setup and the payments were checked — asked of every student who is not
+                                  *  an exact repeat of one payment, and decided one student a call */
+                                 Boolean feeSetupChecked) { }
 
     /** V506: the Bursary's decision for the overpaid of a session not yet decided — all of them, or the students named — in batches
      *  the screen asks for until none is left: carried into the next session (a CARRIED record there, its journal moving the
-     *  income across) or refunded (a refund raised on the Refunds & Credits desk) */
+     *  income across) or refunded (a refund raised on the Refunds & Credits desk). V781: only an exact repeat of one payment is decided
+     *  many at a time; any other student is decided one a call with feeSetupChecked; every hold stops every decision; the amount is
+     *  what remains after what is already decided. The answer counts what was left: held, apart (not an exact repeat, in bulk),
+     *  requested (a wallet credit request is open), uncertain (the student's own account reads another figure), refundOnly (a student
+     *  who is refunded and never carried) and unchecked (the confirmation missing). */
     @PostMapping("/legacy-fees/overpaid/decide")
     @PreAuthorize(BURSARY)
-    @Transactional
     Map<String, Object> decideOverpaid(@Valid @RequestBody DecideOverpaid body) {
         int n = body.limit() == null ? 2000 : Math.max(1, Math.min(body.limit(), 5000));
         boolean all = body.students() == null || body.students().isEmpty();
-        var q = jdbc.sql("SELECT * FROM finance.decide_overpayments(:s, :d, " + (all ? "NULL::uuid[]" : "CAST(:w AS uuid[])") + ", :r, :n)")
-                .param("s", body.session()).param("d", body.decision()).param("r", body.reason().trim()).param("n", n);
-        if (!all) q = q.param("w", body.students().toArray(UUID[]::new));
-        return q.query().singleRow();
+        return DeadlockRetry.inTransaction(tx, () -> {
+            var q = jdbc.sql("SELECT * FROM finance.decide_overpayments(:s, :d, " + (all ? "NULL::uuid[]" : "CAST(:w AS uuid[])") + ", :r, :n, CAST(NULL AS text), :f)")
+                    .param("s", body.session()).param("d", body.decision()).param("r", body.reason().trim()).param("n", n)
+                    .param("f", Boolean.TRUE.equals(body.feeSetupChecked()));
+            if (!all) q = q.param("w", body.students().toArray(UUID[]::new));
+            Map<String, Object> row = q.query().singleRow();
+            Map<String, Object> out = new java.util.LinkedHashMap<>();
+            for (String k : new String[] {"carried", "refunds", "held", "remaining", "apart", "requested", "uncertain"}) {
+                out.put(k, row.get(k));
+            }
+            out.put("refundOnly", row.get("refund_only"));
+            out.put("unchecked", row.get("unchecked"));
+            return out;
+        });
     }
 
     public record ResetLegacy(String session, String confirm) { }

@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { reasonHeader } from "@/lib/reason";
 import { notify , notifyProblem } from "@/components/proto/Toast";
 import type { Problem } from "@/lib/api";
-import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
+import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal, money } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
@@ -157,6 +157,11 @@ export function Refunds({ refunds, actingOffice, initialRefund }: { refunds: Ref
 
       {said ? <Note kind="ok" title={said}>It waits for a second officer to approve it before any money leaves the University.</Note> : null}
       <JupebClaims may={may} onChanged={() => router.refresh()} />
+      {/* V781: overpaid school fees are reconciled on their own desk; the panel below still carries a session's excesses forward or raises refunds */}
+      <Note kind="info" title="Overpaid school fees are reconciled on their own desk — wallet credit or refund, by cause"
+        action={<LinkBtn kind="ghost" href="/finance/overpaid">Open Overpaid school fees</LinkBtn>}>
+        The desk lists every student paid above their charge with the cause and what holds each back; a wallet credit is asked for by one officer and approved by another.
+      </Note>
       {/* V519: overpaid school fees carried into the next session or refunded — a refund raised there joins the requests below */}
       <OldFeesOverpaid may={may} onChanged={() => router.refresh()} />
       {err ? <ProblemNotice problem={err} /> : null}

@@ -39,7 +39,11 @@ public class WalletService {
         out.put("statement", repo.statement(student));
         out.put("position", repo.position(student, session));
         out.put("status", repo.status(student).orElse(null));
-        out.put("eligibility", repo.eligibility(student, session));
+        // V781: and what each source may give back as a refund now (sources[{code, name, nature, refundable}]): the refund names the source it
+        // is taken from, and overpaid school fees are refundable from whichever session's page the student is on
+        Map<String, Object> eligibility = new LinkedHashMap<>(repo.eligibility(student, session));
+        eligibility.put("sources", repo.withdrawalSources(student, session));
+        out.put("eligibility", eligibility);
         out.put("withdrawal", repo.myWithdrawal(student).orElse(null));
         // V327: every naira to its source, the top-up only for a shortfall, the refund only of what may be refunded
         out.put("balances", repo.balances(student));
@@ -47,6 +51,16 @@ public class WalletService {
         out.put("topup", repo.topupEligibility(student, session));
         // V714: what the wallet owes, and the reference to pay it
         out.put("owed", repo.owed(student));
+        // V781: the wallet's own money from an overpayment, when there is any — and how much of it a decision above the excess keeps back
+        // from a refund (the session's school fees rose after it was credited)
+        BigDecimal overpaid = repo.overpaidMoney(student);
+        if (overpaid != null && overpaid.signum() > 0) {
+            out.put("overpaid", overpaid);
+            BigDecimal kept = repo.overpaidKeptBack(student);
+            if (kept != null && kept.compareTo(BigDecimal.ONE) >= 0) {
+                out.put("overpaidKeptBack", kept);
+            }
+        }
         return out;
     }
 

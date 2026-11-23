@@ -60,7 +60,10 @@ class LegacyReconciliationController {
 
     /** the officer's confirmation: the amount (null = the excess the records show), the reason, the evidence, the reason for a
      *  different amount, and the explicit confirmation — never a blind one-click */
-    record Request(UUID student, String session, BigDecimal amount, String reason, String evidence, String adjustmentReason, Boolean confirmed) { }
+    record Request(UUID student, String session, BigDecimal amount, String reason, String evidence, String adjustmentReason, Boolean confirmed,
+                   /** V781: the officer's confirmation that the fee setup and the payments were checked — asked when the excess is not an exact
+                    *  repeat of one payment (the database says so with OVERPAID_FEE_SETUP_CHECK); on a resubmission, absent keeps what the request holds */
+                   Boolean feeSetupChecked) { }
     record Decision(String action, String note) { }
     record Reason(String reason) { }
     /** V631: the payments ticked, the officer's remarks and, for a verification, the explicit confirmation */
@@ -73,6 +76,10 @@ class LegacyReconciliationController {
 
     private static String blank(String s) {
         return s == null || s.isBlank() ? null : s.trim();
+    }
+
+    private static BigDecimal num(Object o) {
+        return o == null ? BigDecimal.ZERO : o instanceof BigDecimal b ? b : new BigDecimal(String.valueOf(o));
     }
 
     private String sessionOr(String session) {
@@ -117,7 +124,8 @@ class LegacyReconciliationController {
                 .param("limit", Math.max(1, Math.min(limit, 5000))).param("legacy", legacyOnly).query().listOfRows();
     }
 
-    /** the legacy credit requests — the queue (pending the Bursar, returned), the history (credited, rejected, withdrawn) */
+    /** the legacy credit requests — the queue (pending the Bursar, returned), the history (credited, rejected, withdrawn). V781: the requests
+     *  made on the Overpaid school fees desk are decided there, so they are not in this list (p_bulk false) */
     @GetMapping("/requests")
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
@@ -125,7 +133,7 @@ class LegacyReconciliationController {
                                        @RequestParam(required = false) String q, @RequestParam(required = false) String fac,
                                        @RequestParam(required = false) String dept, @RequestParam(defaultValue = "500") int limit) {
         OfficeScope.Bound b = scope.bound(blank(fac), blank(dept), null);
-        return jdbc.sql("SELECT * FROM finance.legacy_credit_rows(:st, :s, :q, :fac, :dept, :limit)")
+        return jdbc.sql("SELECT * FROM finance.legacy_credit_rows(:st, :s, :q, :fac, :dept, :limit, NULL, NULL, NULL, false)")
                 .param("st", blank(status), Types.VARCHAR).param("s", blank(session), Types.VARCHAR).param("q", blank(q), Types.VARCHAR)
                 .param("fac", b.fac(), Types.VARCHAR).param("dept", b.dept(), Types.VARCHAR)
                 .param("limit", Math.max(1, Math.min(limit, 5000))).query().listOfRows();
@@ -135,7 +143,7 @@ class LegacyReconciliationController {
     @PreAuthorize(READERS)
     @Transactional(readOnly = true)
     Map<String, Object> request(@PathVariable UUID id) {
-        Map<String, Object> row = jdbc.sql("SELECT * FROM finance.legacy_credit_rows(NULL, NULL, NULL, NULL, NULL, 5000) r WHERE r.id = :id").param("id", id)
+        Map<String, Object> row = jdbc.sql("SELECT * FROM finance.legacy_credit_rows(NULL, NULL, NULL, NULL, NULL, 1, :id) r").param("id", id)
                 .query().listOfRows().stream().findFirst().orElseThrow(() -> new NotFound("legacy credit request", id));
         reach.check(UUID.fromString(String.valueOf(row.get("student_id"))));
         return row;
@@ -156,18 +164,41 @@ class LegacyReconciliationController {
                   LEFT JOIN ref.department d ON d.code = p.dept_code LEFT JOIN ref.faculty f ON f.code = p.faculty_code
                  WHERE s.id = :s
                 """).param("s", id).query().singleRow());
-        out.put("sessions", jdbc.sql("""
+        // V781: several decisions may stand for one session (a student who paid again is decided again), so the session is read once, with the
+        // latest decision and what is decided in all. Where the student is paid above the charge or decided, the Overpaid school fees list's
+        // reading of the session is added — what remains, its cause, whether it is a repeat that makes up the excess exactly (bulk), the holds
+        // and why it can only be refunded: the form's fee-setup tick and the reason a row cannot be requested come from these. That reading is
+        // asked for one session at a time and only for such a session (finance.legacy_credit_excess reads the one student, not the session).
+        List<Map<String, Object>> sessions = new java.util.ArrayList<>();
+        for (Map<String, Object> row : jdbc.sql("""
                 SELECT x.session, pos.due, pos.paid, greatest(pos.due - pos.paid, 0) AS owed, greatest(pos.paid - pos.due, 0) AS excess,
-                       x.legacy_payments, x.legacy_amount, d.decision, d.amount AS decided_amount, d.reference AS decision_reference
+                       x.legacy_payments, x.legacy_amount, d.decision, d.decided_amount, d.decision_reference
                   FROM (SELECT r.session, count(*) FILTER (WHERE r.channel = 'Legacy')::int AS legacy_payments,
                                coalesce(sum(r.amount) FILTER (WHERE r.channel = 'Legacy'), 0) AS legacy_amount
                           FROM finance.payment_reference r
                          WHERE r.student_id = :s AND r.confirmed_at IS NOT NULL AND r.archived_at IS NULL AND r.purpose LIKE 'School fees%'
                          GROUP BY r.session) x
                   CROSS JOIN LATERAL finance.position(:s, x.session) pos
-                  LEFT JOIN LATERAL finance.overpayment_settled(:s, x.session) d ON true
+                  CROSS JOIN LATERAL (SELECT finance.overpayment_decided(:s, x.session) AS decided_amount,
+                                             (SELECT s.decision FROM finance.overpayment_settled(:s, x.session) s ORDER BY s.decided_at DESC LIMIT 1) AS decision,
+                                             (SELECT s.reference FROM finance.overpayment_settled(:s, x.session) s ORDER BY s.decided_at DESC LIMIT 1) AS decision_reference) d
                  ORDER BY x.session DESC
-                """).param("s", id).query().listOfRows());
+                """).param("s", id).query().listOfRows()) {
+            Map<String, Object> s = new LinkedHashMap<>(row);
+            boolean over = num(row.get("paid")).subtract(num(row.get("due"))).compareTo(BigDecimal.ONE) >= 0 || num(row.get("decided_amount")).signum() > 0;
+            Map<String, Object> ex = over ? jdbc.sql("""
+                    SELECT e.remaining, e.cause, e.bulk, to_jsonb(e.holds)::text AS holds, e.refund_only
+                      FROM finance.legacy_credit_excess(:s, :ses) e WHERE e.listed
+                    """).param("s", id).param("ses", String.valueOf(row.get("session"))).query().listOfRows().stream().findFirst().orElse(null) : null;
+            s.put("remaining", ex == null ? null : ex.get("remaining"));
+            s.put("cause", ex == null ? null : ex.get("cause"));
+            s.put("bulk", ex == null ? null : ex.get("bulk"));
+            Object holds = ex == null ? null : ex.get("holds");
+            s.put("holds", holds == null ? List.of() : json.readValue(String.valueOf(holds), Object.class));
+            s.put("refund_only", ex == null ? null : ex.get("refund_only"));
+            sessions.add(s);
+        }
+        out.put("sessions", sessions);
         out.put("payments", jdbc.sql("""
                 SELECT r.reference, r.session, r.purpose, r.amount, r.confirmed_at, r.channel, r.receipt_no, lp.payref AS legacy_payref, r.note
                   FROM finance.payment_reference r
@@ -175,7 +206,7 @@ class LegacyReconciliationController {
                  WHERE r.student_id = :s AND r.confirmed_at IS NOT NULL AND r.archived_at IS NULL AND r.purpose LIKE 'School fees%'
                  ORDER BY r.session DESC, r.confirmed_at
                 """).param("s", id).query().listOfRows());
-        out.put("requests", jdbc.sql("SELECT * FROM finance.legacy_credit_rows(NULL, NULL, NULL, NULL, NULL, 5000) r WHERE r.student_id = :s ORDER BY r.initiated_at DESC")
+        out.put("requests", jdbc.sql("SELECT * FROM finance.legacy_credit_rows(NULL, NULL, NULL, NULL, NULL, 5000, NULL, :s) r ORDER BY r.initiated_at DESC")
                 .param("s", id).query().listOfRows());
         out.put("legacyWallet", jsonOf(jdbc.sql("SELECT coalesce(finance.legacy_wallet_of(:s), '{}'::jsonb)::text").param("s", id).query(String.class).single()));
         out.put("walletBalance", jdbc.sql("SELECT finance.wallet_balance(:s)").param("s", id).query(BigDecimal.class).optional().orElse(BigDecimal.ZERO));
@@ -193,9 +224,10 @@ class LegacyReconciliationController {
             throw new DomainRuleViolation("LEGACY_CREDIT_CONFIRM", "Confirm that the legacy record and the amount were reviewed against the available records.",
                     new DomainRuleViolation.Remedy("Tick the confirmation before submitting.", "You"));
         }
-        Map<String, Object> row = jdbc.sql("SELECT (r).id AS id FROM (SELECT finance.legacy_credit_initiate(:s, :ses, :a, :why, :ev, :adj) AS r) x")
+        Map<String, Object> row = jdbc.sql("SELECT (r).id AS id FROM (SELECT finance.legacy_credit_initiate(:s, :ses, :a, :why, :ev, :adj, :fs) AS r) x")
                 .param("s", body.student()).param("ses", blank(body.session()), Types.VARCHAR).param("a", body.amount(), Types.NUMERIC)
                 .param("why", blank(body.reason()), Types.VARCHAR).param("ev", blank(body.evidence()), Types.VARCHAR).param("adj", blank(body.adjustmentReason()), Types.VARCHAR)
+                .param("fs", Boolean.TRUE.equals(body.feeSetupChecked()))
                 .query().singleRow();
         return request(UUID.fromString(String.valueOf(row.get("id"))));
     }
@@ -210,9 +242,10 @@ class LegacyReconciliationController {
             throw new DomainRuleViolation("LEGACY_CREDIT_CONFIRM", "Confirm that the legacy record and the amount were reviewed against the available records.",
                     new DomainRuleViolation.Remedy("Tick the confirmation before submitting.", "You"));
         }
-        jdbc.sql("SELECT finance.legacy_credit_resubmit(:id, :a, :why, :ev, :adj)")
+        jdbc.sql("SELECT finance.legacy_credit_resubmit(:id, :a, :why, :ev, :adj, :fs)")
                 .param("id", id).param("a", body.amount(), Types.NUMERIC).param("why", blank(body.reason()), Types.VARCHAR)
-                .param("ev", blank(body.evidence()), Types.VARCHAR).param("adj", blank(body.adjustmentReason()), Types.VARCHAR).query().listOfRows();
+                .param("ev", blank(body.evidence()), Types.VARCHAR).param("adj", blank(body.adjustmentReason()), Types.VARCHAR)
+                .param("fs", body.feeSetupChecked(), Types.BOOLEAN).query().listOfRows();
         return request(id);
     }
 

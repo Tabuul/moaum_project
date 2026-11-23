@@ -55,6 +55,12 @@ export interface Fees {
   reference?: string;
   /** V519: what the Bursary decided for school fees paid beyond a session's charge (carried into the next session, or refunded) */
   overpayments?: StudentOverpayment[];
+  /** V781: school fees paid above the charge — the whole excess, what is decided of it, what is left, what a wallet credit request waits
+   *  for, and where the Bursary's list holds the student, why (the cause) and what holds it; each absent unless it applies */
+  excess?: number; excessDecided?: number; excessRemaining?: number; excessRequested?: number; excessCause?: string; excessHolds?: string[];
+  /** V781: overpaid school fees on the wallet (the student applies them on the Wallet page, or asks for a refund there); absent unless
+   *  the student has a wallet credit of them */
+  walletOverpaid?: number;
 }
 export interface Semester { session: string; semester: number; units: number; gpa: number | null; cgpa: number | null; published_count: number; registered_count: number;
   cur: number; cue: number; wgp: number; tcr: number; tce: number; twgp: number; lcgpa: number | null;

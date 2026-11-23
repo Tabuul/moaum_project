@@ -140,7 +140,8 @@ class DoubleChargeIT {
         assertThat(okR.getStatusCode().value()).as(String.valueOf(okR.getBody())).isEqualTo(200);
         assertThat((List) okR.getBody().get("raised")).isEmpty();
         Map<String, Object> carried = it.call(bursar, HttpMethod.POST, "/api/v1/finance/legacy-fees/overpaid/decide",
-                Map.of("session", a, "decision", "CARRY", "students", List.of(received), "reason", "overpaid fees counted towards the next session")).getBody();
+                // V781: the excess (48,738.20) is not the repeated amount (85,294), so the officer confirms the fee setup and the payments were checked
+                Map.of("session", a, "decision", "CARRY", "students", List.of(received), "reason", "overpaid fees counted towards the next session", "feeSetupChecked", true)).getBody();
         assertThat(carried).as(String.valueOf(carried)).containsEntry("carried", 1).containsEntry("held", 0);
         // a payment whose session's excess was carried is not withdrawn afterwards
         ResponseEntity<Map> decidedAlready = it.call(bursar, HttpMethod.POST, "/api/v1/finance/payments-not-received",

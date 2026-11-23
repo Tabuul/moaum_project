@@ -864,3 +864,55 @@ graduation and the pre-resumption steps — which only the dashboard shows.
 - **What remains**: the dashboard reads the full record and `/me/outstanding-fees`, both working out the session's fees; the
   historical fees read twice per dashboard and fees page (§Y); `admissions.admission_tracker`; the staff dashboards that read the
   whole University.
+
+## Overpaid school fees (V781, 22 November 2026)
+
+Read on `lv643pre`, the live-shaped copy of 22 October 2026, session 2025/2026 (PostgreSQL 18, read only; counts and naira only):
+
+| Read | Time |
+|---|---|
+| `finance.overpaid` (1,136 students, ₦22,446,080) | 1.8 s idle; 3.5 s, 7.5 s and 11.9 s with other sessions loading the same server |
+| the causes on top of it | about 0.4 s more |
+| the whole live read (overpaid, payments, causes, holds) | 6.2 s under the same load |
+| `finance.session_charges` 2.4 s · `finance.possible_double_charges` 0.45–2.1 s · `finance.fee_profiles` 0.25 s · `finance.fee_sums` 0.6 s | |
+| `finance.position` for one student | 3.1 ms warm; 25 ms on a connection's second call; 308 ms its very first |
+
+So the session's live read cannot sit on the Bursar's dashboard or behind each page of the desk. The dashboard panel, the desk and
+the figures read a **kept list** in the database (`finance.overpaid_snapshot`, one row a student and session): the dear part (charge,
+payments, cause, holds) is kept and refreshed by a job every ten minutes for the current session (when a school-fees payment was
+confirmed, uploaded or archived since, or after an hour), once a night for the others, and by Refresh on the desk; the state of each
+row (decisions, requests, refunds) is read live at every read; and **every act reads the session live**, with the student's own
+`finance.position` read under the student's lock as the second witness. A request or an approval of many students is run in calls of
+a bounded size, the second call passing the first's batch or `since`, so no call holds locks for a whole session. The panel is a
+server read after the rest of the dashboard is drawn.
+
+Targets the build is held to: the figures and a filtered page of the desk under 50 ms; "is a refresh due" under 5 ms; the two
+triggers the migration ends with, to their commit, under one second.
+
+**Measured on 1,200 invented overpaid students** (22 November 2026, PostgreSQL 18 on the Windows development machine with other sessions
+loading it, so every figure is an upper bound; one made-up session, inside a transaction that was rolled back, so the planner had no
+statistics for them): `finance.overpaid` 1.2 s; `finance.overpaid_read` about 20 s; `finance.overpaid_refresh` 18.7 s;
+`finance.overpaid_desk` 25 ms; `finance.overpaid_figures` 1.0 s; one request of 1,000 students 31 s.
+
+**Measured on the live-shaped copy migrated to V775** (22 November 2026, the same machine and server, other sessions loading it; session
+2025/2026; counts and naira only):
+
+| Read | Result |
+|---|---|
+| the list | 1,312 students, ₦27,543,694 — the same 1,312 rows with the same charge, payments and excess as `finance.overpaid` at V773; all 1,136 rows (₦22,446,080) of the V637 reading stand with the same figures, and 176 more (₦5,097,614, all above the fee line: 400 to 600 Level students admitted 2017/2018 to 2020/2021, whom the level and spillover rules of V638 to V773 now charge) are listed |
+| by cause | paid twice on the portal 0 · old portal and portal 3 (₦119,891) · twice on the old portal 81 (₦4,346,565; 33 exact and at the level by entry year, ₦2,433,475; the 34th is exact at ₦66,745 but its level differs) · part payments 34 (₦1,299,072) · above the fee line 1,194 (₦21,778,166) |
+| holds | bank check 79 students (₦4,297,788) · spillover semester still to register 100 (₦2,747,278) · none of the other twelve; 179 students held, none by two holds |
+| ready to credit in bulk | 5 students, ₦202,790 (the 3 and 2 of the two causes above that carry no hold); 31 more once the bank check of the twice-on-the-old-portal group is cleared (₦2,350,576) |
+| two levels shown (level on record differs from the level by entry year) | 131 students (₦3,754,698); 7 of them among the 1,136 |
+| `finance.overpaid_refresh` | 20 to 30 s (seven runs); 23.8 s after the reads were cut to the students asked for (below) |
+| `finance.overpaid_read`, whole session | 19 to 30 s when first measured (`finance.overpaid` 5 s, `finance.fee_semesters_unstated` for the 1,312 students 6.3 s, the holds' set read once for every listed row, a nested loop over a materialized set, about 5.5 s, and the double-charge, profile and fee-sum reads about 7 s); 37 to 49 s in four runs of the review (the machine loaded); 20.6, 20.8 and 30.0 s once the pairs of one amount, the amounts that make up an excess and the repeats were found in one pass each, and the holds' own reads (the charge profiles read once for the listed students, not four times for the session) were cut to the listed students |
+| `finance.overpaid_read`, one student or a few | the same 23 to 29 s as the whole session before the review: every part of it read the whole session (54,575 students on this copy) and the rows were cut at the end, so every act on one student (a request, an approval, a refund, a carry, the Legacy desk's picture of a student) paid the session once a call and the picture once for every session the student paid in. Now every part is cut to the students asked for (section 5a of the migration: `finance.fee_profiles_of`, `fee_sums_of`, `session_charges_of`, `session_payments_of`, `possible_double_charges_of`, `overpaid_of`, each its original's text with its rows cut): one student 0.16 s on average over 190 students (largest 0.46 s; the first call on a connection 1.4 s), 5 students 0.31 s, 31 students 0.53 s, 190 together 1.7 s, a student the list has no row for 0.09 s; `finance.legacy_credit_excess` 0.27 s. The rows are the same column for column: 1,312 rows of the whole session (the same md5 over every column), each of 190 students alone, the 190 together and 60 students with no row, 0 differences either way; each cut function equals its original for every student (54,575) and for 1,194 students that include 300 postgraduate and 300 spillover ones |
+| `finance.overpaid_figures` | 108 to 146 ms warm (867 ms the first call on a connection) when first measured; 1.1 to 1.4 s on the review's runs, 0.25 to 0.31 s once the desk reads what is decided and requested for the session in one pass (the same figures, byte for byte) |
+| `finance.overpaid_desk`, first page of 100 | 66 to 77 ms warm when first measured (`finance.overpayment_decided` for each of the 1,312 rows, about 25 ms, and the open-request lookup); 360 to 430 ms on the review's runs; 14 to 23 ms now that the decisions that stand, the refunds raised by hand and the open requests are each read once for the session and joined to the kept rows (the same 1,312 rows, 0 differences either way); filtered by cause and hold 1 to 6 ms |
+| `finance.overpaid_refresh_due` | 0.7 to 1.7 ms warm (the first call on a connection about 35 to 140 ms); written as one SQL function over the run row's column it read the whole payment table three times, 120 to 240 ms, and is now a function that reads the cut-off first and plans the three probes for it |
+| a request of the 31 and of the 5 | 21 to 37 s a call (one live read) when first measured; the read of the 31 is now 0.53 s and of the 5 0.31 s, and a call pays them and the per-student second witness; an approval of the 31 and of the 5 in one call each, 13 to 20 s when first measured, the same reads |
+| the migration | V781 applied in about 0.9 s on this copy; its two triggers, first `CREATE TRIGGER` to `COMMIT`, 114 ms cold and 1.4 ms warm (the wallet holds 2 rows here) |
+
+The refresh and the requests are the dear acts and run in a job and in calls of a bounded size. The figures and the unfiltered first
+page of the desk are two to three times the 50 ms the build was aimed at on this data; they are one read each after the rest of the
+dashboard or the page is drawn.

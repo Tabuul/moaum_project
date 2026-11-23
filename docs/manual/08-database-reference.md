@@ -296,6 +296,7 @@ Almost every human-facing number is drawn from **`platform.next_number(kind, sco
 | Matriculation number (V263) | `MOAU/{FACULTY}/{PROGRAMME}/{YY}/{SEQUENCE}` — programme segment only for a programme configured to carry a code; separator `/` or `-`; padding per `people.matric_format.sequence_digits` (0 = none) | `people.matric_series` (Administration, College, Pharmacy, Architecture, General …) per faculty or programme | `people.next_matric` inside `people.matriculate` / `matriculate_student`; history in `people.matric_history` |
 | Matriculation number (pre-V263, legacy) | `MOAUM/{DEPT}/YY/NNNN` | `MATRIC`, department code, per session | `people.matriculate` before V263; legacy numbers are passed over, never reused |
 | Matriculation run | `MAT/YYYY/NNN` | `MATRIC_RUN`, UNIVERSITY, per session | `people.matriculate` |
+| Overpaid school fees: request batch, approval batch (V781) | `OCR/YYYY/NNNNNN`, `OCA/YYYY/NNNNNN` | `finance.overpaid_request_batch_seq`, `finance.overpaid_credit_batch_seq` | `finance.overpaid_credits_request`, `finance.overpaid_credits_decide` |
 | Application number (UG) | `APP/YY/NNNNNN` | `APPLICATION`, UNIVERSITY, per session | `admissions.register_applicant` |
 | Application number (PG) | `PG/YY/NNNNNN` | `PG_APPLICATION`, UNIVERSITY, per session | `admissions.pg_apply` |
 | Payment reference (student) | `MOAUM-FEE-<last 7 alphanumerics of matric/admission no>-<4 random digits>` (24-hour expiry) | none — random suffix, retried on collision (V131) | `finance.new_reference`, `finance.new_purpose_reference` |
@@ -626,6 +627,26 @@ A score is never overwritten: a change is a new `(sheet_id, student_id, version)
 ```
 
 The payment reference is the hub. Everything that can be paid — fees, hostel, transcript, library fine, wallet top-up, transfer fee — mints a reference with a purpose; the Bursary or a gateway confirms it; `confirm_payment` performs the purpose's side effect. Gateway rows refer to the reference by its text so that applicant, student and postgraduate references (three tables) can share one settlement path.
+
+### 2.7.1 Overpaid school fees (V781)
+
+```text
+ people.student ◀──student_id── finance.overpaid_snapshot (session, student_id PK; cause, bulk, payments jsonb, holds text[]; audit-exempt)
+ finance.overpaid_snapshot_run (session PK; refreshed_at, took_ms, students, excess; audit-exempt)
+ people.student ◀──student_id── finance.overpayment_decision (CARRY / REFUND / WALLET; several may stand a student and session; fee_setup_checked)
+ people.student ◀──student_id── finance.legacy_credit_request (LOR/YYYY/NNNNNN; cause, bulk, request_batch OCR/…, credit_batch OCA/…, fee_setup_checked,
+                                    last_skip_at/code/why) ──wallet_entry_id──▶ finance.wallet_entry (source OVERPAID)
+```
+
+`finance.overpayment_decision`: the unique index on a student and session is gone (`ix_overpayment_decision_live`, `ix_overpayment_decision_session`);
+`uq_overpayment_decision_reference` keeps one decision an instrument; a BEFORE INSERT trigger refuses a decision that would take the decided money
+above the excess its own row records (`OVERPAY_ABOVE_EXCESS`); `fee_setup_checked` records the officer's confirmation for a row that was not an exact
+repeated payment. `finance.legacy_credit_request`: `bulk` means requested on the Overpaid school fees desk (`ck_lcr_bulk_batch`: a request has a batch
+if and only if it is bulk); the two batch sequences `finance.overpaid_request_batch_seq` and `overpaid_credit_batch_seq`; `ix_lcr_request_batch`,
+`ix_lcr_session_status`. `finance.wallet_entry`: `ix_we_overpaid`, and a deferred constraint trigger that refuses an OVERPAID CREDIT with no
+CREDITED request behind it (`WALLET_OVERPAID_ROUTE`). The kept list is audit-exempt, a list worked out from the fee lines and the payments with
+nothing in it decided by a person (the pattern of `finance.historical_summary`, V654); the state of a row is never kept. `ix_pdc_reference` on
+`finance.paydirect_collection` serves the evidence probe. See `docs/overpaid-school-fees.md`.
 
 ## 2.8 Credentials and documents
 

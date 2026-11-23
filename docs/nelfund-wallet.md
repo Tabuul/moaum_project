@@ -187,3 +187,32 @@ The Bursary (the Bursar, or the administrator acting as super) ticks the parts a
 remains. The opening must be on the ledger first (Sync posts it once), and neither 2100 nor 3900 is an account it may go to. A
 reclassification is reversed like any journal; a reversed one no longer counts. A part held negative is put right with a manual
 journal.
+
+## Overpaid school fees on the wallet (V781)
+
+*22 November 2026.* The credit of overpaid school fees (source `OVERPAID`, V625) is the student's own money, written only by an
+approved request (`docs/overpaid-school-fees.md`). What the wallet now does for it:
+
+- **No hand credit, no reset over it.** `finance.credit_wallet` refuses source `OVERPAID` (`WALLET_OVERPAID_ROUTE`; `/nelfund/credit`
+  surfaces it), `finance.reset_wallet` refuses a wallet that holds one (`WALLET_RESET_OVERPAID_CREDIT`), and a constraint checked at
+  commit refuses an `OVERPAID` credit that has no approved request behind it.
+- **A refund names the source that holds the money.** `finance.request_withdrawal` used to record an "own money" refund under source
+  `SELF` and `pay_withdrawal` then looked for the money there, where an overpaid credit never was. `finance.withdrawal_sources(student,
+  session)` now gives what each source may be refunded now: the loan sources up to `nelfund_refundable`, the own-money sources up to
+  `self_refundable` (a top-up first), each `available − held`, overpaid school fees **over every session** (the credit sits on the
+  session it was overpaid in, and the page reads the student's current one). The request takes the source that covers the amount
+  (`WALLET_REFUND_ONE_SOURCE` when none does, with what each may give), is capped at that source's figure, and the approval counts
+  its own hold back. Payment (`pay_withdrawal`) is unchanged and debits the source asked of; its journal is Dr 2100 / Cr 1020 on the day
+  paid. The migration moved refunds waiting under the wrong source to the one source that holds the money, and counted the rest.
+- **Refundable once the session asked is paid in full** with no arrears: before the next session's fees are stated its charge is
+  nothing, so the money is refundable; once they are stated the student applies it (Apply) or asks for the refund when they are
+  paid.
+- **Kept back from refunds.** If the current session's charge rose after a decision, what the decisions are above the excess is not
+  refundable from the wallet (`finance.overpaid_refundable`; `WALLET_REFUND_KEPT_BACK` at approval; `overpaidKeptBack` on the
+  page).
+- **The API.** `GET /api/v1/me/wallet` adds `overpaid`, `overpaidKeptBack` and `eligibility.sources[{code, name, nature,
+  refundable}]`; `POST /api/v1/me/wallet/withdrawal` takes the `source` the form names. The Wallet page offers one choice a source
+  ("₦X of Overpaid school fees"), caps the amount at the chosen source's figure, never at the sum, and names a refund by the
+  source's name.
+- **Tests.** `NelfundWalletIT` (`eligibility.sources`, a SELF refund's source, the hand credit refused), `OverpaidReconciliationIT`
+  (a refund of source OVERPAID requested, approved by another officer and paid), `db/check.sql` V781.

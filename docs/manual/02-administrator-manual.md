@@ -926,7 +926,7 @@ Public verification of a slip is at `/verify/putme/{token}` — genuine only for
 
 **3.4.4 Reconciliation against the bank statement.** Status: IMPLEMENTED. Settlement reconciliation — `/finance/reconcile` (`bursar, audit, deputyaudit, super` may check). For each confirmed payment in the window (default last 30 days): **Matched** (optional bank reference) or **Flag** (note required) → an append-only `payment_reconciliation` row. The server panel "Exceptions requiring action" links gateway events to Hanging Payments and bank credits to Payment Investigation. Known defect: on this page the error toast fires on every load, including successful ones (`ReconcileLedger.tsx:45`).
 
-**3.4.5 Refunds (maker–checker).** Status: IMPLEMENTED (the payout is recorded, not executed). Refunds & Credits — `/finance/refunds` (`bursar`, `super`). **+ Raise a refund**: From a payment reference (optional; **Fetch** fills payer and amount and checks against the confirmed payment — a refund cannot exceed what was paid), Paid to (required), Reason (required), Amount (> 0), Bank, Account name, Account (last 4) → PROPOSED (`RF-YYYY-NNNN`). A different officer **Approve**s (or **Reject**s with a reason); then **Mark paid** once the money has left. A raiser sees "Awaiting another approver" on their own row.
+**3.4.5 Refunds (maker–checker).** *(Overpaid school fees have their own desk since V781, §3.4.14; Refunds & Credits points to it above the old Overpaid panel.)* Status: IMPLEMENTED (the payout is recorded, not executed). Refunds & Credits — `/finance/refunds` (`bursar`, `super`). **+ Raise a refund**: From a payment reference (optional; **Fetch** fills payer and amount and checks against the confirmed payment — a refund cannot exceed what was paid), Paid to (required), Reason (required), Amount (> 0), Bank, Account name, Account (last 4) → PROPOSED (`RF-YYYY-NNNN`). A different officer **Approve**s (or **Reject**s with a reason); then **Mark paid** once the money has left. A raiser sees "Awaiting another approver" on their own row.
 
 **3.4.6 Quickteller collections import.** Status: IMPLEMENTED (V080; V299). `/finance/gateways` → "Pay on Quickteller" → paste the report's rows — with Interswitch's own header row (Customer Reference, Amount, Payment Log Id, Payment Date, Channel, Customer Name …) or without one (then reference, amount, settlement reference, date, channel, payer) → **Import and match n rows**: a reference the portal generated (applicant, student or postgraduate) is confirmed with channel "Quickteller PayDirect" when the amount covers what it asks; a short amount is kept open as *Short — open* and not confirmed; duplicates by (biller, settlement reference) are skipped; unknown references are stored as *Not the portal's*. Result: "Imported n: m confirmed, s short and kept open, u not the portal's, d already imported".
 
@@ -965,6 +965,35 @@ See `docs/old-fees-double-charges.md`.
 4. **Decide** (a Bursar officer other than the proposer): **Approve** executes at once — restored or reallocated payments count again and their income returns from 2400; a duplicate or a payment never received stays archived for good with its posting reversed — or **Return for correction** / **Reject** with a reason.
 
 The tiles show verified active revenue against the archived amount; the doors (open, duplicates, wrong student, ownership pending, awaiting the Bursar, reconciled, never received, unresolved) filter the list. **Possible duplicates** lists pairs that share a gateway reference, transaction reference or old-portal number, and — marked "supporting only" — pairs that share only the student, amount and day. Exports: **Download Excel / PDF** (S/N first, the archived amount stated apart). Old Fees History's withdrawals of records twice and of payments never received now archive the record for good instead of deleting it. Bursar dashboard tile: **Archived / under review**. See `docs/payment-archive.md`.
+
+**3.4.14 Overpaid school fees (V781).** Status: IMPLEMENTED. Overpaid School Fees — `/finance/overpaid` (Finance for the Bursar; Payment
+Management for the Students Account Officer; read: the finance readers, Audit, Registry, Academic, ICT, VC and DVC). The Bursar's and the
+Students Account Officer's dashboards carry the panel **Overpaid school fees** for the dashboard's session. Full account:
+`docs/overpaid-school-fees.md`.
+
+1. **Open a session** (the select; the current one by default). "Figures as of …" says when the list was worked out; a session never
+   worked out reads "Not yet worked out for {session}" until the Bursar or the Students Account Officer presses **Refresh**.
+2. **Read the causes.** Five tiles: *Paid twice on the portal*, *Paid on the old portal and the new*, *Paid twice on the old portal*,
+   *Several payments above the charge*, *Paid above the fee line*. **Check the fee setup first** is the fee-line group: most of it is a
+   fee-setup question, and no "all" button touches it. A row held for a reason (fourteen of them, shown beside the student with what
+   clears each) is neither credited, refunded nor carried.
+3. **Request a wallet credit** (Students Account Officer, Bursar). Tick students (a row that is not an exact repeated payment is ticked
+   alone) or filter to one paid-twice cause and nothing else (no state, held, repeat, faculty, department or search filter) and press **Credit all ready: {cause}** — the cause as a whole, every ready student of it in every faculty and department. Give the reason (ten characters or more), tick
+   "I have looked at the payments behind these students' excess" and, for one student who is not an exact repeat, "The fee setup for this
+   student's programme and level, and the payments, were checked". One batch (`OCR/YYYY/NNNNNN`), each student a request for the whole
+   undecided excess; nothing is credited.
+4. **Approve** (a Bursar officer other than the requester), from the dashboard (**Approve** beside the batch) or the desk's
+   **Approvals** tab: confirm the count and the amount, and the wallet of each student is credited and the student told. Requests an
+   approval cannot credit are left with their reason and not tried again in the pass. **Return** or **Reject** with a note of ten
+   characters or more (no student is told); the requester **withdraws** a returned request and requests the student again.
+5. **Refund** (Bursar): the same selection, the same ticks; a refund is raised for each on Refunds & Credits and runs the usual two-officer
+   road.
+6. **Excel** downloads the filtered list.
+
+The approval **pays no fees**: the credit stays on the student's wallet until the student applies it on the Wallet page or asks there for a
+refund. A decision above what is paid (a charge that rose after it) is listed "Decided above the excess" and kept back from refunds; it
+is not paid back automatically. Overpayments are reconciled while the session is the students' current one: a past session is listed
+held. A hand credit of source OVERPAID on Sources & Wallets is refused, and so is a wallet reset over one.
 
 ### 3.5 Internal Audit
 

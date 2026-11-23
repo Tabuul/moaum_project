@@ -71,7 +71,8 @@ A payment may be swapped only when all of these hold. Each refusal has its own c
 - it was not paid from a NELFUND wallet (`SWAP_WALLET`)
 - it has not been swapped already (`SWAP_ALREADY_SWAPPED`, "This payment has already been reallocated"); a correction is a reversal
 - no other swap of it is open (`SWAP_OPEN`)
-- no overpayment decision stands on either student's fees for the session (`SWAP_OVERPAYMENT_DECISION`)
+- no overpayment decision rests on the payment: taking it from the credited student must leave at least what is decided or
+  requested above the charge (`SWAP_OVERPAYMENT_DECISION`; V781, below). The target's decisions are not tested
 - the target is a real student (`SWAP_TARGET_UNKNOWN`)
 - the target is a different student (`SWAP_SAME_STUDENT`, "Original and target student cannot be the same.")
 - the target is not a merged record (`SWAP_TARGET_MERGED`)
@@ -254,3 +255,12 @@ Tests:
     approval;
   - the reference for what is owed: a second retires the first; paid, the wallet owes nothing; a third is refused.
 - `PaymentSwapIT`: the student sees what the wallet owes, pays it through the reference, and is then refused another.
+
+## Overpayment decisions (V781, 22 November 2026)
+
+`SWAP_OVERPAYMENT_DECISION` refused any payment of a student whose session had a decision standing, and any target with one. It is
+arithmetic now (`finance.overpayment_decisions_covered`): the credited student's payment is refused only when, without it, less would
+remain above the charge than is decided or requested. The **target's** test is gone: money arriving on a decided student cannot take
+the decided money below cover, it is "a decided student pays again" and shows again on the Overpaid school fees desk
+(`docs/overpaid-school-fees.md`). So a decided student's later duplicate can be swapped to its owner; the payments a decision rests on
+still cannot leave. An open swap holds the student's excess on that desk (`OPEN_CORRECTION`).

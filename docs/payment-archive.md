@@ -146,3 +146,12 @@ when it was archived and is never deleted.
   investigation, the owner search, the proposal, the separation of duties, the approval through the swap; `DoubleChargeIT` and
   `OldFeesIT` restated.
 - `lib/payment-archive.test.ts`.
+
+## A decided student's later duplicate (V781)
+
+`PAR_OVERPAYMENT_DECISION` used to refuse the archive of any school-fees payment of a student whose overpayment had a decision
+standing. A decided student who pays again could therefore never have the second payment archived. The archive is now refused only
+when taking the payment away would leave less paid above the charge than is decided or requested
+(`finance.overpayment_decisions_covered`, in `finance.payment_archive_refusals`); the payments a decision rests on still cannot
+leave. On the Overpaid school fees desk (`docs/overpaid-school-fees.md`) a payment recorded twice (`SAME_PAYMENT`) and a payment under
+review (`UNDER_REVIEW`) hold the student's excess until the archive settles it.

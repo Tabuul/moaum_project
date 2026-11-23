@@ -378,6 +378,7 @@ Six pieces of work run on a timer inside the API (`@EnableScheduling` on `Portal
 | Hostel clock (`hostel/HostelClock`) | hourly at five past (`moaum.hostel.cron`, default `0 5 * * * *`, Africa/Lagos) | a hold that expired unpaid lapses and the bed passes to the next name on the waiting list | `POST /api/v1/hostel/lapse-all` |
 | Examiner reminders (`examiners/ExaminerReminders`) | daily at 07:15 Africa/Lagos (fixed) | an external examiner whose deadline is three days off is reminded once; one whose deadline passed with nothing submitted is told once, as is the desk | none |
 | Help-desk auto-closer (`helpdesk/AutoCloser`) | hourly after a 5-minute start delay | closes a resolved ticket the requester has not answered after the configured number of quiet days, and tells the requester; inert while `autoCloseDays` is unset (the shipped state) | none |
+| Overpaid school fees refresh (`finance/OverpaidWatch`; V781) | every ten minutes (`moaum.overpaid.refresh-cron`, default `0 */10 * * * *`) for the current session, and nightly at 02:20 (`moaum.overpaid.refresh-all-cron`) for every session once worked out; Africa/Lagos; off unless `moaum.overpaid.enabled` | works the kept list of students paid above their charge out when a school-fees payment was confirmed, uploaded or archived since, or after an hour | `POST /api/v1/finance/overpaid/refresh` (one session) |
 
 ### 1.15 Health and status endpoints
 
@@ -638,6 +639,34 @@ Response `200`:
 The inner object has `status` `VALID`, `REVOKED` (adds `revokedOn`, `revokedUnder`), `REPLACED` (adds `replacedBy`), `NOT_FOUND` (with a `remedy` and `verifiedAt`) or `INVALID` (a stored hash that no longer matches its content), plus the fields the document's policy marks public (`public_fields`). Every call is logged to `credentials.verification` with the source address and user agent; past the limit the answer is `422 VERIFY_THROTTLED`. The other verification doors answer a plain object with `"genuine": true|false` and the record's fields — for a receipt, `GET /api/v1/verify/receipt/{reference}?c=<12-hex check token>` gives `{ genuine, name, matricNo, programme, level, amount, purpose, session, term, channel, confirmedOn, receiptNo, passport }`; without the matching `c` it is `{ "genuine": false }` and nothing else.
 
 ---
+
+### 2.10 Worked example: overpaid school fees (V781)
+
+`/api/v1/finance/overpaid` (offices: reads `READERS`; refresh, request and withdraw `REQUESTERS` = bursar, studentaccounts, super; decide and refund
+`DECIDERS` = bursar, super). `session` is `YYYY/YYYY` (the University's current session by default). Refusals raised in SQL arrive as
+`{code, detail, remedy}` with 422 (403 for an office the database refuses); the API omits null keys. The API itself refuses, before the
+database: `OVERPAID_CONFIRM`, `OVERPAID_TOO_MANY` (more than 2,000 named), `OVERPAID_SESSION` (not written as `2025/2026`), `OVERPAID_FILTER` (a
+cause, state or status the desk does not list), `OVERPAID_SINCE` (not the timestamp an earlier call of the pass answered) and, on `/refund`,
+`OVERPAID_BULK_WHO`.
+
+| Request | Answer |
+|---|---|
+| `GET /figures?session=` | `{session, sessions[], nextSession, computed, refreshedAt, tookMs, students, excess, causes[5]{cause, students, excess, undecided, undecidedAmount, held, heldAmount, ready, readyAmount}, paidTwice{…}, apart{students, amount}, held{students, amount, reasons{CODE: n}}, overDecided{students, amount}, requests{pending, pendingAmount, forYou, forYouAmount, mine, mineAmount, returned, returnedMine, single, batches[]}, credited{students, amount, applied, inWallets}, refunds{raised, raisedAmount, approved, approvedAmount, paid, paidAmount, byHand, byHandAmount}, carried}` — a read of the kept list; a session never worked out answers `computed: false` with zeros |
+| `GET /rows?session=&cause=&state=&held=&bulk=&faculty=&department=&q=&page=&size=` | `{session, refreshedAt, computed, total, page, size, rows[], faculties[], departments[]}`; a row carries the student, `due`, `paid`, `excess`, `decided`, `refunded_by_hand`, `remaining`, `over_decided`, `cause`, `bulk`, `repeat_amount`, `payments[]`, `holds[]`, `refund_only`, `suggested`, `state` (ten states), `decisions[]` and `request{}`; `size` 1–500, `export=true` with `size=100000` for the Excel list |
+| `POST /refresh` `{session}` | the figures; `OVERPAID_SESSION` for a session not on the calendar |
+| `POST /credits/request` `{session, students?, cause?, reason, confirmed: true, feeSetupChecked?, limit?, batch?}` | `{batch, requested, amount, skipped, skippedWhy[{student_id, number, name, code, why}], remaining}`; call again with `batch` while `remaining > 0`. `OVERPAID_CONFIRM`, `OVERPAID_TOO_MANY` (2,000), `OVERPAID_BULK_WHO`, `OVERPAID_BULK_CAUSE`, `OVERPAID_BATCH`, `LEGACY_CREDIT_REASON`, `LEGACY_CREDIT_OFFICE` |
+| `GET /credits?session=&status=&batch=&page=&size=` | the requests made on this desk (`legacy_credit_rows`, with `mine`); `status` a request status or `ALL` |
+| `POST /credits/decide` `{batch?, ids?, action: APPROVE\|REJECT\|RETURN, note?, limit?, since?}` | `{batch, since, credited, amount, rejected, returned, skipped, skippedWhy[], remaining}`; call again with `since` while `remaining > 0`. Nothing is applied to fees. Skips: `LEGACY_CREDIT_SAME_OFFICER`, `LEGACY_CREDIT_STATE`, `LEGACY_CREDIT_EXCESS_CHANGED`, `LEGACY_CREDIT_DOUBLE_CHARGE_CHECK`, `OVERPAID_HELD`, `OVERPAID_WALLET_REFUSED`, `OVERPAID_EXCESS_UNCERTAIN`, `LEGACY_CREDIT_STUDENT` |
+| `POST /credits/withdraw` `{batch?, ids?, reason}` | `{withdrawn}` |
+| `POST /refund` `{session, students?, cause?, reason, confirmed: true, feeSetupChecked?, limit?}` | `{refunds, held, apart, requested, uncertain, unchecked, remaining}` |
+
+Elsewhere: `GET /api/v1/finance/legacy-fees/overpaid` and `POST …/overpaid/decide` (rows gain `remaining`, `decision_count`,
+`refunded_by_hand`; the decision takes `feeSetupChecked`); the legacy-reconciliation requests take `feeSetupChecked`, a student's sessions carry
+`remaining`, `cause`, `bulk`, `holds[]`, `refund_only`, and the figures `requests.onOverpaidDesk`; `GET /api/v1/me/fees` and `/me` gain `excess`,
+`excessDecided`, `excessRemaining`, `excessRequested`, `excessCause`, `excessHolds[]`, `walletOverpaid`; `GET /api/v1/me/wallet` gains `overpaid`,
+`overpaidKeptBack` and `eligibility.sources[{code, name, nature, refundable}]`, and the refund request names its `source`
+(`WALLET_REFUND_ONE_SOURCE`, `WALLET_REFUND_KEPT_BACK`); the hand wallet credit and the reset refuse source OVERPAID (`WALLET_OVERPAID_ROUTE`,
+`WALLET_RESET_OVERPAID_CREDIT`).
 
 ## 3 Endpoint catalogue
 

@@ -5,7 +5,7 @@
  *  only for the shortfall the server itself works out, the statement, applying the wallet to the invoice, and — once the fees are
  *  settled — a refund of the Fund's money that arrived after they were paid, or of the student's own leftover; never a grant. */
 import { useState } from "react";
-import { topupWord, type SourceBalance, type StudentWallet } from "@/lib/wallet";
+import { topupWord, type RefundSource, type SourceBalance, type StudentWallet } from "@/lib/wallet";
 import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
@@ -43,8 +43,19 @@ export function Wallet({ w, holder }: { w: StudentWallet; holder?: string | null
   const own = by("SELF");
   const nelRefundable = Number(elig.nelfund_refundable ?? 0);
   const selfRefundable = Number(elig.self_refundable ?? 0);
-  const refundSource = wd.source || (nelRefundable > 0 ? "NELFUND" : selfRefundable > 0 ? "SELF" : "");
-  const refundCap = refundSource === "NELFUND" ? nelRefundable : refundSource === "SELF" ? selfRefundable : 0;
+  // V781: what each source may be refunded now (the Fund's money, the student's own top-up, overpaid school fees); the refund is asked of
+  // one of them and capped at that one's figure — never the sum of several. An older answer without the list reads the two figures as before.
+  const choices: RefundSource[] = elig.sources ?? [
+    ...(nelRefundable > 0 ? [{ code: "NELFUND", name: "NELFUND", nature: "LOAN", refundable: nelRefundable }] : []),
+    ...(selfRefundable > 0 ? [{ code: "SELF", name: "My own money", nature: "SELF", refundable: selfRefundable }] : []),
+  ];
+  const refundSource = choices.find((c) => c.code === wd.source)?.code ?? choices[0]?.code ?? "";
+  const refundCap = Number(choices.find((c) => c.code === refundSource)?.refundable ?? 0);
+  // a source in words: the name the wallet holds it under, never its code
+  const sourceName = (code: string | null | undefined) => (code ? w.balances.find((b) => b.source_code === code)?.source_name ?? choices.find((c) => c.code === code)?.name ?? code : "funding");
+  const refundOf = refundSource === "NELFUND" ? "the Fund's money" : refundSource === "OVERPAID" ? "your overpaid school fees" : refundSource === "SELF" ? "your own money" : sourceName(refundSource);
+  const overpaid = Number(w.overpaid ?? 0);
+  const keptBack = Number(w.overpaidKeptBack ?? 0);
   const canApply = bal > 0 && owed > 0;
 
   function printStatement() {
@@ -90,6 +101,13 @@ export function Wallet({ w, holder }: { w: StudentWallet; holder?: string | null
         </Note>
       ) : null}
       {said ? <Note kind="ok" title={said}>On the record; the receipt is on your Fees page.</Note> : null}
+      {/* V781: overpaid school fees credited by the Bursary — the student applies them to school fees, or asks for them as a refund */}
+      {overpaid > 0 ? (
+        <Note kind="ok" title={`${naira(overpaid)} of overpaid school fees is on your wallet`}>
+          Press Apply to use it on your school fees when you owe them and payment is open. You may also ask for it as a refund below once your {w.session} fees are paid.
+          {keptBack >= 1 ? <span className="blk">{naira(keptBack)} of it is kept for your {w.session} school fees, which rose after it was credited; that part is not refunded.</span> : null}
+        </Note>
+      ) : null}
       {st ? (
         <Note kind={st.state === "APPROVED" ? "ok" : st.state === "NOT_APPROVED" ? "bad" : "info"} title={st.state === "APPROVED" ? "The Fund approved your NELFUND loan" : st.state === "NOT_APPROVED" ? "The Fund did not approve your NELFUND loan" : "Your NELFUND application is with the Fund"}>
           {st.state === "NOT_APPROVED" ? `${st.reason ?? "No reason was given."} ${st.correctable ? "This is a correction, not a judgement: fix the field named and the Fund reissues." : ""}` : st.state === "PENDING" ? "Nothing to do here; the University records the Fund's decision when it arrives." : `For ${st.session}. The money is credited here when the Fund remits it.`}
@@ -127,18 +145,18 @@ export function Wallet({ w, holder }: { w: StudentWallet; holder?: string | null
       </Panel>
 
       <div className="grid grid--2">
-        <Panel title="NELFUND refund" right={nelRefundable || selfRefundable ? <Pil kind="ok">Eligible</Pil> : <Pil kind="grey">Not available</Pil>}>
+        <Panel title={choices.some((c) => c.code === "OVERPAID") ? "Refund" : "NELFUND refund"} right={choices.length ? <Pil kind="ok">Eligible</Pil> : <Pil kind="grey">Not available</Pil>}>
           <PBody>
             {wdl ? (
               <Note kind={wdl.state === "PAID" ? "ok" : wdl.state === "REJECTED" ? "bad" : "info"} title={wdl.state === "REQUESTED" ? "Your refund request is with the Bursary" : wdl.state === "APPROVED" ? "Approved — awaiting payment" : wdl.state === "PAID" ? "Refund paid" : "Refund request not approved"}>
-                {naira(wdl.amount)} of {wdl.source_code ?? "funding"} for {wdl.session} to {wdl.bank_name} {wdl.account_no}. {wdl.state === "PAID" ? `Paid ${wdl.paid_on ? onDay(`${wdl.paid_on}T12:00:00`) : wdl.paid_at ? onDay(wdl.paid_at) : ""}${wdl.paid_ref ? ` · bank transfer reference ${wdl.paid_ref}` : ""}.` : wdl.state === "REJECTED" ? (wdl.reason ?? "") : "You will be told the decision."}
+                {naira(wdl.amount)} of {sourceName(wdl.source_code)} for {wdl.session} to {wdl.bank_name} {wdl.account_no}. {wdl.state === "PAID" ? `Paid ${wdl.paid_on ? onDay(`${wdl.paid_on}T12:00:00`) : wdl.paid_at ? onDay(wdl.paid_at) : ""}${wdl.paid_ref ? ` · bank transfer reference ${wdl.paid_ref}` : ""}.` : wdl.state === "REJECTED" ? (wdl.reason ?? "") : "You will be told the decision."}
               </Note>
             ) : null}
             {elig.nelfund_after_settlement ? <Note kind="info" title="NELFUND funds received after your school fees were already paid">The Fund&rsquo;s {naira(nelRefundable)} for {w.session} arrived after your fees were settled, so it may be refunded to you, subject to the University&rsquo;s approval.</Note> : null}
             {elig.eligible && refundCap > 0 ? (
               <>
-                <div className="sub2 mb-2">Your {w.session} fees are cleared and {naira(refundCap)} of {refundSource === "NELFUND" ? "the Fund's money" : "your own money"} may be refunded. Enter <b>your own</b> bank account.</div>
-                {nelRefundable > 0 && selfRefundable > 0 ? <Field id="wd-src" label="Refund"><select id="wd-src" className="ctl" value={refundSource} onChange={(e) => setWd({ ...wd, source: e.target.value, amount: "" })}><option value="NELFUND">NELFUND · up to {naira(nelRefundable)}</option><option value="SELF">My own money · up to {naira(selfRefundable)}</option></select></Field> : null}
+                <div className="sub2 mb-2">Your {w.session} fees are cleared and {naira(refundCap)} of {refundOf} may be refunded. Enter <b>your own</b> bank account.</div>
+                {choices.length > 1 ? <Field id="wd-src" label="Refund"><select id="wd-src" className="ctl" value={refundSource} onChange={(e) => setWd({ ...wd, source: e.target.value, amount: "" })}>{choices.map((c) => <option key={c.code} value={c.code}>{naira(c.refundable)} of {c.name}</option>)}</select></Field> : null}
                 <Field id="wd-amt" label="Amount" hint={`Up to ${naira(refundCap)}`}><input id="wd-amt" className="ctl tnum" value={wd.amount} placeholder={String(refundCap)} onChange={(e) => setWd({ ...wd, amount: e.target.value.replace(/[^0-9.]/g, "") })} /></Field>
                 <Field id="wd-acct-bank" label="Your bank account">
                   <BankAccountFields id="wd-acct" value={acct} onChange={setAcct} banks={banks} holderName={holder} />

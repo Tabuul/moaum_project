@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DOUBLE_HEADERS, LEFT_HEADERS, MISLABELLED_HEADERS, OVERPAID_HEADERS, RECON_HEADERS, decideDone, doubleRow, leftRow, mislabelledRow, overpaidRow, reconRow, withdrawDone, type DoubleRow, type LeftRow, type OverpaidRow, type ReconRow } from "./old-fees.ts";
+import { DECISION, DOUBLE_HEADERS, LEFT_HEADERS, MISLABELLED_HEADERS, OVERPAID_HEADERS, RECON_HEADERS, decideDone, decideLeft, doubleRow, leftRow, mislabelledRow, overpaidRow, reconRow, undecided, withdrawDone, type DoubleRow, type LeftRow, type OverpaidRow, type ReconRow } from "./old-fees.ts";
 
 test("a reconciliation row reads in the order of its headers, amounts as numbers to the kobo", () => {
   const r: ReconRow = {
@@ -71,8 +71,48 @@ test("an overpaid student says the excess and what was decided, or that nothing 
   assert.equal(overpaidRow({ ...o, double_charge: "CHECK_WITH_BANK" })[14], "Check with the bank");
 });
 
+test("a wallet credit is named as one, and a decided student who paid again still has something to decide", () => {
+  // V781: a WALLET decision (V625) was read as a refund; the old panel's Excel list keeps its fifteen columns
+  assert.equal(DECISION.WALLET, "Credited to the wallet");
+  assert.deepEqual(OVERPAID_HEADERS, ["Matric/admission no.", "Name", "Programme", "Faculty", "Level", "Due by the fee setup (₦)", "Paid (₦)", "Excess (₦)", "Decision", "Into session",
+    "Reference", "Refund state", "Decided on", "Old-portal payment among them", "Possible bank double charge"]);
+  const o: OverpaidRow = { student_id: "s", number: "MOAU/AD/PUB/25/00001", name: "INVENTED, Student", programme_code: "PUB", faculty_code: "SS", level: 100,
+    due: "95350.00", paid: "123955.00", excess: "28605.00", decision: "WALLET", decided: "28605.00", reference: "LOR/2026/000007", to_session: null, decided_at: "2026-11-16 09:12:00+01",
+    refund_state: null, old_portal: true, remaining: 0, decision_count: 1, refunded_by_hand: 0 };
+  assert.deepEqual(overpaidRow(o).slice(8, 13), ["Credited to the wallet", "", "LOR/2026/000007", "", "2026-11-16"]);
+  assert.equal(reconRow({ student_id: "s", number: "N", name: "INVENTED, Student", programme_code: "PUB", faculty_code: "SS", level: 100, due: 1, paid: 2, paid_old_s1: 0, paid_old_s2: 0,
+    paid_old_session: 0, paid_payment_history: 0, paid_portal: 2, old_payments: 0, difference: 1, state: "OVER_SETTLED", decision: "WALLET, CARRY" })[17], "Credited to the wallet, Carried into the next session");
+  // what is left is the test, from one naira: a third payment after the credit leaves more to decide
+  assert.equal(undecided(o), false);
+  const again = { ...o, paid: "152560.00", excess: "57210.00", remaining: "28605.00" };
+  assert.equal(undecided(again), true);
+  assert.equal(overpaidRow(again)[8], "Credited to the wallet; ₦28,605 not yet decided");
+  assert.equal(undecided({ decision: null, remaining: "0.40" }), false, "under one naira is nothing");
+  assert.equal(undecided({ decision: null, remaining: "30000" }), true);
+  // an answer without the figure is read as before: by whether a decision stands
+  assert.equal(undecided({ decision: null }), true);
+  assert.equal(undecided({ decision: "CARRY" }), false);
+});
+
 test("deciding stops when nothing is left or nothing more can be decided", () => {
   assert.equal(decideDone({ carried: 2000, refunds: 0, remaining: 300 }), false);
   assert.equal(decideDone({ carried: 300, refunds: 0, remaining: 0 }), true);
   assert.equal(decideDone({ carried: 0, refunds: 0, remaining: 4 }), true);
+});
+
+test("a bulk decision says why each student was left, and a hold is not always the bank's", () => {
+  const none = { apart: 0, requested: 0, refundOnly: 0, uncertain: 0, unchecked: 0, held: 0 };
+  assert.deepEqual(decideLeft(none, "CARRY", false), []);
+  // every hold counts as held (a spillover semester, a past session, a late fee), and the line does not blame the bank alone
+  const held = decideLeft({ ...none, held: 179 }, "REFUND", false);
+  assert.equal(held.length, 1);
+  assert.match(held[0], /^179 students were left: held/);
+  assert.match(held[0], /spillover semester/);
+  assert.match(held[0], /Overpaid school fees desk says what each one waits for/);
+  assert.doesNotMatch(held[0], /checked with the bank/);
+  assert.match(decideLeft({ ...none, held: 1 }, "REFUND", true)[0], /^1 student was left: held/);
+  // carried: a refund-only student is left, refunded never carried; refunded: not mentioned
+  assert.equal(decideLeft({ ...none, refundOnly: 2 }, "CARRY", false).length, 1);
+  assert.deepEqual(decideLeft({ ...none, refundOnly: 2 }, "REFUND", false), []);
+  assert.deepEqual(decideLeft({ ...none, unchecked: 3 }, "CARRY", true), ["Tick the confirmation first."]);
 });

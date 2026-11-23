@@ -119,3 +119,30 @@ record and the student's wallet page. `LegacyWalletIT`, `OverpaidFeesIT`, `Nelfu
   statement to be entered.
 - The suspense the old-portal credits are drawn from is settled on Accounting → Wallet opening (V552); the OVERPAID credits need
   nothing there.
+
+## 7. Opened to every overpaid student; the Overpaid desk beside it (V781)
+
+*22 November 2026.* The request of §2 stays: one student, the officer confirms, a different Bursar officer approves. V781 widens it
+and puts a second desk beside it (`docs/overpaid-school-fees.md`):
+
+- **Every overpaid student, old portal or new.** The request was open only to a student with an old-portal record. A student's
+  sessions (`GET /students/{id}`) now carry `remaining`, `cause`, `bulk`, `holds[]` and `refund_only` from the same reader the
+  Overpaid desk uses.
+- **What is left, not what was decided.** The amount asked, and the limit of an adjusted one, is the excess less every decision
+  and every refund raised by hand (`remaining`). `LEGACY_CREDIT_SETTLED` is raised when nothing is left; a student decided once who
+  pays again can be requested for the new amount. The approval's "already credited" and "settled" tests are the same arithmetic
+  (`LEGACY_CREDIT_EXCESS_CHANGED` when the records now show less than was confirmed).
+- **Holds and refund-only.** Any of the fourteen holds refuses the request (`OVERPAID_HELD`; a bank check keeps
+  `LEGACY_CREDIT_DOUBLE_CHARGE_CHECK`), and a student who is graduated, withdrawn, deceased or cleared for an award is refunded,
+  never credited (`OVERPAID_WALLET_REFUSED`). The student's window says why a session cannot be requested.
+- **The fee-setup confirmation.** An excess that is not a repeated payment making it up exactly is requested only with the officer's
+  confirmation that the fee setup and the payments were checked (`OVERPAID_FEE_SETUP_CHECK`; the form's second tick, sent as
+  `feeSetupChecked` on `POST /requests` and on `/requests/{id}/resubmit`), kept on the request. A returned request of such an
+  excess is resubmitted with it.
+- **The student's own fee account is the second witness** at the request and at the approval (`OVERPAID_EXCESS_UNCERTAIN`).
+- **One posting.** The approval goes through the function the bulk approval uses (`finance.overpaid_credit_post`): the credit, the
+  WALLET decision, the request CREDITED, the student told. The wallet note is plain, and `LEGACY_CREDIT_POSTED` now says the credit is
+  on the wallet, to be applied on the Wallet page or asked for as a refund (it is mandatory).
+- **Each desk decides its own.** A request made on the Overpaid desk (one student or many; it always carries a batch) is decided
+  there. This desk's queue and figures hold the single requests made here; `figures.requests.onOverpaidDesk` counts the others
+  and the overview links them to the Overpaid desk's Approvals tab.

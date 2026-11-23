@@ -320,6 +320,21 @@ Refusals you may meet:
 
 > **Note:** The subtitle of the Fees screen reads "2026/2027 session" whatever session you are looking at; it is fixed text. The "Instalment 1 of 2" caption assumes two instalments.
 
+**Paid above the charge (V781).** If you paid more than your session's charge (most often a payment made twice), the Fees page does not
+read "Settled" and stop. The third tile reads **Paid above the charge** with the amount, Paid reads "Settled; ₦x above the charge", and a
+note says what happens to it:
+
+- *paid twice, nothing holding it*: "You paid your {session} school fees more than once. The Bursary will credit ₦x to your wallet for
+  your next school fees, or refund it. There is nothing for you to do until you are told.";
+- *a wallet credit already asked for*: "The Bursary is crediting it to your wallet; you will be told when it is there.";
+- *a semester of the session not yet charged to you*: "₦x paid ahead … It counts towards the rest of this session's fees when they are
+  charged.", and for *a late fee that may count against it*: "The Bursary will tell you if any of it is to come back to you.";
+- *anything else*: "The Bursary is checking it against your fees and will tell you what happens to it."
+
+Once the Bursary credits it, the note reads "₦x credited to your wallet" (reference and where to apply it), and while you owe school fees
+the page says "₦x of overpaid school fees is on your wallet" with a link to the Wallet page. A refund the Bursary decides is worded as
+before (raised, approved, paid, with the account you give).
+
 ### 3.4 Wallet and funding (NELFUND, scholarships, top-ups)
 
 ```text
@@ -333,6 +348,8 @@ Services
 |---|---|
 | Apply the wallet to fees | When "Your wallet covers what you owe" shows, press **Apply ₦x to {session}**. The portal mints a school-fee reference for the amount and confirms it at once (channel "NELFUND wallet"); the receipt appears on the Fees page and the "Your payment is confirmed" notice is sent. |
 | Top up | Under **Top up the wallet** type an **Amount** and press **Generate the reference**; pay it by card/USSD from the same panel or on the Fees page. When confirmed, the wallet is credited. |
+| Use overpaid school fees (V781) | When the Bursary has credited school fees you paid twice, **Wallet & funding** says "₦x of overpaid school fees is on your wallet". Press **Apply** when you owe school fees and payment is open; you pay only the rest. Nothing applies it for you. |
+| Refund overpaid school fees (V781) | Once your current session's fees are paid in full and no arrears stand, the refund panel offers **one choice for each source** ("₦x of Overpaid school fees", "₦x of NELFUND", "₦x of My own money"); pick one, enter the amount (never more than that source holds) and your own bank account. A part of the money kept for your session's fees, which rose after it was credited, is not refunded, and the page says so. |
 | Withdraw a surplus | Under **Withdraw to your bank account** enter **Amount** (blank = all), **Bank**, **Account number**, **Account name** and press **Request the withdrawal**. Allowed only when the session's fees are cleared in full, there are no arrears, the wallet has a balance and no withdrawal is pending; otherwise the panel says "Not available yet" and why. The Bursary approves and a second officer records the payout; states REQUESTED → APPROVED → PAID, or REJECTED with the reason. |
 
 > **Note:** The amount you ask to withdraw is not checked against the balance in the browser; the Bursary refuses an over-large request. The portal records the payout; it does not move the money itself.
@@ -1221,6 +1238,9 @@ Every notice is written to the portal's outbox and delivered by email (and SMS w
 |---|---|---|---|
 | Password reset requested | the account holder | Email + SMS | "Reset your MOAUM password" (applicants: "Reset your MOAUM application password") |
 | Payment confirmed (school fees, transcript, hostel, library fine, wallet top-up, transfer fee — any path) | student | Email + SMS | "Your payment is confirmed" / SMS "MOAUM: payment {ref} confirmed, receipt {no}." |
+| Overpaid school fees credited to your wallet (V781; mandatory) | student | Email + SMS | "Your overpaid school fees of ₦x are on your wallet" / SMS "MOAUM: ₦x you overpaid on {session} school fees is on your wallet (ref …), balance …. Apply it to your fees, or ask for a refund, on the Wallet page." |
+| Wallet credits of overpaid school fees requested (V781) | the Bursar's office holders | Email | "{n} wallet credit(s) of overpaid school fees wait for your approval ({batch})" |
+| Wallet credits of overpaid school fees decided (V781) | the officer who requested them | Email | "Wallet credits {batch}: {n} {approved and credited / returned for correction / rejected}" |
 | Matriculation number issued | student | Email + SMS | "Your matriculation number" |
 | Script held | student | Email + SMS | "Your {code} script is held until you register" |
 | Result query answered | student | Email + SMS | "Your result query {ref} is answered" |

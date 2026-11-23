@@ -10,7 +10,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { type Fees, type MeCore, type Receipt, receiptPurpose, semesterName } from "@/lib/student-portal";
-import { type StudentOverpayment, overpaymentWords, refundAccountWords } from "@/lib/overpayment";
+import { type StudentOverpayment, excessWords, overpaymentWords, refundAccountWords } from "@/lib/overpayment";
 import { type BankAccountValue, accountDigits, accountProblem, bankToSend, valueFromAccount } from "@/lib/banks";
 import { BankAccountFields, useBanks } from "@/components/finance/BankAccountFields";
 import { Btn, LinkBtn, Note, Panel, PBody, Pil, Two } from "@/components/proto/ui";
@@ -86,6 +86,9 @@ export function FeesScreen({ s, fees, paid }: { s: MeCore; fees: Fees; paid: str
   // V451: an open semester whose fees are not yet stated for the student, while another's are — never read as settled
   const unstated = noCharge ? [] : fees.unstatedSemesters ?? [];
   const unstatedWords = unstated.map((n) => semesterName(n).toLowerCase()).join(" and ");
+  // V781: school fees paid above the charge and not yet decided — said before the Bursary decides them, and never as "settled" alone
+  const above = Number(fees.excessRemaining ?? 0) >= 1;
+  const aboveWords = excessWords(fees);
   const askBursary = (subject: string) => `/student/support?office=bursar&subject=${encodeURIComponent(subject)}`;
   return (
     <>
@@ -98,9 +101,14 @@ export function FeesScreen({ s, fees, paid }: { s: MeCore; fees: Fees; paid: str
       ) : null}
       <div className="grid grid--3">
         <div className="tile"><span className="eyebrow">Session charge</span><span className="n tnum">{noCharge ? "—" : naira(fees.due)}</span><span className="c">{fees.session} · {s.level} Level</span></div>
-        <div className="tile"><span className="eyebrow">Paid</span><span className="n tnum ink-green">{naira(fees.paid)}</span><span className="c">{fees.paidInFull && !noCharge ? (unstated.length ? "Settled for what is stated" : "Settled in full") : fees.instalmentsPaid === 1 ? "Instalment 1 of 2" : fees.paid > 0 ? (noCharge ? "Counted once the charge is stated" : "Part paid") : "Nothing yet"}</span></div>
+        <div className="tile"><span className="eyebrow">Paid</span><span className="n tnum ink-green">{naira(fees.paid)}</span><span className="c">{above ? `Settled; ${naira(Number(fees.excessRemaining))} above the charge` : fees.paidInFull && !noCharge ? (unstated.length ? "Settled for what is stated" : "Settled in full") : fees.instalmentsPaid === 1 ? "Instalment 1 of 2" : fees.paid > 0 ? (noCharge ? "Counted once the charge is stated" : "Part paid") : "Nothing yet"}</span></div>
+        {above ? (
+          <div className="tile"><span className="eyebrow">Paid above the charge</span><span className="n tnum ink-green">{naira(Number(fees.excessRemaining))}</span><span className="c">See below</span></div>
+        ) : (
         <div className="tile"><span className="eyebrow">Outstanding</span><span className="n tnum" style={{ color: fees.balance > 0 ? "var(--red-ink)" : "var(--green-ink)" }}>{naira(fees.balance)}</span><span className="c">{noCharge ? "No charge stated yet" : fees.balance > 0 ? "Due this session" : unstated.length ? `${semesterName(unstated[0])} semester not yet stated` : "Cleared"}</span></div>
+        )}
       </div>
+      {aboveWords ? <Note kind={aboveWords.kind} title={aboveWords.title}>{aboveWords.text}</Note> : null}
       {(fees.overpayments ?? []).map((o) => {
         // V519: school fees paid beyond a session's charge — carried into the next session, or refunded
         const w = overpaymentWords(o);
@@ -114,6 +122,12 @@ export function FeesScreen({ s, fees, paid }: { s: MeCore; fees: Fees; paid: str
           </Note>
         );
       })}
+      {/* V781: overpaid school fees on the wallet — the student applies them on the Wallet page, and pays only the rest */}
+      {Number(fees.walletOverpaid ?? 0) > 0 && !noCharge && fees.balance > 0 ? (
+        <Note kind="info" title={`${naira(Number(fees.walletOverpaid))} of overpaid school fees is on your wallet`} action={<LinkBtn kind="ghost" size="sm" href="/student/wallet">Wallet page</LinkBtn>}>
+          Apply it to these fees on the Wallet page{w && w.state !== "OPEN" ? " when payment opens" : ""}; you pay only the rest.
+        </Note>
+      ) : null}
       {unstated.length ? (
         <Note kind="info" title={`Your ${unstatedWords} semester school fees for ${fees.session} are not yet stated`}>
           What is shown covers what the Bursary has stated so far; nothing here pays for the {unstatedWords} semester. The Bursary is told when a student&rsquo;s fees are missing, and the charge appears here once it is stated. If it is still not here in a few days, <Link href={askBursary(`${semesterName(unstated[0])} semester school fees for ${fees.session} not stated`)}>ask the Bursary</Link>.

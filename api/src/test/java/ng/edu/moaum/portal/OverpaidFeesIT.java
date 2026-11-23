@@ -24,7 +24,8 @@ import org.springframework.transaction.PlatformTransactionManager;
  * there) or a refund raised on the Refunds & Credits desk — the reconciliation reading it settled; a session's fee lines copied
  * from another after a preview, a line it states kept; and what waits for the ledger read on its own. V519: a student overpaid
  * through portal payments alone is listed too, and the student is told and sees the decision on the fees page. V528: the student
- * gives the bank account a refund is paid into, the refunds desk sees it, and it is fixed once the refund is approved.
+ * gives the bank account a refund is paid into, the refunds desk sees it, and it is fixed once the refund is approved. V781: a student who is
+ * not an exact repeat of one payment is carried or refunded only on the officer's confirmation that the fee setup was checked.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {"moaum.auth.hmac-secret=" + TestTokens.SECRET})
 @EnabledIfEnvironmentVariable(named = "DATABASE_URL", matches = ".+")
@@ -118,10 +119,17 @@ class OverpaidFeesIT {
                 .extracting(r -> ((Number) r.get("excess")).intValue() + ":" + r.get("old_portal")).containsExactly("25000:false");
 
         // the Bursary alone, with a reason
-        Map<String, Object> carryIt = Map.of("session", a, "decision", "CARRY", "students", List.of(carry), "reason", "overpaid fees counted towards the next session");
+        Map<String, Object> carryIt = Map.of("session", a, "decision", "CARRY", "students", List.of(carry), "reason", "overpaid fees counted towards the next session", "feeSetupChecked", true);
         assertThat(it.call(audit, HttpMethod.POST, "/api/v1/finance/legacy-fees/overpaid/decide", carryIt).getStatusCode().value()).isEqualTo(403);
         assertThat(it.call(bursar, HttpMethod.POST, "/api/v1/finance/legacy-fees/overpaid/decide",
                 Map.of("session", a, "decision", "CARRY", "students", List.of(carry), "reason", "short")).getStatusCode().value()).isIn(400, 422);
+        // V781: 70,000 and 50,000 against 100,000 is not one payment repeated, so the officer confirms that the fee setup and the payments were
+        // checked; without it nothing is decided and the answer counts the student as unchecked
+        ResponseEntity<Map> unchecked = it.call(bursar, HttpMethod.POST, "/api/v1/finance/legacy-fees/overpaid/decide",
+                Map.of("session", a, "decision", "CARRY", "students", List.of(carry), "reason", "overpaid fees counted towards the next session"));
+        assertThat(unchecked.getStatusCode().value()).as(String.valueOf(unchecked.getBody())).isEqualTo(200);
+        assertThat(unchecked.getBody()).containsEntry("carried", 0).containsEntry("unchecked", 1);
+        assertThat(jdbc.sql("SELECT count(*) FROM finance.overpayment_decision WHERE student_id = :s").param("s", carry).query(Long.class).single()).isZero();
         ResponseEntity<Map> carried = it.call(bursar, HttpMethod.POST, "/api/v1/finance/legacy-fees/overpaid/decide", carryIt);
         assertThat(carried.getStatusCode().value()).as(String.valueOf(carried.getBody())).isEqualTo(200);
         assertThat(carried.getBody()).containsEntry("carried", 1).containsEntry("refunds", 0);
@@ -137,7 +145,7 @@ class OverpaidFeesIT {
                 .containsExactly("CARRY:" + a + ">" + b);
 
         ResponseEntity<Map> refunded = it.call(bursar, HttpMethod.POST, "/api/v1/finance/legacy-fees/overpaid/decide",
-                Map.of("session", a, "decision", "REFUND", "students", List.of(refund), "reason", "overpaid fees returned to the student"));
+                Map.of("session", a, "decision", "REFUND", "students", List.of(refund), "reason", "overpaid fees returned to the student", "feeSetupChecked", true));
         assertThat(refunded.getStatusCode().value()).as(String.valueOf(refunded.getBody())).isEqualTo(200);
         assertThat(refunded.getBody()).containsEntry("refunds", 1);
         assertThat(jdbc.sql("SELECT amount::int || ':' || state FROM finance.refund WHERE student_id = :s").param("s", refund).query(String.class).single())

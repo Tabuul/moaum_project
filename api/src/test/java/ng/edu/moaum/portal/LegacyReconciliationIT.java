@@ -27,7 +27,8 @@ import org.springframework.transaction.PlatformTransactionManager;
  * well, the student is told; a second approval is refused; the student applies the credit to the next session's fees through the
  * wallet that exists, and cannot apply more than it holds; the full record shows the request; the figures and the reports agree.
  * V631: the old portal's OUTSTANDING FEES payments verified by the officer and credited to the wallet by another Bursar officer.
- * Needs DATABASE_URL.
+ * V781: a request for a student whose excess is not an exact repeat of one payment carries the fee-setup confirmation; the requests made on the
+ * Overpaid school fees desk are not in this desk's queue (OverpaidReconciliationIT). Needs DATABASE_URL.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = "moaum.auth.hmac-secret=" + TestTokens.SECRET)
@@ -143,6 +144,8 @@ class LegacyReconciliationIT {
         Map<String, Object> fig = ok(it.get(officer, "/api/v1/finance/legacy-reconciliation/figures?session=" + a));
         assertThat(((Number) ((Map<String, Object>) fig.get("outstanding")).get("owes")).intValue()).isGreaterThanOrEqualTo(1);
         assertThat(((Number) ((Map<String, Object>) fig.get("outstanding")).get("credit")).intValue()).isGreaterThanOrEqualTo(1);
+        // V781: the requests made on the Overpaid school fees desk are counted apart: this desk counts its own
+        assertThat(((Map<String, Object>) fig.get("requests")).get("onOverpaidDesk")).isNotNull();
         // a student cannot read the desk
         assertThat(it.get(student, "/api/v1/finance/legacy-reconciliation/figures").getStatusCode().value()).isEqualTo(403);
 
@@ -151,22 +154,22 @@ class LegacyReconciliationIT {
         ResponseEntity<Map> liability = it.call(officer, HttpMethod.POST, base, Map.of("student", owes, "session", a, "reason", "the old portal shows a balance", "evidence", "export row", "confirmed", true));
         assertThat(liability.getStatusCode().value()).isEqualTo(422);
         assertThat(liability.getBody().get("code")).isEqualTo("LEGACY_CREDIT_NOT_OVERPAID");
-        assertThat(it.call(officer, HttpMethod.POST, base, Map.of("student", credit, "session", a, "amount", 50000, "reason", "the old portal shows a balance", "evidence", "export rows", "confirmed", true))
+        assertThat(it.call(officer, HttpMethod.POST, base, Map.of("student", credit, "session", a, "amount", 50000, "reason", "the old portal shows a balance", "evidence", "export rows", "confirmed", true, "feeSetupChecked", true))
                 .getBody().get("code")).isEqualTo("LEGACY_CREDIT_AMOUNT");
-        assertThat(it.call(officer, HttpMethod.POST, base, Map.of("student", credit, "session", a, "amount", 20000, "reason", "the old portal shows a balance", "evidence", "export rows", "confirmed", true))
+        assertThat(it.call(officer, HttpMethod.POST, base, Map.of("student", credit, "session", a, "amount", 20000, "reason", "the old portal shows a balance", "evidence", "export rows", "confirmed", true, "feeSetupChecked", true))
                 .getBody().get("code")).isEqualTo("LEGACY_CREDIT_ADJUSTMENT_REASON");
         assertThat(it.call(officer, HttpMethod.POST, base, Map.of("student", credit, "session", a, "reason", "the old portal shows a balance", "evidence", "export rows", "confirmed", false))
                 .getBody().get("code")).isEqualTo("LEGACY_CREDIT_CONFIRM");
         // the request, at a lower amount with its reason: adjusted, pending the Bursar, nothing credited; the Bursar told
         Map<String, Object> req = ok(it.call(officer, HttpMethod.POST, base, Map.of("student", credit, "session", a, "amount", 20000,
-                "reason", "the old portal shows a balance of 20,000 after a part refund", "evidence", "export rows S1 and S2; the old portal's statement", "adjustmentReason", "the old portal refunded 10,000 in cash", "confirmed", true)));
+                "reason", "the old portal shows a balance of 20,000 after a part refund", "evidence", "export rows S1 and S2; the old portal's statement", "adjustmentReason", "the old portal refunded 10,000 in cash", "confirmed", true, "feeSetupChecked", true)));
         String id = String.valueOf(req.get("id"));
         assertThat(req).containsEntry("status", "PENDING_BURSAR_APPROVAL").containsEntry("adjusted", true);
         assertThat(String.valueOf(req.get("ref"))).matches("LOR/[0-9]{4}/[0-9]{6}");
         assertThat(walletBalance(credit)).isEqualByComparingTo("0");
         assertThat(jdbc.sql("SELECT count(*) FROM platform.notice WHERE about_kind = 'person' AND about_id = :p AND template_key = 'LEGACY_CREDIT_WAITING'").param("p", bursarId).query(Long.class).single()).isGreaterThanOrEqualTo(1L);
         // a second request while one stands is refused; the row shows the request
-        assertThat(it.call(officer, HttpMethod.POST, base, Map.of("student", credit, "session", a, "reason", "the old portal shows a balance", "evidence", "export rows", "confirmed", true))
+        assertThat(it.call(officer, HttpMethod.POST, base, Map.of("student", credit, "session", a, "reason", "the old portal shows a balance", "evidence", "export rows", "confirmed", true, "feeSetupChecked", true))
                 .getBody().get("code")).isEqualTo("LEGACY_CREDIT_OPEN");
         assertThat(rowOf(officer, credit)).containsEntry("request_status", "PENDING_BURSAR_APPROVAL");
 
@@ -198,7 +201,7 @@ class LegacyReconciliationIT {
         ResponseEntity<Map> again = it.call(bursar, HttpMethod.POST, base + "/" + id + "/decide", Map.of("action", "APPROVE"));
         assertThat(again.getStatusCode().value()).isEqualTo(422);
         assertThat(again.getBody().get("code")).isEqualTo("LEGACY_CREDIT_STATE");
-        Map<String, Object> carry = ok(it.call(bursar, HttpMethod.POST, "/api/v1/finance/legacy-fees/overpaid/decide", Map.of("session", a, "decision", "CARRY", "students", List.of(credit), "reason", "carry the excess into the next session")));
+        Map<String, Object> carry = ok(it.call(bursar, HttpMethod.POST, "/api/v1/finance/legacy-fees/overpaid/decide", Map.of("session", a, "decision", "CARRY", "students", List.of(credit), "reason", "carry the excess into the next session", "feeSetupChecked", true)));
         assertThat(carry).containsEntry("carried", 0);
         assertThat(walletBalance(credit)).isEqualByComparingTo("30000");
         assertThat(rowOf(officer, credit)).containsEntry("state", "CREDIT_DECIDED").containsEntry("decision", "WALLET");

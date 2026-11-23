@@ -136,6 +136,24 @@ class WalletRepository {
         return jdbc.sql("SELECT * FROM finance.withdrawal_eligibility(:s, :n)").param("s", student).param("n", session).query().singleRow();
     }
 
+    /** V781: what each source of the wallet may give back as a refund now — the page's figure for each, which the server never exceeds
+     *  (finance.withdrawal_sources: empty unless the session's fees are cleared with nothing in arrears; overpaid school fees over every
+     *  session, less what a decision above the excess owes the session's fees) */
+    List<Map<String, Object>> withdrawalSources(UUID student, String session) {
+        return jdbc.sql("SELECT source_code AS code, source_name AS name, nature, refundable FROM finance.withdrawal_sources(:s, :n)")
+                .param("s", student).param("n", session).query().listOfRows();
+    }
+
+    /** V781: the wallet's own money from an overpayment (OVERPAID credited, less applied, reversed and refunded, less a refund of it pending) */
+    BigDecimal overpaidMoney(UUID student) {
+        return jdbc.sql("SELECT finance.overpaid_wallet_money(:s)").param("s", student).query(BigDecimal.class).single();
+    }
+
+    /** V781: the part of that money kept back from a refund because a decision above the excess owes it back to the session's fees */
+    BigDecimal overpaidKeptBack(UUID student) {
+        return jdbc.sql("SELECT finance.overpaid_kept_back(:s)").param("s", student).query(BigDecimal.class).single();
+    }
+
     Map<String, Object> requestWithdrawal(UUID student, String session, BigDecimal amount, String bank, String acctNo, String acctName, String source) {
         return jdbc.sql("SELECT * FROM finance.request_withdrawal(:s, :n, :a, :b, :no, :nm, :src)")
                 .param("s", student).param("n", session).param("a", amount, Types.NUMERIC)

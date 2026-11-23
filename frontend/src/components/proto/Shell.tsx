@@ -86,6 +86,7 @@ export const ROUTES: Record<string, string> = {
   "t/overview": "/overview",
   "r/admin": "/admin",
   "t/refunds": "/finance/refunds",
+  "t/overpaid": "/finance/overpaid",   // V781
   "t/paymentswaps": "/finance/payment-swaps",
   "t/paymentrealloc": "/finance/payment-reallocations",
   "t/paymentarchive": "/finance/payment-archive",

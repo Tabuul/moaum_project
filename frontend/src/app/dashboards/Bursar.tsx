@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { StatsPanel } from "@/components/stats/StatsPanel";
 import { FinancePanel } from "@/components/stats/FinancePanel";
@@ -11,6 +12,7 @@ import { when } from "@/lib/bursary";
 import { ClearanceAwaiting } from "@/components/clearance/ClearanceAwaiting";
 import { BursaryAudit } from "./BursaryAudit";
 import { HistoricalFeesDashPanel } from "@/components/finance/HistoricalFeesDashPanel";
+import { OverpaidFeesDashPanel } from "@/components/finance/OverpaidFeesDashPanel";
 import { WalletDebtsPanel } from "@/components/finance/WalletDebtsPanel";
 import type { ReconFigures } from "@/lib/legacy-reconciliation";
 
@@ -72,6 +74,8 @@ export async function BursarDashboard({ session }: { session: string }) {
         ["Archived / under review", money(Number(t.archived_open_amount ?? 0)), Number(t.archived_open ?? 0) ? "var(--amber-ink)" : null,
           `${t.archived_open ?? 0} payment${Number(t.archived_open ?? 0) === 1 ? "" : "s"}, not income; ${t.archived_waiting ?? 0} waiting for your decision`],
       ]} />
+      {/* V781: students paid above their charge, by cause — read from the kept list after the rest of the page is drawn */}
+      <Suspense fallback={null}><OverpaidFeesDashPanel session={session} mode="approve" /></Suspense>
       {op ? (
         <Panel title="Old-portal outstanding fees payments" right={<LinkBtn kind={op.verified ? "primary" : "ghost"} href="/finance/legacy-reconciliation?tab=payments&status=VERIFIED">{op.verified ? `Credit ${op.verified} to the wallets` : "Open the list"}</LinkBtn>}>
           {/* V631: kept apart from school fees; the Students Account Officer verifies, a Bursar officer other than the verifier credits the wallet */}

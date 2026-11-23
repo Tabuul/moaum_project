@@ -735,6 +735,7 @@ Every row of every dossier's implementation-status table (A–G), de-duplicated 
 | Bank credits (maker–checker) | IMPLEMENTED | `db/V037:150-215` | State `REVERSED` defined but never set |
 | Bank-credit reversal | NOT IMPLEMENTED | `db/V037:80` | No function |
 | Refunds (maker–checker, against a transaction) | IMPLEMENTED | `db/V043`, `V067` | Payout recorded, not executed; "Approve" has no confirmation |
+| Overpaid school fees: list by cause with holds, wallet credit by two officers, refund route (V781) | IMPLEMENTED | `db/V781`; `finance/OverpaidController.java`; `finance/overpaid/OverpaidDesk.tsx` | Not in V781: the wallet's overpaid money used automatically, and the stopping of a second payment of fees already paid; a past session's excess is listed held, not decided there |
 | Reconciliation attestation | IMPLEMENTED | `db/V068` | `ReconcileLedger.tsx:45` fires the error toast on every successful load (bug) |
 | Day book / ledger, payments query, breakdowns, exports | IMPLEMENTED | `db/V037:119`, `V112`, `V115` | Ledger export named `.csv` in code, downloads as branded `.xlsx`; levels fixed 100–600 on the query |
 | Legacy fees import / payment history import | IMPLEMENTED | `db/V087`, `V136` | No success toasts |

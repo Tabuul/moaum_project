@@ -120,12 +120,14 @@ export function leftRow(l: LeftRow): (string | number)[] {
   return [l.number, l.name, l.session, l.paid_on, l.number_day ?? "", n(l.amount), l.reference, l.purpose, COUNTS_AS[l.counts_as] ?? l.counts_as];
 }
 
-/** V506: what the Bursary decided for an overpaid student's excess (finance.overpayment_decision) */
-export type Decision = "CARRY" | "REFUND";
+/** V506: what the Bursary decided for an overpaid student's excess (finance.overpayment_decision); V781: a wallet credit (V625) named
+ *  as one */
+export type Decision = "CARRY" | "REFUND" | "WALLET";
 
 export const DECISION: Record<Decision, string> = {
   CARRY: "Carried into the next session",
   REFUND: "Refund raised",
+  WALLET: "Credited to the wallet",
 };
 
 /** one overpaid student of a session (finance.overpaid) */
@@ -138,6 +140,15 @@ export interface OverpaidRow {
   /** V561: a possible bank double charge of the student's school fees — waiting for the Bursary's check with the bank (the student
    *  is held from deciding), or checked */
   double_charge?: "CHECK_WITH_BANK" | "BANK_CHECKED" | null;
+  /** V781: what is left of the excess to decide (a decided student who pays again has more); how many decisions stand (`decision`
+   *  is the latest, `decided` their sum with the refunds raised by hand); the refunds raised on Refunds & Credits against the payments */
+  remaining?: number | string | null; decision_count?: number | null; refunded_by_hand?: number | string | null;
+}
+
+/** V781: whether anything of a student's excess is left to decide — what is left, from one naira; an answer without the figure (an
+ *  older one) is read by whether a decision stands */
+export function undecided(o: Pick<OverpaidRow, "remaining" | "decision">): boolean {
+  return o.remaining == null ? !o.decision : n(o.remaining) >= 1;
 }
 
 export const OVERPAID_HEADERS = ["Matric/admission no.", "Name", "Programme", "Faculty", "Level", "Due by the fee setup (₦)", "Paid (₦)",
@@ -146,7 +157,9 @@ export const OVERPAID_HEADERS = ["Matric/admission no.", "Name", "Programme", "F
 /** an overpaid student as an Excel row, in the order of OVERPAID_HEADERS */
 export function overpaidRow(o: OverpaidRow): (string | number)[] {
   return [o.number, o.name, o.programme_code, o.faculty_code ?? "", o.level ?? "", n(o.due), n(o.paid), n(o.excess),
-    o.decision ? DECISION[o.decision] ?? o.decision : "Not decided", o.to_session ?? "", o.reference ?? "", o.refund_state ?? "",
+    // V781: a decided student who paid again has more to decide — the latest decision, and what is left
+    o.decision ? `${DECISION[o.decision] ?? o.decision}${o.remaining != null && n(o.remaining) >= 1 ? `; ₦${n(o.remaining).toLocaleString("en-NG")} not yet decided` : ""}` : "Not decided",
+    o.to_session ?? "", o.reference ?? "", o.refund_state ?? "",
     o.decided_at ? o.decided_at.slice(0, 10) : "", o.old_portal ? "Yes" : "No",
     o.double_charge === "CHECK_WITH_BANK" ? "Check with the bank" : o.double_charge === "BANK_CHECKED" ? "Checked with the bank" : ""];
 }
@@ -154,4 +167,19 @@ export function overpaidRow(o: OverpaidRow): (string | number)[] {
 /** the decisions run in batches until nothing is decided or nothing is left (what the screen loops on) */
 export function decideDone(r: { carried: number; refunds: number; remaining: number }): boolean {
   return Number(r.remaining) <= 0 || Number(r.carried) + Number(r.refunds) <= 0;
+}
+
+/** V781: who a bulk decision left, and why — one line each, as the panel shows them. Every student the decision stops for a hold is counted
+ *  as held (a possible double charge waiting for the bank is one of fourteen holds: the others are not the bank's to check) */
+export function decideLeft(t: { apart: number; requested: number; refundOnly: number; uncertain: number; unchecked: number; held: number },
+                           decision: Decision, one: boolean): string[] {
+  const n = (x: number) => x.toLocaleString();
+  const why: string[] = [];
+  if (t.held > 0) why.push(`${n(t.held)} student${t.held === 1 ? " was" : "s were"} left: held — a possible double charge waiting for the bank, a spillover semester still to register, a past session, a late fee or another hold. The Overpaid school fees desk says what each one waits for.`);
+  if (t.apart > 0) why.push(`${n(t.apart)} student${t.apart === 1 ? " was" : "s were"} left: their excess is not an exact repeated payment. Check the fee setup and decide each on the Overpaid school fees desk.`);
+  if (t.requested > 0) why.push(`${n(t.requested)} left: a wallet credit request is open.`);
+  if (t.refundOnly > 0 && decision === "CARRY") why.push(`${n(t.refundOnly)} left: graduated or no longer a student — refunded, not carried.`);
+  if (t.uncertain > 0) why.push(`${n(t.uncertain)} left: the student's own fee account reads another excess.`);
+  if (t.unchecked > 0) why.push(one ? "Tick the confirmation first." : `${n(t.unchecked)} left: the fee setup was not confirmed.`);
+  return why;
 }

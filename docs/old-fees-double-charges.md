@@ -55,8 +55,8 @@ reason.
   * the student is told by e-mail, text and the portal (template `PAYMENT_NOT_RECEIVED_REMOVED`) and their fees page shows
     what is now owed.
 * **Refused:** a portal payment (settled with the gateway); a record holding several payments; one that a deferment fee, a
-  refund, the GST desk, a gateway test or a payment swap points at; and one whose session's overpayment was already carried or
-  refunded.
+  refund, the GST desk, a gateway test or a payment swap points at; and one that a carry, a refund or a wallet credit of the
+  session's overpayment rests on (V781: a decided student's later duplicate is not refused, see the last section).
 
 The checks and the withdrawals are the Bursary's office (`bursar`). Every other finance reader sees them. The database enforces
 the office and the two people, not only the screen.
@@ -123,3 +123,23 @@ hand clears the list's mark). The API: `POST /api/v1/finance/legacy-fees/double-
 
 On the Railway copy (17 Oct 2026) no student has such a pair, so the list is empty there; the AWS case comes from uploads made
 on AWS. The list reads a session in about 0.5 s on that copy, and every session in 1.4 s.
+
+## Overpaid school fees: this check is one hold of fourteen (V781)
+
+The Overpaid school fees desk (`/finance/overpaid`; `docs/overpaid-school-fees.md`) lists every student paid above their charge, by
+cause, and holds a student back for any of fourteen reasons. An unchecked possible bank double charge, or a withdrawal still open,
+is one of them: `BANK_CHECK`, "Waiting for the bank check". What changes on this page's side:
+
+* **The hold stops every decision**, not only a refund or a carry: a wallet credit too, on the new desk and on Legacy Financial
+  Reconciliation. A "never received" withdrawal proposed on a school-fees record of the session holds the student the same way.
+  The Bursary's verdict clears it. On the copy of 22 October 2026, 79 students were held for this alone.
+* **"All" decides the exact repeats only.** Carry all and Refund all on the old Overpaid panel, and Credit all ready and Refund
+  all ready on the new desk, take a student only when the repeat makes up the excess exactly and the bank or the gateway reported
+  it. Of the copy's 81 students paid twice on the old portal, 34 are exact (₦2,500,220); for the other 47 (₦1,846,345) the fee
+  line decides the amount, so each is decided one student at a time, with the officer's confirmation that the fee setup and the
+  payments were checked.
+* **A decided student's later duplicate can be withdrawn.** A withdrawal is refused (`PAY_NOT_RECEIVED_DECIDED`) only when, without
+  that payment, less would remain above the charge than is decided or requested (`finance.overpayment_decisions_covered`). It used
+  to be refused for any school-fees record of a student whose overpayment was decided.
+* **The old list names a wallet credit.** A student credited to the wallet reads "Credited to the wallet" on the Overpaid panel, and a
+  student decided who paid again is "not yet decided" for what is left.

@@ -729,6 +729,22 @@ class StudentPortalRepository {
                 """).param("s", student).param("r", reference).query().singleRow();
     }
 
+    /** V781: what the student's own fees page says of school fees paid above the session's charge (finance.student_excess: no row unless a
+     *  charge is stated and ₦1 or more is paid above it) — the whole excess, what is decided of it, what is left, what a wallet credit
+     *  request waits for, and the cause and holds of the Overpaid school fees list's row when it reads the same excess (else null:
+     *  a new overpayment not yet listed). Asked only when the position already read shows ₦1 or more paid above the charge. */
+    Optional<Map<String, Object>> studentExcess(UUID student, String session) {
+        return jdbc.sql("""
+                SELECT excess, decided, remaining, requested, cause, holds IS NOT NULL AS listed, array_to_string(holds, ',') AS holds
+                  FROM finance.student_excess(:s, :ses)
+                """).param("s", student).param("ses", session).query().listOfRows().stream().findFirst();
+    }
+
+    /** V781: the wallet's own money from an overpayment (finance.overpaid_wallet_money) — asked only when the student has a WALLET decision */
+    BigDecimal walletOverpaid(UUID student) {
+        return jdbc.sql("SELECT finance.overpaid_wallet_money(:s)").param("s", student).query(BigDecimal.class).single();
+    }
+
     String newReference(UUID student, String session, BigDecimal amount, String purpose) {
         return jdbc.sql("SELECT finance.new_reference(:s, :ses, :a, :p)").param("s", student).param("ses", session).param("a", amount)
                 .param("p", purpose, Types.VARCHAR).query(String.class).single();

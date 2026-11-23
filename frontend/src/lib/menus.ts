@@ -849,6 +849,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/exception", "icon": "alert", "label": "Payment Investigation", "badge": "!" },
           { "id": "t/payments", "icon": "card", "label": "Payments Query" },
           { "id": "t/refunds", "icon": "swap", "label": "Refunds & Credits" },
+          { "id": "t/overpaid", "icon": "swap", "label": "Overpaid School Fees" },
           { "id": "t/paymentswaps", "icon": "swap", "label": "School Fees Payment Swaps" },
           { "id": "t/paymentrealloc", "icon": "swap", "label": "Payment Reallocation & Correction" },
           { "id": "t/paymentarchive", "icon": "box", "label": "Archived Payments" },
@@ -937,6 +938,7 @@ export const MENUS: Record<string, Menu> = {
         "name": "Payment Management",
         "items": [
           { "id": "t/paymentswaps", "icon": "swap", "label": "School Fees Payment Swaps" },
+          { "id": "t/overpaid", "icon": "swap", "label": "Overpaid School Fees" },
           { "id": "t/paymentrealloc", "icon": "swap", "label": "Payment Reallocation & Correction" },
           { "id": "t/paymentarchive", "icon": "box", "label": "Archived Payments" },
           { "id": "t/historicalfees", "icon": "cap", "label": "Historical Fees & Clearance" },

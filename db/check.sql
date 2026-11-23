@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 762
+\set EXPECTED 783
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -16198,7 +16198,7 @@ END $$;
 DO $$
 DECLARE who uuid := gen_random_uuid(); s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid(); s3 uuid := gen_random_uuid();
         a text := '9983/9984'; b text := '9984/9985'; pa text; pb text; no_actor text; short_reason text; over_before text;
-        first record; carried_rec text; jlines text; unposted_free boolean; pos_b numeric; rec_after_carry text; second record; rf text;
+        first record; third record; carried_rec text; jlines text; unposted_free boolean; pos_b numeric; rec_after_carry text; second record; rf text;
         rec_after_refund text; again record; redo record; refunds_s2 int; prev text; copied text; after_copy text;
         e_unknown text; e_empty text; e_self text; msg text;
 BEGIN
@@ -16235,7 +16235,7 @@ BEGIN
         over_before := (SELECT string_agg(x.number || ':' || x.excess::int || ':' || coalesce(x.decision, '-'), ',' ORDER BY x.number COLLATE "C")
                           FROM finance.overpaid(a) x WHERE x.student_id IN (s1, s2, s3));
         -- the first carried into the next session
-        SELECT * INTO first FROM finance.decide_overpayments(a, 'carry', ARRAY[s1], 'CHECK V506: carried into the next session');
+        SELECT * INTO first FROM finance.decide_overpayments(a, 'carry', ARRAY[s1], 'CHECK V506: carried into the next session', 2000, NULL, true);   -- V781: one student, the fee setup confirmed
         carried_rec := (SELECT r.session || ':' || r.amount::int || ':' || r.channel || ':' || r.purpose FROM finance.payment_reference r
                          WHERE r.student_id = s1 AND r.session = b);
         jlines := (SELECT string_agg(p.account || ':' || p.debit::int || ':' || p.credit::int || ':' || p.session, ',' ORDER BY p.line)
@@ -16247,7 +16247,9 @@ BEGIN
         rec_after_carry := (SELECT string_agg(x.number || ':' || x.state || ':' || x.settled::int || ':' || coalesce(x.decision, '-'), ',' ORDER BY x.number COLLATE "C")
                               FROM finance.old_fees_reconciliation(a) x WHERE x.student_id IN (s1, s2, s3));
         -- the rest refunded, against the payment that covers the excess
+        -- V781: a student paid above the fee line is not refunded in bulk: left apart; refunded by name with the confirmation
         SELECT * INTO second FROM finance.decide_overpayments(a, 'REFUND', NULL, 'CHECK V506: refunded to the student');
+        SELECT * INTO third FROM finance.decide_overpayments(a, 'REFUND', ARRAY[s2], 'CHECK V506: refunded to the student', 2000, NULL, true);
         rf := (SELECT f.amount::int || ':' || f.state || ':' || coalesce(f.source_reference, '-') FROM finance.refund f
                 WHERE f.reference = (SELECT d.reference FROM finance.overpayment_decision d WHERE d.student_id = s2 AND d.superseded_at IS NULL));
         rec_after_refund := (SELECT string_agg(x.number || ':' || x.state, ',' ORDER BY x.number COLLATE "C")
@@ -16256,7 +16258,7 @@ BEGIN
         -- a refund the desk rejects leaves the excess to be decided again
         UPDATE finance.refund SET state = 'REJECTED', rejected_why = 'check V506'
          WHERE reference = (SELECT d.reference FROM finance.overpayment_decision d WHERE d.student_id = s2 AND d.superseded_at IS NULL);
-        SELECT * INTO redo FROM finance.decide_overpayments(a, 'REFUND', ARRAY[s2], 'CHECK V506: refunded again after the rejection');
+        SELECT * INTO redo FROM finance.decide_overpayments(a, 'REFUND', ARRAY[s2], 'CHECK V506: refunded again after the rejection', 2000, NULL, true);
         refunds_s2 := (SELECT count(*) FROM finance.refund f WHERE f.student_id = s2);
 
         -- the fees copied: a preview, then the copy of what the next session lacks
@@ -16284,17 +16286,17 @@ BEGIN
                  AND carried_rec = '9984/9985:20000:CARRIED:School fees 9984/9985 (carried from 9983/9984)'
                  AND jlines = '4010:20000:0:9983/9984,4010:0:20000:9984/9985' AND unposted_free AND pos_b = 20000
                  AND rec_after_carry = 'MOAUM/CHK/83/9831:OVER_SETTLED:20000:CARRY,MOAUM/CHK/83/9832:OVER:0:-,MOAUM/CHK/83/9833:MATCHED:0:-'
-                 AND second.carried = 0 AND second.refunds = 1 AND second.remaining = 0
+                 AND second.carried = 0 AND second.refunds = 0 AND second.apart = 1 AND second.remaining = 0 AND third.carried = 0 AND third.refunds = 1
                  AND rf = '30000:PROPOSED:MOAUM-LEG-MOAUMCHK839832-9983-9984-S1'
                  AND rec_after_refund = 'MOAUM/CHK/83/9831:OVER_SETTLED,MOAUM/CHK/83/9832:OVER_SETTLED'
-                 AND again.carried = 0 AND again.refunds = 0 AND redo.refunds = 1 AND refunds_s2 = 2
+                 AND again.carried = 0 AND again.refunds = 0 AND again.apart = 0 AND redo.refunds = 1 AND refunds_s2 = 2
                  AND prev = 'FEE:School fees:KEPT:100000,LATE_PAYMENT:Late payment:COPY:-'
                  AND copied = 'FEE:KEPT,LATE_PAYMENT:COPY'
                  AND after_copy = 'FEE:School fees:100000:' || pa || ',LATE_PAYMENT:Late payment:5000:' || pb || '|KEPT,KEPT'
                  AND e_unknown LIKE 'FEE_COPY_SESSION:%' AND e_empty LIKE 'FEE_COPY_EMPTY%' AND e_self LIKE 'FEE_COPY_SESSIONS%', false),
-        format('no actor %s | short %s | overpaid %s | carry %s/%s/%s, record %s, journal %s, free %s, position %s | after carry %s | refund %s/%s/%s %s | after refund %s | again %s/%s, redo %s, refunds %s | preview %s | copied %s | after %s | errors %s / %s / %s',
+        format('no actor %s | short %s | overpaid %s | carry %s/%s/%s, record %s, journal %s, free %s, position %s | after carry %s | refund in bulk %s/%s/%s apart %s, by name %s | %s | after refund %s | again %s/%s/%s, redo %s, refunds %s | preview %s | copied %s | after %s | errors %s / %s / %s',
                left(no_actor, 20), left(short_reason, 20), over_before, first.carried, first.refunds, first.remaining, carried_rec, jlines, unposted_free, pos_b,
-               rec_after_carry, second.carried, second.refunds, second.remaining, rf, rec_after_refund, again.carried, again.refunds, redo.refunds, refunds_s2,
+               rec_after_carry, second.carried, second.refunds, second.remaining, second.apart, third.refunds, rf, rec_after_refund, again.carried, again.refunds, again.apart, redo.refunds, refunds_s2,
                prev, copied, after_copy, left(e_unknown, 25), left(e_empty, 20), left(e_self, 22)));
 END $$;
 
@@ -16957,10 +16959,10 @@ BEGIN
 
         listed := (SELECT string_agg(x.number || ':' || x.excess::int || ':' || x.old_portal, ',' ORDER BY x.number COLLATE "C")
                      FROM finance.overpaid(a) x WHERE x.student_id IN (s1, s2, s3));
-        PERFORM * FROM finance.decide_overpayments(a, 'CARRY', ARRAY[s1], 'CHECK V519: carried into the next session');
+        PERFORM * FROM finance.decide_overpayments(a, 'CARRY', ARRAY[s1], 'CHECK V519: carried into the next session', 2000, NULL, true);   -- V781
         told_carry := (SELECT string_agg(n.channel || ':' || n.subject, ',' ORDER BY n.channel) FROM platform.notice n
                         WHERE n.template_key = 'OVERPAYMENT_CARRIED' AND n.about_id = s1);
-        PERFORM * FROM finance.decide_overpayments(a, 'REFUND', ARRAY[s2], 'CHECK V519: refunded to the student');
+        PERFORM * FROM finance.decide_overpayments(a, 'REFUND', ARRAY[s2], 'CHECK V519: refunded to the student', 2000, NULL, true);   -- V781
         told_raised := (SELECT string_agg(n.channel || ':' || n.subject, ',' ORDER BY n.channel) FROM platform.notice n
                          WHERE n.template_key = 'OVERPAYMENT_REFUND_RAISED' AND n.about_id = s2);
         -- the refunds desk: approved by a second officer, then paid (V533: into the account the student gave)
@@ -17490,7 +17492,7 @@ BEGIN
           (other, 'MOAUM/ADM/77/977102', 'MOAUM/CHK/77/9772', 'ZZCHKV528B', 'Invented', pa, 'UTME', a, 100, 100, 'ACTIVE', now());
         INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
         VALUES (s, a, 'MOAUM-CHKV528-1', 'School fees ' || a, 125000, '9977-11-02', '9977-11-02', who, 'INTERSWITCH', 'RCT-MOAUM-CHKV528-1', 'check V528');
-        PERFORM * FROM finance.decide_overpayments(a, 'REFUND', ARRAY[s], 'CHECK V528: refunded to the student');
+        PERFORM * FROM finance.decide_overpayments(a, 'REFUND', ARRAY[s], 'CHECK V528: refunded to the student', 2000, NULL, true);   -- V781
         SELECT d.reference INTO rf FROM finance.overpayment_decision d WHERE d.student_id = s AND d.superseded_at IS NULL;
         asks := (SELECT t.sms_body LIKE '%Give your bank account%' FROM platform.notice_template t WHERE t.key = 'OVERPAYMENT_REFUND_RAISED');
 
@@ -17695,7 +17697,7 @@ BEGIN
         INSERT INTO people.student_contact (student_id, email, updated_at) VALUES (s, 'zzchkv534@example.invalid', now());
         INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
         VALUES (s, a, 'MOAUM-CHKV534-1', 'School fees ' || a, 125000, '9975-11-02', '9975-11-02', who, 'INTERSWITCH', 'RCT-MOAUM-CHKV534-1', 'check V534');
-        PERFORM * FROM finance.decide_overpayments(a, 'REFUND', ARRAY[s], 'CHECK V534: refunded to the student');
+        PERFORM * FROM finance.decide_overpayments(a, 'REFUND', ARRAY[s], 'CHECK V534: refunded to the student', 2000, NULL, true);   -- V781
         SELECT f.reference, f.id INTO rf, rid FROM finance.refund f WHERE f.student_id = s;
         PERFORM finance.give_refund_account(s, rf, '011', 'ZZCHKV534 Invented', '0000014579');
         PERFORM set_config('moaum.actor_id', second::text, true);
@@ -23113,11 +23115,11 @@ BEGIN
     -- the officer's request: refused for the student who owes, above the excess, and for a lower amount without its reason
     BEGIN PERFORM finance.legacy_credit_initiate(s_owes, S, NULL, 'the old portal shows a balance', 'export row W1', NULL);
     EXCEPTION WHEN check_violation THEN r_owes := split_part(SQLERRM, ':', 1); END;
-    BEGIN PERFORM finance.legacy_credit_initiate(s_over, S, 50000, 'the old portal shows a balance', 'export rows O1 and O2', NULL);
+    BEGIN PERFORM finance.legacy_credit_initiate(s_over, S, 50000, 'the old portal shows a balance', 'export rows O1 and O2', NULL, true);
     EXCEPTION WHEN check_violation THEN r_amt := split_part(SQLERRM, ':', 1); END;
-    BEGIN PERFORM finance.legacy_credit_initiate(s_over, S, 20000, 'the old portal shows a balance', 'export rows O1 and O2', NULL);
+    BEGIN PERFORM finance.legacy_credit_initiate(s_over, S, 20000, 'the old portal shows a balance', 'export rows O1 and O2', NULL, true);
     EXCEPTION WHEN check_violation THEN r_adj := split_part(SQLERRM, ':', 1); END;
-    req := finance.legacy_credit_initiate(s_over, S, 20000, 'the old portal shows a balance of 20,000 after a part refund', 'export rows O1 and O2; old-portal statement', 'the old portal refunded 10,000 in cash');
+    req := finance.legacy_credit_initiate(s_over, S, 20000, 'the old portal shows a balance of 20,000 after a part refund', 'export rows O1 and O2; old-portal statement', 'the old portal refunded 10,000 in cash', true);   -- V781: the excess is above the fee line: the fee setup confirmed
     BEGIN PERFORM finance.legacy_credit_initiate(s_over, S, NULL, 'the old portal shows a balance', 'export rows O1 and O2', NULL);
     EXCEPTION WHEN check_violation THEN r_open := split_part(SQLERRM, ':', 1); END;
     -- the initiator, now acting as Bursar, cannot decide it
@@ -23144,7 +23146,7 @@ BEGIN
     PERFORM set_config('moaum.actor_id', p3::text, true);
     BEGIN PERFORM finance.legacy_credit_decide(req.id, 'APPROVE', NULL);
     EXCEPTION WHEN check_violation THEN r_again := split_part(SQLERRM, ':', 1); END;
-    SELECT * INTO carried FROM finance.decide_overpayments(S, 'CARRY', ARRAY[s_over], 'carry the excess into the next session');
+    SELECT * INTO carried FROM finance.decide_overpayments(S, 'CARRY', ARRAY[s_over], 'carry the excess into the next session', 2000, NULL, true);   -- V781: by name, with the confirmation
     SELECT * INTO after FROM finance.legacy_outstanding_rows(S, NULL, NULL, NULL, NULL, 500, true) x WHERE x.student_id = s_over;
     fig := finance.legacy_reconciliation_figures(S);
     of := finance.legacy_credit_of(s_over);
@@ -32108,9 +32110,9 @@ BEGIN
     SELECT count(*) INTO mal FROM unnest(ARRAY['2484/85', '2484/2486', '2484']) m(s) CROSS JOIN policy.cancelled_years() cy
      WHERE reporting.level_in_session(100, '2480/2481', 100, 'UTME', m.s, cy.years, cy.into_years)
            IS DISTINCT FROM least(600, greatest(100, 100 + 100 * people.counted_sessions('2480/2481', m.s)));
-    -- the set readers take the cancelled years once, never the 5-argument form once a row
+    -- the set readers take the cancelled years once, never the 5-argument form once a row (V781 moved the overpaid reading into finance.overpaid_of)
     SELECT count(*) INTO callers FROM pg_proc pr3
-     WHERE pr3.pronamespace = 'finance'::regnamespace AND pr3.proname IN ('old_fees_reconciliation', 'overpaid', 'import_legacy_payments')
+     WHERE pr3.pronamespace = 'finance'::regnamespace AND pr3.proname IN ('old_fees_reconciliation', 'overpaid_of', 'import_legacy_payments')
        AND pr3.prosrc ~ 'cancelled_years';
     RAISE EXCEPTION 'CHECK_V725_UNDONE' USING ERRCODE = 'P0001';
   EXCEPTION WHEN raise_exception THEN
@@ -33377,7 +33379,7 @@ BEGIN
     SELECT v.level INTO view_lvl FROM reporting.payments v WHERE v.reference = 'MOAUM-FEE-ZZW-7381A';
     pg_lvl := people.level_in(pg, '2493/2494', 1) || '/' || reporting.level_in_session(800, '2491/2492', 800, 'POSTGRADUATE', '2493/2494');
     SELECT count(*) INTO callers FROM pg_proc pr3
-     WHERE pr3.pronamespace = 'finance'::regnamespace AND pr3.proname IN ('old_fees_reconciliation', 'overpaid', 'import_legacy_payments')
+     WHERE pr3.pronamespace = 'finance'::regnamespace AND pr3.proname IN ('old_fees_reconciliation', 'overpaid_of', 'import_legacy_payments')
        AND pr3.prosrc ~ 'cohort_starts';
 
     msg := 'before ' || coalesce(before_rule, '-') || ' | first ' || first_a || ' | stale ' || stale
@@ -43752,8 +43754,8 @@ BEGIN
       coalesce(m4 = 'ok/ZZK-PAYU | ok/nowhere | moved ok/ok | paid on REGISTERED/none/ZZK-PAYU/nowhere/1 | held on REGISTERED/none/0'
                AND m4b = 'true/REFUND_SIWES_REGISTERED', false), m4 || ' | ' || m4b);
   -- (M5)
-  PERFORM pg_temp.assert('V777 P17: what V777 adds to the SIWES menu item of a student of a programme that carries no SIWES course (registration.siwes_at_level, read last in registration.siwes_area) reads the catalogue by index probes only: no sequential scan of catalogue.course or catalogue.course_offer, one probe of course_offer',
-      coalesce(m5 ~ '^false \| course seq 0 idx [0-3] \| course_offer seq 0 idx 1$', false), m5);
+  PERFORM pg_temp.assert('V777 P17: what V777 adds to the SIWES menu item of a student of a programme that carries no SIWES course (registration.siwes_at_level, read last in registration.siwes_area) reads the catalogue by index probes only: no sequential scan of catalogue.course or catalogue.course_offer, and only a few probes of course_offer (one when the planner leads with the programme''s offers; at most one for each of the fixture''s three SIWES courses when it leads with the marked courses: which it picks follows the statistics the tables have when the property runs, a moment autovacuum moves)',
+      coalesce(m5 ~ '^false \| course seq 0 idx [0-3] \| course_offer seq 0 idx [1-3]$', false), m5);
 END $$;
 -- ── V777, the link backfill: the entries that stand when V777 is deployed are linked to the SIWES payment they stand on, so that the money guards see it.
 --          In 9925/9926 (current; 9924/9925 closed before it, 9926/9927 planned after it), a made-up programme with two SIWES courses (ZZB 301 First Semester,
@@ -44302,6 +44304,1156 @@ BEGIN
   PERFORM pg_temp.assert('V777 review R5: a programme configured for a period that is still a DRAFT (the shape of the seven seeded programmes) — V752 binds nobody, yet the SIWES course is charged: refused SIWES_UNPAID, the page reads COURSE and can pay, the reference is drawn and payable, and once paid the course is accepted and stands on that payment',
       coalesce(q8 = 'DRAFT applies=false eligible=false may_pay=true | unpaid SIWES_UNPAID | page COURSE/bound=false/canPay=true | paid ok/true', false), coalesce(q8, '-'));
 END $$;
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+-- V781: overpaid school fees reconciled from the Bursar's dashboard (stage 1). Twenty-one properties on made-up students of made-up sessions
+-- (9773/9774, 9774/9775 — the calendar's current one where a property says so — and 9775/9776) with fee lines of their own: the five causes,
+-- what is decided in bulk and what one student at a time, the fourteen holds, Credit all / Refund all / Carry all, the two officers, what an
+-- approval writes and where it goes on the ledger, a pass that ends, a decision settled once, the further decision, the refund by hand, the
+-- students who are refunded and never credited, requests returned, rejected and withdrawn, a charge that rises after a decision, the old fees
+-- maintenance (and an upload that would relabel a record money rests on), the kept list and its figures, the desk's state read for the session in
+-- one pass, a student's row the same whoever else is asked for, the wallet refund by source, and the requests read by id, student and batch. Each block undoes
+-- its writes. The students' payments are the screenshot's: the old portal's 66,745 and 28,605 twice on the portal against 95,350.
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+-- helpers for the V781 checks (pg_temp: they live for the psql session)
+CREATE OR REPLACE FUNCTION pg_temp.zo_act(p_person uuid, p_office text) RETURNS void LANGUAGE sql AS $$
+    SELECT set_config('moaum.actor_id', p_person::text, true), set_config('moaum.actor_office', p_office, true) $$;
+
+-- a person; a Bursar office holder when p_office is given
+CREATE OR REPLACE FUNCTION pg_temp.zo_person(p_label text, p_office text DEFAULT NULL) RETURNS uuid LANGUAGE plpgsql AS $$
+DECLARE v uuid := gen_random_uuid();
+BEGIN
+    -- the audit spine refuses an unattributed change: the block acts as the nobody of the checks until it has people to act as
+    IF nullif(current_setting('moaum.actor_id', true), '') IS NULL THEN
+        PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true); PERFORM set_config('moaum.actor_office', 'bursar', true); PERFORM set_config('moaum.reason', 'CHECK V781', true);
+    END IF;
+    INSERT INTO iam.person (id, staff_number, surname, given_names) VALUES (v, 'CHK/774/' || p_label, 'CHECKV781', p_label);
+    IF p_office IS NOT NULL THEN
+        INSERT INTO iam.office_assignment (id, person_id, office_code, scope_kind, scope_id, instrument, granted_by, valid_from, valid_to)
+        VALUES (gen_random_uuid(), v, p_office, 'institution', NULL, 'check V781', gen_random_uuid(), current_date - 1, NULL);
+    END IF;
+    RETURN v;
+END $$;
+
+-- two made-up sessions, the first (when p_current) the calendar's current one for the block
+CREATE OR REPLACE FUNCTION pg_temp.zo_sessions(p_s text, p_t text, p_current boolean DEFAULT false) RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+    IF p_current THEN UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT'; END IF;
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+        (gen_random_uuid(), p_s, make_date(left(p_s, 4)::int, 10, 1), make_date(left(p_s, 4)::int + 1, 9, 30), 'PLANNED'),
+        (gen_random_uuid(), p_t, make_date(left(p_t, 4)::int, 10, 1), make_date(left(p_t, 4)::int + 1, 9, 30), 'PLANNED') ON CONFLICT (name) DO NOTHING;
+    IF p_current THEN UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/CHK/774' WHERE name = p_s; END IF;
+END $$;
+
+-- a made-up undergraduate programme's code
+CREATE OR REPLACE FUNCTION pg_temp.zo_prog() RETURNS text LANGUAGE sql AS $$
+    SELECT p.code FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code IS NOT NULL ORDER BY p.code LIMIT 1 $$;
+
+-- a student who entered the session at 100 Level (so the level on record is the level by entry year when p_level = 100)
+CREATE OR REPLACE FUNCTION pg_temp.zo_student(p_n int, p_prog text, p_entry_session text, p_level int DEFAULT 100, p_status text DEFAULT 'ACTIVE') RETURNS uuid LANGUAGE plpgsql AS $$
+DECLARE v uuid := gen_random_uuid();
+BEGIN
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+    VALUES (v, 'MOAUM/ADM/77/' || lpad(p_n::text, 6, '0'), 'MOAUM/ZZO/77/' || p_n, 'CHECKV781', 'Student ' || p_n, p_prog, 'UTME', p_entry_session, 100, p_level, p_status, now());
+    RETURN v;
+END $$;
+
+-- a school-fees line of the session for a programme (and level; semester NULL reads as the whole session)
+CREATE OR REPLACE FUNCTION pg_temp.zo_fee(p_session text, p_prog text, p_level int, p_amount numeric, p_semester int DEFAULT NULL, p_kind text DEFAULT 'FEE') RETURNS void LANGUAGE sql AS $$
+    INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, semester, kind) VALUES (p_session, 'School fees (check V781)', p_amount, p_level, p_prog, p_semester, p_kind) $$;
+
+-- a confirmed school-fees payment: PORTAL (the bank reported it: a gateway event with a gateway reference), HAND (a portal record confirmed by hand,
+-- no gateway evidence), OLD (the old portal's own record, one label for the item and semester), WALLET (paid from the wallet)
+CREATE OR REPLACE FUNCTION pg_temp.zo_pay(p_student uuid, p_session text, p_amount numeric, p_kind text, p_tag text, p_days_ago int DEFAULT 10, p_purpose text DEFAULT NULL) RETURNS text LANGUAGE plpgsql AS $$
+DECLARE v_ref text; v_actor uuid := nullif(current_setting('moaum.actor_id', true), '')::uuid; v_at timestamptz := now() - make_interval(days => p_days_ago);
+BEGIN
+    v_ref := upper(CASE WHEN p_kind = 'OLD' THEN 'MOAUM-LEG-ZO-' || p_tag ELSE 'MOAUM-FEE-ZO-' || p_tag END);
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+    VALUES (p_student, p_session, v_ref, coalesce(p_purpose, CASE WHEN p_kind = 'OLD' THEN 'School fees (legacy) ' || chr(183) || ' semester 1' ELSE 'School fees ' || p_session END), p_amount,
+            v_at - interval '1 hour', v_at + interval '1 day', v_at, v_actor,
+            CASE p_kind WHEN 'OLD' THEN 'Legacy' WHEN 'WALLET' THEN 'NELFUND wallet' WHEN 'HAND' THEN 'Bank transfer' ELSE 'Quickteller WEB' END,
+            CASE WHEN p_kind = 'OLD' THEN 'LEG-' || v_ref ELSE 'RCT-' || v_ref END, 'check V781');
+    IF p_kind = 'PORTAL' THEN
+        INSERT INTO finance.gateway_event (gateway, source, event, reference, gateway_ref, amount, status, signature_ok, outcome, received_at)
+        VALUES ('interswitch', 'WEBHOOK', 'payment', v_ref, 'GWREF-' || p_tag, p_amount, 'SUCCESS', true, 'SETTLED', v_at);
+    END IF;
+    RETURN v_ref;
+END $$;
+
+-- the list's row of a student
+CREATE OR REPLACE FUNCTION pg_temp.zo_row(p_session text, p_student uuid) RETURNS finance.overpaid_snapshot LANGUAGE plpgsql AS $$
+DECLARE r record;
+BEGIN
+    SELECT * INTO r FROM finance.overpaid_read(p_session, ARRAY[p_student]);
+    RETURN ROW(p_session, r.student_id, r.number, r.name, r.programme_code, r.dept_code, r.faculty_code, r.level, r.cohort_level, r.status, r.due, r.paid, r.excess,
+               r.cause, r.bulk, r.repeat_amount, r.n_payments, r.payments, r.holds, r.refund_only, r.suggested)::finance.overpaid_snapshot;
+END $$;
+
+-- the i-th made-up undergraduate programme (each hold's student has a programme, and so a fee line, of their own)
+CREATE OR REPLACE FUNCTION pg_temp.zo_prog_n(p_i int) RETURNS text LANGUAGE sql AS $$
+    SELECT p.code FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code IS NOT NULL ORDER BY p.code OFFSET p_i - 1 LIMIT 1 $$;
+
+-- the screenshot's payments: the old portal's 66,745 and 28,605 twice on the portal (the bank's report on both)
+CREATE OR REPLACE FUNCTION pg_temp.zo_base(p_student uuid, p_session text, p_tag text) RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+    PERFORM pg_temp.zo_pay(p_student, p_session, 66745, 'OLD', p_tag || 'a', 30);
+    PERFORM pg_temp.zo_pay(p_student, p_session, 28605, 'PORTAL', p_tag || 'b', 20);
+    PERFORM pg_temp.zo_pay(p_student, p_session, 28605, 'PORTAL', p_tag || 'c', 14);
+END $$;
+
+-- what a request, a refund and a carry do to one student: 'q<requested>/<skip codes> r<refunds>/<held> c<carried>/<held>' (the actors are set in zo.sa and zo.b1)
+CREATE OR REPLACE FUNCTION pg_temp.zo_tried(p_session text, p_student uuid) RETURNS text LANGUAGE plpgsql AS $$
+DECLARE q record; r record; c record; v_q text; v_r text; v_c text;
+BEGIN
+    PERFORM pg_temp.zo_act(current_setting('zo.sa')::uuid, 'studentaccounts');
+    SELECT * INTO q FROM finance.overpaid_credits_request(p_session, ARRAY[p_student], NULL, 'tried against every hold of the list', 1000, NULL, true);
+    v_q := 'q' || q.requested || '/' || coalesce((SELECT string_agg(DISTINCT e ->> 'code', ',') FROM jsonb_array_elements(q.skipped_why) e), '-');
+    PERFORM pg_temp.zo_act(current_setting('zo.b1')::uuid, 'bursar');
+    SELECT * INTO r FROM finance.decide_overpayments(p_session, 'REFUND', ARRAY[p_student], 'tried against every hold of the list', 2000, NULL, true);
+    v_r := 'r' || r.refunds || '/' || r.held;
+    SELECT * INTO c FROM finance.decide_overpayments(p_session, 'CARRY', ARRAY[p_student], 'tried against every hold of the list', 2000, NULL, true);
+    v_c := 'c' || c.carried || '/' || c.held;
+    RETURN v_q || ' ' || v_r || ' ' || v_c;
+END $$;
+
+-- a credit by two officers: requested by p_by (studentaccounts), approved by p_approver (bursar); returns the credit request
+CREATE OR REPLACE FUNCTION pg_temp.zo_credit(p_session text, p_student uuid, p_by uuid, p_approver uuid) RETURNS finance.legacy_credit_request LANGUAGE plpgsql AS $$
+DECLARE q record; r finance.legacy_credit_request;
+BEGIN
+    PERFORM pg_temp.zo_act(p_by, 'studentaccounts');
+    SELECT * INTO q FROM finance.overpaid_credits_request(p_session, ARRAY[p_student], NULL, 'the screenshot''s student paid 28,605 twice', 1000, NULL, true);
+    IF q.requested <> 1 THEN RAISE EXCEPTION 'zo_credit: not requested (%)', q.skipped_why; END IF;
+    PERFORM pg_temp.zo_act(p_approver, 'bursar');
+    SELECT * INTO q FROM finance.overpaid_credits_decide(NULL, q.batch_ref, 'APPROVE', NULL);
+    IF q.credited <> 1 THEN RAISE EXCEPTION 'zo_credit: not credited (%)', q.skipped_why; END IF;
+    SELECT * INTO r FROM finance.legacy_credit_request x WHERE x.student_id = p_student AND x.session = p_session AND x.status = 'CREDITED' ORDER BY x.decided_at DESC LIMIT 1;
+    RETURN r;
+END $$;
+
+-- the old portal's whole-session school-fees record of a student, as an upload without payment numbers leaves it: the reference the next upload looks for
+-- (MOAUM-LEG-<matric without its punctuation>-<session with a dash>), channel Legacy, no row in finance.legacy_payref
+CREATE OR REPLACE FUNCTION pg_temp.zo_oldrec(p_student uuid, p_n int, p_session text, p_amount numeric) RETURNS text LANGUAGE plpgsql AS $$
+DECLARE v_ref text := 'MOAUM-LEG-MOAUMZZO77' || p_n || '-' || replace(p_session, '/', '-'); v_at timestamptz := now() - interval '30 days';
+BEGIN
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+    VALUES (p_student, p_session, v_ref, 'School fees (legacy) ' || chr(183) || ' semester 1', p_amount, v_at, v_at, v_at, nullif(current_setting('moaum.actor_id', true), '')::uuid, 'Legacy', 'LEG-' || v_ref, 'check V781: an old record with no payment number');
+    RETURN v_ref;
+END $$;
+
+-- ── V781 · 1. the five causes. On a made-up session whose fee line for 100 Level is NGN 95,350 (the screenshot's: first semester 66,745 and
+--          second 28,605), five made-up students each carry one cause: A paid 66,745 (old portal) and 28,605 twice on the portal, the bank's
+--          report on both (twice on the portal, the repeat 28,605 making up the excess exactly: decided in bulk, advised to the wallet); B paid
+--          the old portal's 66,745 and 28,605 and the portal's 28,605 (on the old portal and the new); C the old portal's whole 95,350 twice (twice
+--          on the old portal); D three part-payments of 40,000, a repeated amount that is not the excess; E one payment of 130,000 (above the fee
+--          line, never bulk: what was paid differs from the fee setup) ──
+DO $$
+DECLARE
+    S constant text := '9774/9775'; T constant text := '9775/9776'; prog text := pg_temp.zo_prog(); b1 uuid; a uuid; b uuid; c uuid; d uuid; e uuid;
+    ra finance.overpaid_snapshot; rb finance.overpaid_snapshot; rc finance.overpaid_snapshot; rd finance.overpaid_snapshot; re finance.overpaid_snapshot;
+    n_listed int; msg text; v_err text;
+BEGIN
+  BEGIN
+    b1 := pg_temp.zo_person('1B1', 'bursar'); PERFORM pg_temp.zo_act(b1, 'bursar'); PERFORM set_config('moaum.reason', 'CHECK V781', true);
+    PERFORM pg_temp.zo_sessions(S, T); PERFORM pg_temp.zo_fee(S, prog, 100, 95350);
+    a := pg_temp.zo_student(1, prog, S); b := pg_temp.zo_student(2, prog, S); c := pg_temp.zo_student(3, prog, S); d := pg_temp.zo_student(4, prog, S); e := pg_temp.zo_student(5, prog, S);
+    PERFORM pg_temp.zo_pay(a, S, 66745, 'OLD', 'A1'); PERFORM pg_temp.zo_pay(a, S, 28605, 'PORTAL', 'A2', 20); PERFORM pg_temp.zo_pay(a, S, 28605, 'PORTAL', 'A3', 14);
+    PERFORM pg_temp.zo_pay(b, S, 66745, 'OLD', 'B1'); PERFORM pg_temp.zo_pay(b, S, 28605, 'OLD', 'B2'); PERFORM pg_temp.zo_pay(b, S, 28605, 'PORTAL', 'B3');
+    PERFORM pg_temp.zo_pay(c, S, 95350, 'OLD', 'C1', 30); PERFORM pg_temp.zo_pay(c, S, 95350, 'OLD', 'C2', 20);
+    PERFORM pg_temp.zo_pay(d, S, 40000, 'HAND', 'D1'); PERFORM pg_temp.zo_pay(d, S, 40000, 'HAND', 'D2'); PERFORM pg_temp.zo_pay(d, S, 40000, 'HAND', 'D3');
+    PERFORM pg_temp.zo_pay(e, S, 130000, 'HAND', 'E1');
+    ra := pg_temp.zo_row(S, a); rb := pg_temp.zo_row(S, b); rc := pg_temp.zo_row(S, c); rd := pg_temp.zo_row(S, d); re := pg_temp.zo_row(S, e);
+    SELECT count(*) INTO n_listed FROM finance.overpaid_read(S);
+    msg := format('A %s/%s/%s/%s/%s/%s | B %s/%s/%s/%s/%s | C %s/%s/%s/%s | D %s/%s/%s | E %s/%s/%s | listed %s | payments %s',
+                  ra.cause, ra.bulk, ra.repeat_amount, ra.excess, ra.n_payments, ra.suggested, rb.cause, rb.bulk, rb.repeat_amount, rb.excess, rb.suggested,
+                  rc.cause, rc.bulk, rc.repeat_amount, rc.excess, rd.cause, rd.bulk, rd.excess, re.cause, re.bulk, re.suggested, n_listed,
+                  (SELECT string_agg(x ->> 'kind' || ' ' || (x ->> 'amount'), ', ') FROM jsonb_array_elements(ra.payments) x));
+    RAISE EXCEPTION 'the V781 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V781 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V781: an overpaid student carries one cause: twice on the portal, on the old portal and the new, twice on the old portal, several payments, or above the fee line — the screenshot''s payments first (66,745 and 28,605 twice against 95,350: excess 28,605, the repeat that makes it up exactly, decided in bulk and advised to the wallet)',
+      coalesce(ra.cause = 'PORTAL_TWICE' AND ra.bulk AND ra.repeat_amount = 28605 AND ra.excess = 28605 AND ra.due = 95350 AND ra.paid = 123955 AND ra.n_payments = 3 AND ra.suggested = 'WALLET'
+               AND rb.cause = 'OLD_AND_PORTAL' AND rb.bulk AND rb.repeat_amount = 28605 AND rb.excess = 28605 AND rb.suggested = 'WALLET'
+               AND rc.cause = 'OLD_TWICE' AND rc.bulk AND rc.repeat_amount = 95350 AND rc.excess = 95350
+               AND rd.cause = 'PART_PAYMENTS' AND NOT rd.bulk AND rd.excess = 24650 AND re.cause = 'ABOVE_FEE_LINE' AND NOT re.bulk AND re.suggested = 'CHECK_FEE_SETUP', false), msg);
+END $$;
+
+-- ── V781 · 2. Two equal payments above the line are not paid twice, and a repeat that does not make up the excess is not either. Against the
+--          fee line of 95,350: F paid two 55,000 payments of the old portal under two semesters' labels (110,000, above the fee line, no
+--          repeat); G the old portal's 95,350 and the same 28,605 twice under one label (the repeat 28,605 is not the excess 57,210);
+--          H two portal payments of 55,000 the bank reported (the repeat 55,000 is not the excess 14,650) ──
+DO $$
+DECLARE
+    S constant text := '9774/9775'; T constant text := '9775/9776'; prog text := pg_temp.zo_prog(); b1 uuid; f uuid; g uuid; h uuid;
+    rf finance.overpaid_snapshot; rg finance.overpaid_snapshot; rh finance.overpaid_snapshot; msg text; v_err text;
+BEGIN
+  BEGIN
+    b1 := pg_temp.zo_person('2B1', 'bursar'); PERFORM pg_temp.zo_act(b1, 'bursar'); PERFORM set_config('moaum.reason', 'CHECK V781', true);
+    PERFORM pg_temp.zo_sessions(S, T); PERFORM pg_temp.zo_fee(S, prog, 100, 95350);
+    f := pg_temp.zo_student(11, prog, S); g := pg_temp.zo_student(12, prog, S); h := pg_temp.zo_student(13, prog, S);
+    PERFORM pg_temp.zo_pay(f, S, 55000, 'OLD', 'F1', 30, 'School fees (legacy) ' || chr(183) || ' semester 1');
+    PERFORM pg_temp.zo_pay(f, S, 55000, 'OLD', 'F2', 20, 'School fees (legacy) ' || chr(183) || ' semester 2');
+    PERFORM pg_temp.zo_pay(g, S, 95350, 'OLD', 'G1', 30); PERFORM pg_temp.zo_pay(g, S, 28605, 'OLD', 'G2', 20); PERFORM pg_temp.zo_pay(g, S, 28605, 'OLD', 'G3', 10);
+    PERFORM pg_temp.zo_pay(h, S, 55000, 'PORTAL', 'H1', 20); PERFORM pg_temp.zo_pay(h, S, 55000, 'PORTAL', 'H2', 10);
+    rf := pg_temp.zo_row(S, f); rg := pg_temp.zo_row(S, g); rh := pg_temp.zo_row(S, h);
+    msg := format('F %s/%s/%s/%s | G %s/%s/%s/%s | H %s/%s/%s/%s', rf.cause, rf.bulk, rf.excess, rf.suggested, rg.cause, rg.bulk, rg.excess, rg.suggested, rh.cause, rh.bulk, rh.excess, rh.suggested);
+    RAISE EXCEPTION 'the V781 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V781 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V781: two equal payments above the line are not paid twice, and a repeat that does not make up the excess is not either (two 55,000 old-portal payments under two semesters; a 28,605 repeat with an excess of 57,210; a 55,000 repeat the bank reported with an excess of 14,650)',
+      coalesce(rf.cause = 'ABOVE_FEE_LINE' AND NOT rf.bulk AND rf.excess = 14650 AND rf.suggested = 'CHECK_FEE_SETUP'
+               AND rg.cause = 'PART_PAYMENTS' AND NOT rg.bulk AND rg.excess = 57210 AND rg.suggested = 'REVIEW_PAYMENTS'
+               AND rh.cause = 'PART_PAYMENTS' AND NOT rh.bulk AND rh.excess = 14650 AND rh.suggested = 'REVIEW_PAYMENTS', false), msg);
+END $$;
+
+-- ── V781 · 3. Only an exact repeat the bank reported is decided in bulk. Against 95,350: X1 paid the old portal's 70,000 twice under one label (an
+--          excess of 44,650 that the repeat overshoots); X2 two portal records of 28,605 confirmed by hand beside the old portal's 66,745; X3 the
+--          screenshot's payments but at 200 Level on record (the level by entry year is 100); X4 the screenshot's payments, credited at an
+--          adjusted 20,000 by two officers (what is left of the excess, 8,605, is not swept up); A the screenshot's, bulk. Each of the four is
+--          decided one student at a time with the confirmation that the fee setup and the payments were checked: a request, a refund and a carry
+--          tried without it say so (FEE_SETUP_UNCHECKED, unchecked) and with it keep it on the request and on the decision; the bulk row needs
+--          none; two together are ONE_AT_A_TIME; Legacy Financial Reconciliation's own request asks for it too (OVERPAID_FEE_SETUP_CHECK) ──
+DO $$
+DECLARE
+    S constant text := '9774/9775'; T constant text := '9775/9776'; prog text := pg_temp.zo_prog(); b1 uuid; b2 uuid; sa uuid; a uuid; x1 uuid; x2 uuid; x3 uuid; x4 uuid;
+    ra finance.overpaid_snapshot; r1 finance.overpaid_snapshot; r2 finance.overpaid_snapshot; r3 finance.overpaid_snapshot; r4 finance.overpaid_snapshot;
+    q record; dc record; lcr finance.legacy_credit_request; req finance.legacy_credit_request; msg text; v_err text; v_a text; v_two text; v_one text; v_with text;
+    v_leg text; v_rf1 text; v_rf2 text; v_cy1 text; v_flags text; v_bulk text;
+BEGIN
+  BEGIN
+    b1 := pg_temp.zo_person('3B1', 'bursar'); b2 := pg_temp.zo_person('3B2', 'bursar'); sa := pg_temp.zo_person('3SA', 'studentaccounts');
+    PERFORM pg_temp.zo_act(sa, 'studentaccounts'); PERFORM set_config('moaum.reason', 'CHECK V781', true);
+    PERFORM pg_temp.zo_sessions(S, T); PERFORM pg_temp.zo_fee(S, prog, 100, 95350); PERFORM pg_temp.zo_fee(S, prog, 200, 95350);
+    a := pg_temp.zo_student(21, prog, S); x1 := pg_temp.zo_student(22, prog, S); x2 := pg_temp.zo_student(23, prog, S); x3 := pg_temp.zo_student(24, prog, S, 200); x4 := pg_temp.zo_student(25, prog, S);
+    PERFORM pg_temp.zo_pay(a, S, 66745, 'OLD', 'A1'); PERFORM pg_temp.zo_pay(a, S, 28605, 'PORTAL', 'A2', 20); PERFORM pg_temp.zo_pay(a, S, 28605, 'PORTAL', 'A3', 14);
+    PERFORM pg_temp.zo_pay(x1, S, 70000, 'OLD', 'X11', 30); PERFORM pg_temp.zo_pay(x1, S, 70000, 'OLD', 'X12', 20);
+    PERFORM pg_temp.zo_pay(x2, S, 66745, 'OLD', 'X21'); PERFORM pg_temp.zo_pay(x2, S, 28605, 'HAND', 'X22', 20); PERFORM pg_temp.zo_pay(x2, S, 28605, 'HAND', 'X23', 14);
+    PERFORM pg_temp.zo_pay(x3, S, 66745, 'OLD', 'X31'); PERFORM pg_temp.zo_pay(x3, S, 28605, 'PORTAL', 'X32', 20); PERFORM pg_temp.zo_pay(x3, S, 28605, 'PORTAL', 'X33', 14);
+    PERFORM pg_temp.zo_pay(x4, S, 66745, 'OLD', 'X41'); PERFORM pg_temp.zo_pay(x4, S, 28605, 'PORTAL', 'X42', 20); PERFORM pg_temp.zo_pay(x4, S, 28605, 'PORTAL', 'X43', 14);
+    -- X4's credit of an adjusted 20,000, requested by the Students Account Officer and approved by a Bursary officer
+    req := finance.legacy_credit_initiate(x4, S, 20000, 'the old portal shows 20,000 after a part refund', 'export rows X41 to X43', 'the old portal refunded 8,605 in cash', false);
+    PERFORM pg_temp.zo_act(b2, 'bursar');
+    PERFORM finance.legacy_credit_decide(req.id, 'APPROVE', NULL);
+    ra := pg_temp.zo_row(S, a); r1 := pg_temp.zo_row(S, x1); r2 := pg_temp.zo_row(S, x2); r3 := pg_temp.zo_row(S, x3); r4 := pg_temp.zo_row(S, x4);
+    v_bulk := format('A %s/%s | X1 %s/%s | X2 %s/%s | X3 %s/%s level %s of %s | X4 %s/%s left %s', ra.cause, ra.bulk, r1.cause, r1.bulk, r2.cause, r2.bulk, r3.cause, r3.bulk, r3.level, r3.cohort_level, r4.cause, r4.bulk,
+                     (SELECT x.remaining FROM finance.overpaid_read(S, ARRAY[x4]) x));
+    PERFORM pg_temp.zo_act(sa, 'studentaccounts');
+    -- the request: the bulk row needs no confirmation; two non-bulk rows together are decided one at a time; one alone needs the confirmation
+    SELECT * INTO q FROM finance.overpaid_credits_request(S, ARRAY[a], NULL, 'the screenshot''s student paid 28,605 twice', 1000, NULL, false);
+    v_a := q.requested || '/' || q.skipped;
+    SELECT * INTO q FROM finance.overpaid_credits_request(S, ARRAY[x1, x2], NULL, 'two students whose excess is not an exact repeat', 1000, NULL, true);
+    v_two := q.requested || '/' || q.skipped || ' ' || (SELECT string_agg(DISTINCT e ->> 'code', ',') FROM jsonb_array_elements(q.skipped_why) e);
+    SELECT * INTO q FROM finance.overpaid_credits_request(S, ARRAY[x1], NULL, 'a repeat the excess is short of, one at a time', 1000, NULL, false);
+    v_one := q.requested || '/' || q.skipped || ' ' || (SELECT string_agg(DISTINCT e ->> 'code', ',') FROM jsonb_array_elements(q.skipped_why) e);
+    SELECT * INTO q FROM finance.overpaid_credits_request(S, ARRAY[x4], NULL, 'what an adjusted credit left, one at a time', 1000, NULL, false);
+    v_one := v_one || ' | X4 ' || q.requested || '/' || q.skipped || ' ' || (SELECT string_agg(DISTINCT e ->> 'code', ',') FROM jsonb_array_elements(q.skipped_why) e);
+    SELECT * INTO q FROM finance.overpaid_credits_request(S, ARRAY[x1], NULL, 'a repeat the excess is short of, one at a time', 1000, NULL, true);
+    v_with := q.requested || '/' || q.skipped;
+    SELECT * INTO lcr FROM finance.legacy_credit_request WHERE student_id = x1 AND session = S AND status = 'PENDING_BURSAR_APPROVAL';
+    v_flags := 'request X1 checked ' || lcr.fee_setup_checked || ' bulk ' || lcr.bulk || ' cause ' || lcr.cause || ' amount ' || lcr.confirmed_amount
+               || '; A''s request checked ' || (SELECT q2.fee_setup_checked FROM finance.legacy_credit_request q2 WHERE q2.student_id = a AND q2.status = 'PENDING_BURSAR_APPROVAL');
+    -- Legacy Financial Reconciliation's own request for X2: refused without the confirmation, taken with it
+    BEGIN PERFORM finance.legacy_credit_initiate(x2, S, NULL, 'the portal''s two records of 28,605 were confirmed by hand', 'the bank statement', NULL, false); v_leg := 'MADE';
+    EXCEPTION WHEN check_violation THEN v_leg := split_part(SQLERRM, ':', 1); END;
+    v_leg := v_leg || ' then ' || (finance.legacy_credit_initiate(x2, S, NULL, 'the portal''s two records of 28,605 were confirmed by hand', 'the bank statement', NULL, true)).fee_setup_checked::text;
+    -- the refund and the carry of a student that is not bulk: one student a call, with the confirmation
+    PERFORM pg_temp.zo_act(b1, 'bursar');
+    SELECT * INTO dc FROM finance.decide_overpayments(S, 'REFUND', ARRAY[x3], 'the level on record is looked at', 2000, NULL, false); v_rf1 := dc.refunds || '/' || dc.unchecked;
+    SELECT * INTO dc FROM finance.decide_overpayments(S, 'REFUND', ARRAY[x3], 'the level on record is looked at', 2000, NULL, true); v_rf2 := dc.refunds || '/' || dc.unchecked;
+    SELECT * INTO dc FROM finance.decide_overpayments(S, 'CARRY', ARRAY[x1], 'carried one at a time', 2000, NULL, false); v_cy1 := dc.carried || '/' || dc.unchecked || '/' || dc.requested;
+    msg := v_bulk || ' | request A ' || v_a || ' | two ' || v_two || ' | one ' || v_one || ' | with ' || v_with || ' | ' || v_flags || ' | legacy ' || v_leg || ' | refund X3 ' || v_rf1 || ' then ' || v_rf2
+           || ' decision checked ' || coalesce((SELECT d.fee_setup_checked::text FROM finance.overpayment_decision d WHERE d.student_id = x3 AND d.superseded_at IS NULL), 'none')
+           || ' | carry X1 ' || v_cy1;
+    RAISE EXCEPTION 'the V781 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V781 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V781: only an exact repeat the bank reported is decided in bulk — an old-portal repeat the excess falls short of, two portal records confirmed by hand, a level on record that is not the level by entry year and what an adjusted credit left are each decided one student at a time with the fee setup confirmed, and the confirmation is kept',
+      coalesce(msg = 'A PORTAL_TWICE/t | X1 OLD_TWICE/f | X2 PORTAL_TWICE/f | X3 PORTAL_TWICE/f level 200 of 100 | X4 PORTAL_TWICE/f left 8605.00 | request A 1/0 | two 0/2 ONE_AT_A_TIME | one 0/1 FEE_SETUP_UNCHECKED | X4 0/1 FEE_SETUP_UNCHECKED | with 1/0 | request X1 checked true bulk true cause OLD_TWICE amount 44650.00; A''s request checked false | legacy OVERPAID_FEE_SETUP_CHECK then true | refund X3 0/1 then 1/0 decision checked true | carry X1 0/1/0', false), msg);
+END $$;
+
+-- ── V781 · 4. A held overpayment is listed with its reason and is neither credited, refunded nor carried: each of the fourteen holds, made on a made-up
+--          student whose payments are the screenshot's (an excess of 28,605 the bank reported twice), and each tried through a request, a refund
+--          and a carry. 9774/9775 is the calendar's current session, 9773/9774 the one before it (and the CCE route's own). PAST_SESSION a regular
+--          student's excess on the earlier session; CLOSED_FOR_FEES a graduated student; BANK_CHECK two old-portal records of one day and amount under
+--          two payment numbers; SAME_PAYMENT two portal records of one gateway reference; REVERSAL a PayDirect reversal; UNDER_REVIEW a payment archived;
+--          OPEN_CORRECTION a payment swap waiting; SEMESTER_NOT_CHARGED a second semester's line before the semester is open; SEMESTER_NOT_STATED only
+--          the first semester's line stated; SPILLOVER_SEMESTER a spillover student with a semester still to register; LATE_FEE_POSSIBLE a late
+--          registration fee that may fall, before the window's late period and after the window expired; LATE_FEE_LAPSED a late payment fee that was due;
+--          EXCESS_UNCERTAIN a CCE student whose own window is in its late period (the general one is not), so the student's own fee account reads
+--          the late fee the list does not; MERGED_RECORD a record merged into another. A student with no hold is the control ──
+DO $$
+DECLARE
+    P constant text := '9773/9774'; S constant text := '9774/9775'; T constant text := '9775/9776'; b1 uuid; sa uuid; tgt uuid; pl uuid[] := '{}'; sess text[] := '{}'; codes text[];
+    code text; i int; st uuid; pay text; n int := 30; aid uuid; r finance.overpaid_snapshot; r2 finance.overpaid_snapshot; got text := ''; word_ok boolean := true;
+    exp text[] := ARRAY['PAST_SESSION', 'CLOSED_FOR_FEES', 'BANK_CHECK', 'SAME_PAYMENT', 'REVERSAL', 'UNDER_REVIEW', 'OPEN_CORRECTION', 'SEMESTER_NOT_CHARGED', 'SEMESTER_NOT_STATED',
+                        'SPILLOVER_SEMESTER', 'LATE_FEE_POSSIBLE', 'LATE_FEE_LAPSED', 'EXCESS_UNCERTAIN', 'MERGED_RECORD'];
+    v_ctl text; v_late2 text; msg text; v_err text; w uuid; ctl uuid; bad text := ''; tried text; v_only text; v_diff int := 0; v_ids uuid[]; v_sx text;
+BEGIN
+  BEGIN
+    b1 := pg_temp.zo_person('4B1', 'bursar'); sa := pg_temp.zo_person('4SA', 'studentaccounts'); PERFORM set_config('zo.sa', sa::text, true); PERFORM set_config('zo.b1', b1::text, true);
+    PERFORM pg_temp.zo_act(b1, 'bursar'); PERFORM set_config('moaum.reason', 'CHECK V781', true);
+    PERFORM pg_temp.zo_sessions(P, S); PERFORM pg_temp.zo_sessions(S, T, true);
+    INSERT INTO policy.semester (id, session, number, state) VALUES (gen_random_uuid(), S, 1, 'OPEN'), (gen_random_uuid(), S, 2, 'NOT_YET_OPEN');
+    codes := exp;
+    FOR i IN 1..16 LOOP
+        PERFORM pg_temp.zo_fee(CASE WHEN i = 1 THEN P ELSE S END, pg_temp.zo_prog_n(i), 100, 95350, CASE WHEN i IN (8, 9) THEN 1 END);   -- the ordinary line: the whole session's (semester 1's alone for 8 and 9)
+    END LOOP;
+    -- the control: no hold, the screenshot's student
+    ctl := pg_temp.zo_student(30, pg_temp.zo_prog_n(16), S); PERFORM pg_temp.zo_base(ctl, S, 'CTL');
+    -- 1 PAST_SESSION
+    st := pg_temp.zo_student(31, pg_temp.zo_prog_n(1), P); PERFORM pg_temp.zo_base(st, P, 'H01'); pl := pl || st; sess := sess || P;
+    -- 2 CLOSED_FOR_FEES
+    st := pg_temp.zo_student(32, pg_temp.zo_prog_n(2), S, 100, 'GRADUATED'); PERFORM pg_temp.zo_base(st, S, 'H02'); pl := pl || st; sess := sess || S;
+    -- 3 BANK_CHECK: two old-portal records of one day, one amount and one label under two payment numbers
+    st := pg_temp.zo_student(33, pg_temp.zo_prog_n(3), S); PERFORM pg_temp.zo_pay(st, S, 66745, 'OLD', 'H03a', 30); PERFORM pg_temp.zo_pay(st, S, 28605, 'OLD', 'H03b', 10); PERFORM pg_temp.zo_pay(st, S, 28605, 'OLD', 'H03c', 10);
+    INSERT INTO finance.legacy_payref (payref, reference, amount) VALUES ('PAYREF-H03B', 'MOAUM-LEG-ZO-H03B', 28605), ('PAYREF-H03C', 'MOAUM-LEG-ZO-H03C', 28605); pl := pl || st; sess := sess || S;
+    -- 4 SAME_PAYMENT: two portal records of one gateway reference
+    st := pg_temp.zo_student(34, pg_temp.zo_prog_n(4), S); PERFORM pg_temp.zo_base(st, S, 'H04');
+    UPDATE finance.gateway_event SET gateway_ref = 'GWREF-SAME-H04' WHERE reference IN ('MOAUM-FEE-ZO-H04B', 'MOAUM-FEE-ZO-H04C'); pl := pl || st; sess := sess || S;
+    -- 5 REVERSAL
+    st := pg_temp.zo_student(35, pg_temp.zo_prog_n(5), S); PERFORM pg_temp.zo_base(st, S, 'H05');
+    INSERT INTO finance.paydirect_inbox (payment_log_id, is_reversal, reference, amount, payment) VALUES ('LOG-ZO-H05', true, 'MOAUM-FEE-ZO-H05C', 28605, '{}'::jsonb); pl := pl || st; sess := sess || S;
+    -- 6 UNDER_REVIEW: a fourth payment archived for review (the excess is the screenshot's still)
+    st := pg_temp.zo_student(36, pg_temp.zo_prog_n(6), S); PERFORM pg_temp.zo_base(st, S, 'H06'); PERFORM pg_temp.zo_pay(st, S, 5000, 'HAND', 'H06x', 5);
+    aid := finance.archive_payment((SELECT x.id FROM finance.payment_reference x WHERE x.reference = 'MOAUM-FEE-ZO-H06X'), 'UNVERIFIED_PAYMENT', NULL, 'the bank branch slip was not matched on the statement yet', true); pl := pl || st; sess := sess || S;
+    -- 7 OPEN_CORRECTION: a swap of a fourth payment to another student waits for a decision
+    st := pg_temp.zo_student(37, pg_temp.zo_prog_n(7), S); PERFORM pg_temp.zo_base(st, S, 'H07'); PERFORM pg_temp.zo_pay(st, S, 5000, 'HAND', 'H07x', 5); tgt := pg_temp.zo_student(38, pg_temp.zo_prog_n(15), S);
+    PERFORM finance.initiate_payment_swap((SELECT x.id FROM finance.payment_reference x WHERE x.reference = 'MOAUM-FEE-ZO-H07X'), tgt, 'Student B paid on student A''s account; teller confirmed', 'Teller 0042', true); pl := pl || st; sess := sess || S;
+    -- 8 SEMESTER_NOT_CHARGED: the second semester's line, the semester not open
+    st := pg_temp.zo_student(39, pg_temp.zo_prog_n(8), S); PERFORM pg_temp.zo_fee(S, pg_temp.zo_prog_n(8), 100, 28605, 2); PERFORM pg_temp.zo_base(st, S, 'H08'); pl := pl || st; sess := sess || S;
+    -- 9 SEMESTER_NOT_STATED: only the first semester's line (the second is not closed)
+    st := pg_temp.zo_student(40, pg_temp.zo_prog_n(9), S); PERFORM pg_temp.zo_base(st, S, 'H09'); pl := pl || st; sess := sess || S;
+    -- 10 SPILLOVER_SEMESTER: above the programme's final level, one semester paid and registered by its payment, the second still to register
+    st := pg_temp.zo_student(41, pg_temp.zo_prog_n(10), S, 500);
+    INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, semester, spillover) VALUES
+        (S, 'Spillover school fees (check V781)', 30000, finance.final_level(pg_temp.zo_prog_n(10)), pg_temp.zo_prog_n(10), 1, true), (S, 'Spillover school fees (check V781)', 20000, finance.final_level(pg_temp.zo_prog_n(10)), pg_temp.zo_prog_n(10), 2, true);
+    PERFORM pg_temp.zo_pay(st, S, 30000, 'OLD', 'H10a', 20); PERFORM pg_temp.zo_pay(st, S, 30000, 'OLD', 'H10b', 10); pl := pl || st; sess := sess || S;
+    -- 11 LATE_FEE_POSSIBLE: a late registration line and a registration window with its late fee on, nothing submitted
+    st := pg_temp.zo_student(42, pg_temp.zo_prog_n(11), S); PERFORM pg_temp.zo_fee(S, pg_temp.zo_prog_n(11), 100, 5000, NULL, 'LATE_REGISTRATION'); PERFORM pg_temp.zo_base(st, S, 'H11');
+    INSERT INTO policy.portal_window (id, window_type, session, semester, opens_at, closes_at, late_until, late_fee_enabled, created_office)
+    VALUES (gen_random_uuid(), 'COURSE_REGISTRATION', S, 1, now() - interval '10 days', now() + interval '30 days', now() + interval '60 days', true, 'ict') RETURNING id INTO w; pl := pl || st; sess := sess || S;
+    -- 12 LATE_FEE_LAPSED: a late payment line, the school-fees window's late fee on and its date past, nothing paid by then
+    st := pg_temp.zo_student(43, pg_temp.zo_prog_n(12), S); PERFORM pg_temp.zo_fee(S, pg_temp.zo_prog_n(12), 100, 5000, NULL, 'LATE_PAYMENT'); PERFORM pg_temp.zo_base(st, S, 'H12');
+    INSERT INTO policy.portal_window (id, window_type, session, semester, opens_at, closes_at, late_until, late_fee_enabled, created_office)
+    VALUES (gen_random_uuid(), 'SCHOOL_FEES_PAYMENT', S, NULL, now() - interval '90 days', now() - interval '30 days', now() - interval '20 days', true, 'ict'); pl := pl || st; sess := sess || S;
+    -- 13 EXCESS_UNCERTAIN: a CCE student (its session the one before the current), its own window in the late period, a late payment line
+    st := gen_random_uuid();
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at, study_mode)
+    VALUES (st, 'MOAUM/ADM/77/000044', 'MOAUM/ZZO/77/44', 'CHECKV781', 'Student 44', pg_temp.zo_prog_n(13), 'CCE', P, 100, 100, 'ACTIVE', now(), 'PART_TIME');
+    INSERT INTO finance.fee_schedule (session, item, amount, level, programme_code, entry_mode, kind) VALUES (P, 'CCE school fees (check V781)', 95350, 100, pg_temp.zo_prog_n(13), 'CCE', 'FEE'), (P, 'CCE late payment (check V781)', 5000, 100, pg_temp.zo_prog_n(13), 'CCE', 'LATE_PAYMENT');
+    INSERT INTO policy.portal_window (id, window_type, session, semester, opens_at, closes_at, late_until, late_fee_enabled, created_office)
+    VALUES (gen_random_uuid(), 'CCE_SCHOOL_FEES_PAYMENT', P, NULL, now() - interval '90 days', now() - interval '40 days', now() + interval '20 days', true, 'ict');
+    PERFORM pg_temp.zo_base(st, P, 'H13'); pl := pl || st; sess := sess || P;
+    -- 14 MERGED_RECORD
+    st := pg_temp.zo_student(45, pg_temp.zo_prog_n(14), S); PERFORM pg_temp.zo_base(st, S, 'H14'); UPDATE people.student SET duplicate_of = tgt WHERE id = st; pl := pl || st; sess := sess || S;
+    -- each: the hold in its row, and the three acts refused for it
+    FOR i IN 1..14 LOOP
+        r := pg_temp.zo_row(sess[i], pl[i]); tried := pg_temp.zo_tried(sess[i], pl[i]);
+        bad := bad || CASE WHEN NOT (exp[i] = ANY (r.holds)) THEN exp[i] || ' is not on the row (' || coalesce(array_to_string(r.holds, ','), '-') || '); ' ELSE '' END
+                   || CASE WHEN tried <> 'q0/HELD r0/1 c0/1' OR r.suggested <> 'WAIT' THEN exp[i] || ' tried ' || tried || ' advised ' || r.suggested || '; ' ELSE '' END;
+        got := got || exp[i] || ' ' || coalesce(r.cause, '-') || ' ' || coalesce(array_to_string(r.holds, ','), '-') || ' | ';
+        word_ok := word_ok AND finance.overpaid_hold_word(exp[i]) <> exp[i] AND length(finance.overpaid_hold_word(exp[i])) > 10;
+    END LOOP;
+    -- a student's row is the same whoever else is asked for: the read of a session is the reads of each student alone, and of all of them together,
+    -- column for column (the fourteen holds, the control, and a student with no payment); the hold's own reads are cut to the students asked for
+    v_ids := pl || ARRAY[ctl, tgt];
+    FOREACH v_sx IN ARRAY ARRAY[P, S] LOOP
+        v_diff := v_diff
+            + (SELECT count(*) FROM (SELECT x.* FROM finance.overpaid_read(v_sx) x WHERE x.student_id = ANY (v_ids)
+                                     EXCEPT ALL SELECT y.* FROM unnest(v_ids) w(id) CROSS JOIN LATERAL finance.overpaid_read(v_sx, ARRAY[w.id]) y) d1)
+            + (SELECT count(*) FROM (SELECT y.* FROM unnest(v_ids) w(id) CROSS JOIN LATERAL finance.overpaid_read(v_sx, ARRAY[w.id]) y
+                                     EXCEPT ALL SELECT x.* FROM finance.overpaid_read(v_sx) x WHERE x.student_id = ANY (v_ids)) d2)
+            + (SELECT count(*) FROM (SELECT x.* FROM finance.overpaid_read(v_sx) x WHERE x.student_id = ANY (v_ids)
+                                     EXCEPT ALL SELECT y.* FROM finance.overpaid_read(v_sx, v_ids) y) d3)
+            + (SELECT count(*) FROM (SELECT y.* FROM finance.overpaid_read(v_sx, v_ids) y
+                                     EXCEPT ALL SELECT x.* FROM finance.overpaid_read(v_sx) x WHERE x.student_id = ANY (v_ids)) d4);
+    END LOOP;
+    v_only := (SELECT array_to_string(x.holds, ',') FROM finance.overpaid_read(P, ARRAY[pl[13]]) x);
+    -- a late registration fee that may fall stays held once the window has expired
+    UPDATE policy.portal_window SET closes_at = now() - interval '30 days', late_until = now() - interval '20 days', opens_at = now() - interval '60 days' WHERE id = w;
+    r2 := pg_temp.zo_row(S, pl[11]); v_late2 := coalesce(array_to_string(r2.holds, ','), '-');
+    -- the control has none and is requested
+    r := pg_temp.zo_row(S, ctl); v_ctl := coalesce(array_to_string(r.holds, ','), '-') || ' ' || r.cause || ' ' || r.suggested || ' ' || pg_temp.zo_tried(S, ctl);
+    msg := got || 'late registration after expiry ' || v_late2 || ' | the CCE student held for ' || v_only || ' | control ' || v_ctl || ' | words ' || word_ok || ' | ' || bad;
+    RAISE EXCEPTION 'the V781 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V781 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V781: a held overpayment is listed with its reason and is neither credited, refunded nor carried — all fourteen holds (a past session, a record closed for fees, a bank check, one payment recorded twice, a reversal, a payment archived, a correction open, a semester not charged, a semester not stated, a spillover semester to register, a late registration fee that may fall before the late period and after the window expired, a late payment fee that was due, an excess the student''s own fee account reads differently, a merged record), each made and each tried',
+      coalesce(bad = '' AND word_ok AND v_late2 = 'LATE_FEE_POSSIBLE' AND v_only = 'EXCESS_UNCERTAIN' AND v_ctl = ' PORTAL_TWICE WALLET q1/- r0/0 c0/0', false), msg);
+  PERFORM pg_temp.assert('V781: a student''s row of the list is the same whoever else is asked for — the read of a session equals the reads of each student alone and of all of them together, column for column, for the fourteen holds, the control and a student with no payment, in two sessions',
+      coalesce(v_diff = 0, false), v_diff || ' rows differ');
+END $$;
+
+-- ── V781 · 5. Credit all, Refund all and Carry all decide the exact paid-twice rows only. Against 95,350: A1 and A2 the screenshot's (twice on the portal),
+--          C the old portal's whole fee twice (exact), G the old portal's 70,000 twice (the repeat overshoots the excess), F one payment of 130,000 (above
+--          the fee line). Credit all of a paid-twice cause requests the exact rows and leaves G ONE_AT_A_TIME; a cause that is not paid twice, or no
+--          students and no cause, is refused; Refund all (no students named) refunds A1, A2 and C and leaves F and G apart; so does Carry all; the
+--          fee-line cause named leaves its one student apart ──
+DO $$
+DECLARE
+    S constant text := '9774/9775'; T constant text := '9775/9776'; prog text := pg_temp.zo_prog(); b1 uuid; sa uuid; a1 uuid; a2 uuid; c uuid; g uuid; f uuid;
+    q record; d record; v_cr text; v_cr2 text; v_who text; v_cause text; v_ref text; v_car text; v_fee text; msg text; v_err text;
+BEGIN
+  BEGIN
+    b1 := pg_temp.zo_person('5B1', 'bursar'); sa := pg_temp.zo_person('5SA', 'studentaccounts'); PERFORM pg_temp.zo_sessions(S, T); PERFORM set_config('moaum.reason', 'CHECK V781', true);
+    PERFORM pg_temp.zo_fee(S, prog, 100, 95350);
+    a1 := pg_temp.zo_student(51, prog, S); a2 := pg_temp.zo_student(52, prog, S); c := pg_temp.zo_student(53, prog, S); g := pg_temp.zo_student(54, prog, S); f := pg_temp.zo_student(55, prog, S);
+    PERFORM pg_temp.zo_base(a1, S, 'A1'); PERFORM pg_temp.zo_base(a2, S, 'A2');
+    PERFORM pg_temp.zo_pay(c, S, 95350, 'OLD', 'C1', 30); PERFORM pg_temp.zo_pay(c, S, 95350, 'OLD', 'C2', 20);
+    PERFORM pg_temp.zo_pay(g, S, 70000, 'OLD', 'G1', 30); PERFORM pg_temp.zo_pay(g, S, 70000, 'OLD', 'G2', 20);
+    PERFORM pg_temp.zo_pay(f, S, 130000, 'HAND', 'F1');
+    PERFORM pg_temp.zo_act(sa, 'studentaccounts');
+    BEGIN   -- credit all of one cause, then of another
+        SELECT * INTO q FROM finance.overpaid_credits_request(S, NULL, 'PORTAL_TWICE', 'credit all those paid twice on the portal', 1000, NULL, false);
+        v_cr := q.requested || '/' || q.skipped || ' ' || q.amount;
+        SELECT * INTO q FROM finance.overpaid_credits_request(S, NULL, 'OLD_TWICE', 'credit all those paid twice on the old portal', 1000, NULL, false);
+        v_cr2 := q.requested || '/' || q.skipped || ' ' || coalesce((SELECT string_agg(DISTINCT e ->> 'code', ',') FROM jsonb_array_elements(q.skipped_why) e), '-');
+        BEGIN PERFORM finance.overpaid_credits_request(S, NULL, NULL, 'credit all of nothing in particular', 1000, NULL, false); v_who := 'MADE';
+        EXCEPTION WHEN check_violation THEN v_who := split_part(SQLERRM, ':', 1); END;
+        BEGIN PERFORM finance.overpaid_credits_request(S, NULL, 'ABOVE_FEE_LINE', 'credit all of those paid above the fee line', 1000, NULL, false); v_cause := 'MADE';
+        EXCEPTION WHEN check_violation THEN v_cause := split_part(SQLERRM, ':', 1); END;
+        RAISE EXCEPTION 'undo the requests';
+    EXCEPTION WHEN raise_exception THEN GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT; IF v_err <> 'undo the requests' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.zo_act(b1, 'bursar');
+    BEGIN   -- refund all
+        SELECT * INTO d FROM finance.decide_overpayments(S, 'REFUND', NULL, 'refund all those paid twice', 2000, NULL, false);
+        v_ref := d.refunds || '/' || d.apart || '/' || d.unchecked || '/' || d.held || '/' || d.remaining || ' refunded ' || (SELECT count(*) FROM finance.overpayment_decision x WHERE x.student_id IN (a1, a2, c) AND x.decision = 'REFUND')
+                 || ' and none of F, G ' || (SELECT count(*) FROM finance.overpayment_decision x WHERE x.student_id IN (f, g));
+        RAISE EXCEPTION 'undo the refunds';
+    EXCEPTION WHEN raise_exception THEN GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT; IF v_err <> 'undo the refunds' THEN RAISE; END IF;
+    END;
+    BEGIN   -- carry all
+        SELECT * INTO d FROM finance.decide_overpayments(S, 'CARRY', NULL, 'carry all those paid twice', 2000, NULL, false);
+        v_car := d.carried || '/' || d.apart || '/' || d.unchecked || ' carried ' || (SELECT count(*) FROM finance.overpayment_decision x WHERE x.student_id IN (a1, a2, c) AND x.decision = 'CARRY')
+                 || ' none of F, G ' || (SELECT count(*) FROM finance.overpayment_decision x WHERE x.student_id IN (f, g));
+        RAISE EXCEPTION 'undo the carries';
+    EXCEPTION WHEN raise_exception THEN GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT; IF v_err <> 'undo the carries' THEN RAISE; END IF;
+    END;
+    -- the fee-line cause named: its student is left apart and nothing is refunded
+    SELECT * INTO d FROM finance.decide_overpayments(S, 'REFUND', NULL, 'refund all those paid above the fee line', 2000, 'ABOVE_FEE_LINE', false);
+    v_fee := d.refunds || '/' || d.apart;
+    msg := 'credit all ' || v_cr || ' then ' || v_cr2 || ' | neither students nor cause ' || v_who || ' | a fee-line cause as a whole ' || v_cause || ' | refund all ' || v_ref || ' | carry all ' || v_car || ' | fee-line cause refunded/apart ' || v_fee;
+    RAISE EXCEPTION 'the V781 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V781 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V781: Credit all, Refund all and Carry all decide the exact paid-twice rows only: a fee-line student, or a repeat that is not the excess, is left apart by each',
+      coalesce(msg = 'credit all 2/0 57210.00 then 1/1 ONE_AT_A_TIME | neither students nor cause OVERPAID_BULK_WHO | a fee-line cause as a whole OVERPAID_BULK_CAUSE | refund all 3/2/0/0/0 refunded 3 and none of F, G 0 | carry all 3/2/0 carried 3 none of F, G 0 | fee-line cause refunded/apart 0/1', false), msg);
+END $$;
+
+-- ── V781 · 6 and 7. A bulk request is approved by another Bursary officer, and what an approval writes. The Bursary officer B1 requests the
+--          credits of A1 and A2 (the screenshot's students) in one batch: B1 cannot approve them (LEGACY_CREDIT_SAME_OFFICER, left with its reason, the
+--          pass ends: remaining 0, and the next call of the pass tries none); a Students Account Officer may request but not approve (an office that does
+--          not decide is refused); a return needs its note; the Bursary officer B2 approves: one wallet entry of overpaid school fees each (source
+--          OVERPAID, a plain note with no officer's name or evidence), one WALLET decision each, the requests CREDITED under one approval batch, the
+--          students told in the new words (the Wallet page, nothing "automatic"), no school fees paid by it (no payment of the wallet's, the position
+--          unchanged, the session's payments the same); the ledger moves it from the school-fees income of the overpaid session to the wallet (Dr 4010
+--          [session] / Cr 2100 [session], fund OVERPAID), once; a second approval credits nothing ──
+DO $$
+DECLARE
+    S constant text := '9774/9775'; T constant text := '9775/9776'; prog text := pg_temp.zo_prog(); b1 uuid; b2 uuid; sa uuid; a1 uuid; a2 uuid; q record; own record; again record; ok record;
+    v_own text; v_sa text; v_note text; v_ok text; v_twice text; e record; dec record; req finance.legacy_credit_request; v_jr text; v_notice text; v_rows text; paid_before numeric; paid_after numeric;
+    nel int; v_batches text; msg text; v_err text; ent uuid; v_post text; v_body text;
+BEGIN
+  BEGIN
+    b1 := pg_temp.zo_person('6B1', 'bursar'); b2 := pg_temp.zo_person('6B2', 'bursar'); sa := pg_temp.zo_person('6SA', 'studentaccounts'); PERFORM pg_temp.zo_sessions(S, T);
+    PERFORM set_config('moaum.reason', 'CHECK V781', true); PERFORM pg_temp.zo_fee(S, prog, 100, 95350);
+    a1 := pg_temp.zo_student(61, prog, S); a2 := pg_temp.zo_student(62, prog, S); PERFORM pg_temp.zo_base(a1, S, 'A1'); PERFORM pg_temp.zo_base(a2, S, 'A2');
+    SELECT p.paid INTO paid_before FROM finance.position(a1, S) p;
+    PERFORM pg_temp.zo_act(b1, 'bursar');
+    SELECT * INTO q FROM finance.overpaid_credits_request(S, ARRAY[a1, a2], NULL, 'the screenshot''s students paid 28,605 twice', 1000, NULL, false);
+    -- the requester cannot approve: both left, marked, the pass ends
+    SELECT * INTO own FROM finance.overpaid_credits_decide(NULL, q.batch_ref, 'APPROVE', NULL);
+    SELECT * INTO again FROM finance.overpaid_credits_decide(NULL, q.batch_ref, 'APPROVE', NULL, 200, own.since);
+    v_own := own.credited || '/' || own.skipped || ' ' || (SELECT string_agg(DISTINCT e2 ->> 'code', ',') FROM jsonb_array_elements(own.skipped_why) e2) || ' remaining ' || own.remaining
+             || ' | next call of the pass ' || again.credited || '/' || again.skipped || ' remaining ' || again.remaining
+             || ' | marked ' || (SELECT count(*) FROM finance.legacy_credit_request x WHERE x.request_batch = q.batch_ref AND x.last_skip_code = 'LEGACY_CREDIT_SAME_OFFICER' AND x.last_skip_at IS NOT NULL);
+    -- an office that does not decide; a return needs its note
+    PERFORM pg_temp.zo_act(sa, 'studentaccounts');
+    BEGIN PERFORM finance.overpaid_credits_decide(NULL, q.batch_ref, 'APPROVE', NULL); v_sa := 'MADE'; EXCEPTION WHEN insufficient_privilege THEN v_sa := split_part(SQLERRM, ':', 1); END;
+    PERFORM pg_temp.zo_act(b2, 'bursar');
+    BEGIN PERFORM finance.overpaid_credits_decide(NULL, q.batch_ref, 'RETURN', 'short'); v_note := 'MADE'; EXCEPTION WHEN check_violation THEN v_note := split_part(SQLERRM, ':', 1); END;
+    -- the second Bursary officer approves
+    SELECT * INTO ok FROM finance.overpaid_credits_decide(NULL, q.batch_ref, 'APPROVE', 'checked against the bank statement');
+    v_ok := ok.credited || '/' || ok.skipped || ' ' || ok.amount || ' remaining ' || ok.remaining;
+    SELECT * INTO again FROM finance.overpaid_credits_decide(NULL, q.batch_ref, 'APPROVE', NULL);
+    v_twice := again.credited || '/' || again.skipped || ' remaining ' || again.remaining;
+    v_batches := (SELECT count(DISTINCT x.credit_batch) || ' batch ' || bool_and(x.credit_batch ~ '^OCA/[0-9]{4}/[0-9]{6}$') || ' all CREDITED ' || bool_and(x.status = 'CREDITED') || ' unmarked ' || bool_and(x.last_skip_at IS NULL)
+                    FROM finance.legacy_credit_request x WHERE x.request_batch = q.batch_ref);
+    -- what an approval writes
+    SELECT * INTO req FROM finance.legacy_credit_request x WHERE x.student_id = a1 AND x.status = 'CREDITED'; ent := req.wallet_entry_id;
+    SELECT * INTO e FROM finance.wallet_entry x WHERE x.id = ent;
+    SELECT * INTO dec FROM finance.overpayment_decision x WHERE x.id = req.decision_id;
+    SELECT p.paid INTO paid_after FROM finance.position(a1, S) p;
+    SELECT count(*) INTO nel FROM finance.payment_reference r WHERE r.student_id IN (a1, a2) AND r.channel = 'NELFUND wallet';
+    v_rows := 'entry ' || e.kind || ' ' || e.amount || ' ' || e.source_code || ' session ' || e.session || ' plain note ' || (e.note ~ ('^Overpaid school fees of ' || S || ' credited to your wallet \(LOR/[0-9]{4}/[0-9]{6}\)$')) || ' | decision ' || dec.decision || ' ' || dec.amount || ' checked ' || dec.fee_setup_checked
+              || ' | wallet ' || finance.wallet_balance(a1) || ' overpaid money ' || finance.overpaid_wallet_money(a1) || ' | paid before/after ' || paid_before || '/' || paid_after || ' wallet payments ' || nel;
+    SELECT count(*), max(n.body), string_agg(DISTINCT n.channel, ',') INTO v_notice, v_body, v_post FROM platform.notice n WHERE n.about_kind = 'student' AND n.about_id = a1 AND n.template_key = 'LEGACY_CREDIT_POSTED';
+    -- the ledger: once, drawn from the session's school-fees income into the wallet account
+    PERFORM finance.gl_sync(NULL::int); PERFORM finance.gl_sync(NULL::int);
+    v_jr := (SELECT count(DISTINCT j.id) || ' journal ' || min(j.source_type) || ' ' || sum(p.debit) FILTER (WHERE p.account = finance.gl_income_account('School fees')) || ' Dr ' || string_agg(DISTINCT p.account || ':' || p.session || ':' || p.fund, ',')
+               || ' Cr 2100 ' || sum(p.credit) FILTER (WHERE p.account = '2100')
+               FROM finance.gl_journal j JOIN finance.gl_posting p ON p.journal_id = j.id WHERE j.source_type = 'WALLET' AND j.source_ref = 'WALLET-' || ent);
+    msg := 'requester ' || v_own || ' | studentaccounts ' || v_sa || ' | note ' || v_note || ' | approved ' || v_ok || ' | again ' || v_twice || ' | ' || v_batches || ' | ' || v_rows || ' | notice ' || v_notice
+           || ' body says Wallet page ' || (v_body LIKE '%Wallet page%') || ' automatic ' || (v_body ILIKE '%automatic%') || ' | ledger ' || v_jr;
+    RAISE EXCEPTION 'the V781 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V781 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V781: a bulk request is approved by another Bursary officer — never by its requester, never by an office that does not decide — and a pass ends: what it cannot credit is left with its reason and not tried again in the pass',
+      coalesce(v_own = '0/2 LEGACY_CREDIT_SAME_OFFICER remaining 0 | next call of the pass 0/0 remaining 0 | marked 2' AND v_sa = 'LEGACY_CREDIT_OFFICE' AND v_note = 'LEGACY_CREDIT_NOTE'
+               AND v_ok = '2/0 57210.00 remaining 0' AND v_twice = '0/0 remaining 0', false), msg);
+  PERFORM pg_temp.assert('V781: an approved credit is one wallet entry of overpaid school fees with a plain note, one WALLET decision and the request closed, the student told in words that name the Wallet page; the ledger moves it from the overpaid session''s fees to the wallet; the approval pays no fees',
+      coalesce(v_batches = '1 batch true all CREDITED true unmarked true'
+               AND v_rows = 'entry CREDIT 28605.00 OVERPAID session 9774/9775 plain note true | decision WALLET 28605.00 checked false | wallet 28605.00 overpaid money 28605.00 | paid before/after 123955.00/123955.00 wallet payments 0'
+               AND v_notice = '1' AND v_post = 'PORTAL' AND v_body LIKE '%Wallet page%' AND v_body NOT ILIKE '%automatic%'
+               AND v_jr = '1 journal WALLET 28605.00 Dr 2100:9774/9775:OVERPAID,4010:9774/9775:OVERPAID Cr 2100 28605.00', false), msg);
+END $$;
+
+-- ── V781 · 8. An approval pass ends: a request it cannot credit is left with its reason and not tried again in the pass. Six requests are made, five by
+--          the Students Account Officer in one batch and one by the approving Bursary officer B2 himself; after they are made, H's two portal payments are found to be one payment recorded twice
+--          (a hold), C's fee line rises so that the excess falls to 8,605, and N's fee line ends (no charge is stated). B2 approves all six by name: G1 and G2
+--          are credited; his own request, H, C and N are each left, marked with the code and words, and `remaining` is 0 on the very call that found them;
+--          the next call of the pass (since) tries none; a new pass tries the four again (and leaves them); put right, they are credited ──
+DO $$
+DECLARE
+    S constant text := '9774/9775'; T constant text := '9775/9776'; b1 uuid; b2 uuid; sa uuid; pg text := pg_temp.zo_prog_n(1); pc text := pg_temp.zo_prog_n(2); pn text := pg_temp.zo_prog_n(3);
+    g1 uuid; g2 uuid; h uuid; c uuid; n uuid; own uuid; q record; q2 record; ids uuid[]; r1 record; r2 record; r3 record; r4 record; v1 text; v2 text; v3 text; v_marks text; v_after text; msg text; v_err text;
+BEGIN
+  BEGIN
+    b1 := pg_temp.zo_person('8B1', 'bursar'); b2 := pg_temp.zo_person('8B2', 'bursar'); sa := pg_temp.zo_person('8SA', 'studentaccounts'); PERFORM pg_temp.zo_sessions(S, T);
+    PERFORM set_config('moaum.reason', 'CHECK V781', true); PERFORM pg_temp.zo_fee(S, pg, 100, 95350); PERFORM pg_temp.zo_fee(S, pc, 100, 95350); PERFORM pg_temp.zo_fee(S, pn, 100, 95350);
+    g1 := pg_temp.zo_student(81, pg, S); g2 := pg_temp.zo_student(82, pg, S); h := pg_temp.zo_student(83, pg, S); own := pg_temp.zo_student(86, pg, S);
+    c := pg_temp.zo_student(84, pc, S); n := pg_temp.zo_student(85, pn, S);
+    PERFORM pg_temp.zo_base(g1, S, 'G1'); PERFORM pg_temp.zo_base(g2, S, 'G2'); PERFORM pg_temp.zo_base(h, S, 'H'); PERFORM pg_temp.zo_base(c, S, 'C'); PERFORM pg_temp.zo_base(n, S, 'N'); PERFORM pg_temp.zo_base(own, S, 'O');
+    PERFORM pg_temp.zo_act(sa, 'studentaccounts');
+    SELECT * INTO q FROM finance.overpaid_credits_request(S, ARRAY[g1, g2, h, c, n], NULL, 'the screenshot''s students paid 28,605 twice', 1000, NULL, false);
+    PERFORM pg_temp.zo_act(b2, 'bursar');
+    SELECT * INTO q2 FROM finance.overpaid_credits_request(S, ARRAY[own], NULL, 'the approver''s own request', 1000, NULL, false);
+    -- after the requests: a hold, a charge that rose, a charge that ended
+    UPDATE finance.gateway_event SET gateway_ref = 'GWREF-SAME-H' WHERE reference IN ('MOAUM-FEE-ZO-HB', 'MOAUM-FEE-ZO-HC');
+    UPDATE finance.fee_schedule SET amount = 115350 WHERE session = S AND programme_code = pc;
+    UPDATE finance.fee_schedule SET ended_at = now() WHERE session = S AND programme_code = pn;
+    ids := ARRAY(SELECT x.id FROM finance.legacy_credit_request x WHERE x.request_batch IN (q.batch_ref, q2.batch_ref));
+    SELECT * INTO r1 FROM finance.overpaid_credits_decide(ids, NULL, 'APPROVE', NULL);
+    v1 := r1.credited || '/' || r1.skipped || ' remaining ' || r1.remaining || ' ' || (SELECT string_agg(DISTINCT e ->> 'code', ',' ORDER BY e ->> 'code') FROM jsonb_array_elements(r1.skipped_why) e);
+    v_marks := (SELECT string_agg(right(s.matric_no, 2) || ':' || x.last_skip_code, ',' ORDER BY s.matric_no) FROM finance.legacy_credit_request x JOIN people.student s ON s.id = x.student_id WHERE x.id = ANY (ids) AND x.last_skip_at IS NOT NULL);
+    SELECT * INTO r2 FROM finance.overpaid_credits_decide(ids, NULL, 'APPROVE', NULL, 200, r1.since);
+    v2 := r2.credited || '/' || r2.skipped || ' remaining ' || r2.remaining;
+    SELECT * INTO r3 FROM finance.overpaid_credits_decide(ids, NULL, 'APPROVE', NULL);
+    v3 := r3.credited || '/' || r3.skipped || ' remaining ' || r3.remaining;
+    -- put right: the archived payment settled out of the way (restored), the fee line back, the line stated again, the requester's own taken by B1
+    UPDATE finance.fee_schedule SET amount = 95350 WHERE session = S AND programme_code = pc;
+    UPDATE finance.fee_schedule SET ended_at = NULL WHERE session = S AND programme_code = pn;
+    PERFORM pg_temp.zo_act(b1, 'bursar');
+    SELECT * INTO r4 FROM finance.overpaid_credits_decide(ids, NULL, 'APPROVE', NULL);
+    v_after := r4.credited || '/' || r4.skipped || ' remaining ' || r4.remaining || ' ' || coalesce((SELECT string_agg(DISTINCT e ->> 'code', ',' ORDER BY e ->> 'code') FROM jsonb_array_elements(r4.skipped_why) e), '-');
+    msg := 'first call ' || v1 || ' | marks ' || v_marks || ' | next call of the pass ' || v2 || ' | a new pass ' || v3 || ' | put right ' || v_after;
+    RAISE EXCEPTION 'the V781 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V781 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V781: an approval pass ends: a request it cannot credit (the approver''s own, a held one, one whose excess changed, one whose charge is no longer stated) is left with its reason, remaining reaches 0 in the pass, the next call of the pass tries none, a new pass tries them again',
+      coalesce(msg = 'first call 2/4 remaining 0 LEGACY_CREDIT_EXCESS_CHANGED,LEGACY_CREDIT_SAME_OFFICER,OVERPAID_HELD | marks 83:OVERPAID_HELD,84:LEGACY_CREDIT_EXCESS_CHANGED,85:LEGACY_CREDIT_EXCESS_CHANGED,86:LEGACY_CREDIT_SAME_OFFICER | next call of the pass 0/0 remaining 0 | a new pass 0/4 remaining 0 | put right 3/1 remaining 0 OVERPAID_HELD', false), msg);
+END $$;
+
+-- ── V781 · 9. An overpayment is settled once. A is credited to the wallet by two officers; B has a request open. A second approval of A's request is
+--          refused (the request is no longer waiting); a request for B again is REQUEST_OPEN, and Legacy Financial Reconciliation's LEGACY_CREDIT_OPEN; a
+--          hand credit of source OVERPAID is refused (WALLET_OVERPAID_ROUTE); an OVERPAID credit written by anything else is refused at commit (the
+--          deferred trigger, tried by SET CONSTRAINTS ALL IMMEDIATE); a refund or a carry beside the open request decides nothing (requested); a
+--          wallet reset over the credit is refused (WALLET_RESET_OVERPAID_CREDIT); a decision written beyond the excess is refused (OVERPAY_ABOVE_EXCESS) ──
+DO $$
+DECLARE
+    S constant text := '9774/9775'; T constant text := '9775/9776'; prog text := pg_temp.zo_prog(); b1 uuid; b2 uuid; sa uuid; a uuid; b uuid; req finance.legacy_credit_request; q record; d record; dc record;
+    v_post text; v_dec text; v_open text; v_open_leg text; v_hand text; v_trig text; v_beside text; v_reset text; v_above text; v_wallet text; msg text; v_err text;
+BEGIN
+  BEGIN
+    b1 := pg_temp.zo_person('9B1', 'bursar'); b2 := pg_temp.zo_person('9B2', 'bursar'); sa := pg_temp.zo_person('9SA', 'studentaccounts'); PERFORM pg_temp.zo_sessions(S, T);
+    PERFORM set_config('moaum.reason', 'CHECK V781', true); PERFORM pg_temp.zo_fee(S, prog, 100, 95350);
+    a := pg_temp.zo_student(91, prog, S); b := pg_temp.zo_student(92, prog, S); PERFORM pg_temp.zo_base(a, S, 'A'); PERFORM pg_temp.zo_base(b, S, 'B');
+    req := pg_temp.zo_credit(S, a, sa, b2);
+    PERFORM pg_temp.zo_act(sa, 'studentaccounts');
+    SELECT * INTO q FROM finance.overpaid_credits_request(S, ARRAY[b], NULL, 'the screenshot''s student paid 28,605 twice', 1000, NULL, false);
+    -- approved twice
+    PERFORM pg_temp.zo_act(b1, 'bursar');
+    v_post := split_part(finance.overpaid_credit_post(req.id, true, 28605, '{}', NULL, NULL), ':', 1);
+    BEGIN PERFORM finance.legacy_credit_decide(req.id, 'APPROVE', NULL); v_dec := 'MADE'; EXCEPTION WHEN check_violation THEN v_dec := split_part(SQLERRM, ':', 1); END;
+    -- requested twice
+    PERFORM pg_temp.zo_act(sa, 'studentaccounts');
+    SELECT * INTO d FROM finance.overpaid_credits_request(S, ARRAY[b], NULL, 'the same student requested again', 1000, NULL, false);
+    v_open := d.requested || '/' || (SELECT string_agg(DISTINCT e ->> 'code', ',') FROM jsonb_array_elements(d.skipped_why) e);
+    BEGIN PERFORM finance.legacy_credit_initiate(b, S, NULL, 'the same student requested on the other desk', 'the old portal''s statement', NULL, false); v_open_leg := 'MADE';
+    EXCEPTION WHEN check_violation THEN v_open_leg := split_part(SQLERRM, ':', 1); END;
+    -- credited by hand, written by anything else, decided beside an open request, wiped by a reset
+    PERFORM pg_temp.zo_act(b1, 'bursar');
+    BEGIN PERFORM finance.credit_wallet(b, S, 1000, 'a hand credit of the overpaid source', 'OVERPAID'); v_hand := 'MADE'; EXCEPTION WHEN check_violation THEN v_hand := split_part(SQLERRM, ':', 1); END;
+    BEGIN
+        INSERT INTO finance.wallet_entry (student_id, session, kind, amount, reference, note, source_code) VALUES (b, S, 'CREDIT', 1000, 'ZO-DIRECT', 'written by a statement of its own', 'OVERPAID');
+        SET CONSTRAINTS ALL IMMEDIATE; v_trig := 'MADE';
+    EXCEPTION WHEN check_violation THEN v_trig := split_part(SQLERRM, ':', 1); END;
+    SET CONSTRAINTS ALL DEFERRED;
+    SELECT * INTO dc FROM finance.decide_overpayments(S, 'REFUND', ARRAY[b], 'decided beside a request that is open', 2000, NULL, true); v_beside := dc.refunds || '/' || dc.requested;
+    SELECT * INTO dc FROM finance.decide_overpayments(S, 'CARRY', ARRAY[b], 'decided beside a request that is open', 2000, NULL, true); v_beside := v_beside || ' ' || dc.carried || '/' || dc.requested;
+    BEGIN PERFORM finance.reset_wallet(a); v_reset := 'MADE'; EXCEPTION WHEN check_violation THEN v_reset := split_part(SQLERRM, ':', 1); END;
+    v_wallet := finance.wallet_balance(a) || ' of ' || (SELECT count(*) FROM finance.legacy_credit_request x WHERE x.student_id = a AND x.status = 'CREDITED') || ' credit';
+    -- a decision written beyond the excess its own row records
+    BEGIN
+        INSERT INTO finance.overpayment_decision (student_id, session, due, paid, amount, decision, reference, decided_by, reason)
+        VALUES (a, S, 95350, 123955, 28605, 'WALLET', 'LOR/9999/000001', b1, 'written beyond the excess'); v_above := 'MADE';
+    EXCEPTION WHEN check_violation THEN v_above := split_part(SQLERRM, ':', 1); END;
+    msg := 'second post ' || v_post || ' | second approval ' || v_dec || ' | request again ' || v_open || ' | on the other desk ' || v_open_leg || ' | by hand ' || v_hand || ' | by a statement of its own ' || v_trig
+           || ' | beside a request ' || v_beside || ' | reset ' || v_reset || ' (' || v_wallet || ') | above the excess ' || v_above;
+    RAISE EXCEPTION 'the V781 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V781 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V781: an overpayment is settled once — approved twice, requested twice, credited by hand, written by anything but its request, decided beside an open request, wiped by a wallet reset or decided beyond the excess: nothing is credited or lost',
+      coalesce(msg = 'second post LEGACY_CREDIT_STATE | second approval LEGACY_CREDIT_STATE | request again 0/REQUEST_OPEN | on the other desk LEGACY_CREDIT_OPEN | by hand WALLET_OVERPAID_ROUTE | by a statement of its own WALLET_OVERPAID_ROUTE | beside a request 0/1 0/1 | reset WALLET_RESET_OVERPAID_CREDIT (28605.00 of 1 credit) | above the excess OVERPAY_ABOVE_EXCESS', false), msg);
+END $$;
+
+-- ── V781 · 10. A decided student who pays again is decided again for the amount above what is decided, and never for more; the later duplicate can leave,
+--           and the payments the decision rests on cannot. A paid the old portal's 66,745 and 28,605 twice on the portal and is credited 28,605; then
+--           pays 28,605 again on the old portal (the second semester's label): 57,210 is paid above the fee line, 28,605 remains (OLD_AND_PORTAL, in
+--           bulk), and requested and approved again it is credited a second time, the two decisions standing together; a third decision is refused.
+--           While one decision stands: the later duplicate may be archived, withdrawn as never received, or swapped away (the 28,605 left still
+--           covers the 28,605 decided), the 66,745 it rests on may not (PAR_OVERPAYMENT_DECISION, PAY_NOT_RECEIVED_DECIDED, SWAP_OVERPAYMENT_DECISION,
+--           REALLOC_OVERPAYMENT_DECISION); money arriving on a decided student (the target of a swap) is never refused ──
+DO $$
+DECLARE
+    S constant text := '9774/9775'; T constant text := '9775/9776'; prog text := pg_temp.zo_prog(); b1 uuid; b2 uuid; sa uuid; a uuid; tgt uuid; req finance.legacy_credit_request; q record; ok record;
+    id_old uuid; id_dup uuid; id_tgt uuid; r_before text; r_after text; v_dups text; v_old text; v_nr_dup text; v_nr_old text; v_sw_dup text; v_sw_old text; v_sw_in text; v_ra_dup text; v_ra_old text;
+    v_two text; v_third text; v_rows text; msg text; v_err text;
+BEGIN
+  BEGIN
+    b1 := pg_temp.zo_person('10B1', 'bursar'); b2 := pg_temp.zo_person('10B2', 'bursar'); sa := pg_temp.zo_person('10SA', 'studentaccounts'); PERFORM pg_temp.zo_sessions(S, T);
+    PERFORM set_config('moaum.reason', 'CHECK V781', true); PERFORM pg_temp.zo_fee(S, prog, 100, 95350); PERFORM pg_temp.zo_fee(S, pg_temp.zo_prog_n(2), 100, 95350);
+    a := pg_temp.zo_student(101, prog, S); tgt := pg_temp.zo_student(102, pg_temp.zo_prog_n(2), S); PERFORM pg_temp.zo_base(a, S, 'A');
+    PERFORM pg_temp.zo_pay(tgt, S, 5000, 'HAND', 'TG', 3);
+    req := pg_temp.zo_credit(S, a, sa, b2);
+    PERFORM pg_temp.zo_pay(a, S, 28605, 'OLD', 'AD', 3, 'School fees (legacy) ' || chr(183) || ' semester 2');
+    id_old := (SELECT x.id FROM finance.payment_reference x WHERE x.reference = 'MOAUM-LEG-ZO-AA'); id_dup := (SELECT x.id FROM finance.payment_reference x WHERE x.reference = 'MOAUM-LEG-ZO-AD');
+    id_tgt := (SELECT x.id FROM finance.payment_reference x WHERE x.reference = 'MOAUM-FEE-ZO-TG');
+    r_before := (SELECT x.cause || '/' || x.bulk || '/' || x.excess || '/' || x.decided || '/' || x.remaining FROM finance.overpaid_read(S, ARRAY[a]) x);
+    PERFORM pg_temp.zo_act(b1, 'bursar');
+    -- the later duplicate may leave; the first payment may not
+    v_dups := array_to_string(finance.payment_archive_refusals(id_dup), ' ') ~ 'PAR_OVERPAYMENT_DECISION';
+    v_old := array_to_string(finance.payment_archive_refusals(id_old), ' ') ~ 'PAR_OVERPAYMENT_DECISION';
+    v_nr_dup := coalesce(finance.not_received_refusal(id_dup), 'allowed'); v_nr_old := coalesce(finance.not_received_refusal(id_old), 'allowed');
+    v_sw_dup := (finance.payment_swap_check(id_dup, tgt, NULL) -> 'refusals')::text ~ 'SWAP_OVERPAYMENT_DECISION';
+    v_sw_old := (finance.payment_swap_check(id_old, tgt, NULL) -> 'refusals')::text ~ 'SWAP_OVERPAYMENT_DECISION';
+    v_sw_in := (finance.payment_swap_check(id_tgt, a, NULL) -> 'refusals')::text ~ 'SWAP_OVERPAYMENT_DECISION';
+    v_ra_dup := (finance.payment_reallocation_check(id_dup, 'SCHOOL_FEES', T, 1) -> 'refusals')::text ~ 'REALLOC_OVERPAYMENT_DECISION';
+    v_ra_old := (finance.payment_reallocation_check(id_old, 'SCHOOL_FEES', T, 1) -> 'refusals')::text ~ 'REALLOC_OVERPAYMENT_DECISION';
+    -- decided again for what remains; then never for more
+    req := pg_temp.zo_credit(S, a, sa, b2);
+    v_two := (SELECT count(*) || '/' || sum(d.amount) FROM finance.overpayment_decision d WHERE d.student_id = a AND d.session = S AND d.superseded_at IS NULL AND d.decision = 'WALLET')
+             || ' wallet ' || finance.wallet_balance(a) || ' remaining ' || (SELECT x.remaining FROM finance.overpaid_read(S, ARRAY[a]) x) || ' listed once ' || (SELECT count(*) FROM finance.overpaid(S) x WHERE x.student_id = a)
+             || ' decisions counted ' || (SELECT x.decision_count FROM finance.overpaid(S) x WHERE x.student_id = a);
+    BEGIN
+        INSERT INTO finance.overpayment_decision (student_id, session, due, paid, amount, decision, reference, decided_by, reason)
+        VALUES (a, S, 95350, 152560, 1, 'WALLET', 'LOR/9999/000002', b1, 'a third decision beyond the excess'); v_third := 'MADE';
+    EXCEPTION WHEN check_violation THEN v_third := split_part(SQLERRM, ':', 1); END;
+    -- with both decisions standing the duplicate's leaving is refused too: the two decisions need the excess it makes
+    r_after := array_to_string(finance.payment_archive_refusals(id_dup), ' ') ~ 'PAR_OVERPAYMENT_DECISION';
+    msg := 'before ' || r_before || ' | later duplicate archive refused ' || v_dups || ' never received ' || v_nr_dup || ' swap refused ' || v_sw_dup || ' realloc refused ' || v_ra_dup
+           || ' | the payment the decision rests on archive refused ' || v_old || ' never received ' || v_nr_old || ' swap refused ' || v_sw_old || ' realloc refused ' || v_ra_old
+           || ' | money arriving on A refused ' || v_sw_in || ' | decided again ' || v_two || ' | a third ' || v_third || ' | the duplicate once both stand ' || r_after;
+    RAISE EXCEPTION 'the V781 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V781 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V781: a decided student who pays again is decided again for the amount above what is decided, and never for more; the later duplicate can be archived, withdrawn as never received or swapped away, the payments the decision rests on cannot leave, and money arriving is never refused',
+      coalesce(msg = 'before OLD_AND_PORTAL/true/57210.00/28605.00/28605.00 | later duplicate archive refused false never received allowed swap refused false realloc refused false | the payment the decision rests on archive refused true never received PAY_NOT_RECEIVED_DECIDED swap refused true realloc refused true | money arriving on A refused false | decided again 2/57210.00 wallet 57210.00 remaining 0.00 listed once 1 decisions counted 2 | a third OVERPAY_ABOVE_EXCESS | the duplicate once both stand true', false), msg);
+END $$;
+
+-- ── V781 · 11. A refund raised by hand against a school-fees payment counts as decided. A (the screenshot's) has a credit request open: a refund by hand
+--           is refused (REFUND_CREDIT_REQUEST_OPEN); withdrawn, the hand refund of 28,605 is raised, and the list shows nothing left to decide (remaining 0),
+--           a new request skips DECIDED, and the desk reads REFUND_BY_HAND with the figures counting it; B (the same) has a request open when a refund
+--           against it is written by another road: the approval then finds the excess changed (LEGACY_CREDIT_EXCESS_CHANGED); C paid 130,000 against
+--           95,350 and is credited 34,650: a refund of 100,000 would pass what is paid (REFUND_ALREADY_DECIDED), one of 95,000 does not ──
+DO $$
+DECLARE
+    S constant text := '9774/9775'; T constant text := '9775/9776'; prog text := pg_temp.zo_prog(); b1 uuid; b2 uuid; sa uuid; a uuid; b uuid; c uuid; q record; rq record; dsk record; fig jsonb; rf text; v_open text;
+    v_row text; v_dec text; v_desk text; v_fig text; v_exc text; v_big text; v_ok text; v_w int; v_set text; msg text; v_err text;
+BEGIN
+  BEGIN
+    b1 := pg_temp.zo_person('11B1', 'bursar'); b2 := pg_temp.zo_person('11B2', 'bursar'); sa := pg_temp.zo_person('11SA', 'studentaccounts'); PERFORM pg_temp.zo_sessions(S, T);
+    PERFORM set_config('moaum.reason', 'CHECK V781', true); PERFORM pg_temp.zo_fee(S, prog, 100, 95350);
+    a := pg_temp.zo_student(111, prog, S); b := pg_temp.zo_student(112, prog, S); c := pg_temp.zo_student(113, prog, S);
+    PERFORM pg_temp.zo_base(a, S, 'A'); PERFORM pg_temp.zo_base(b, S, 'B'); PERFORM pg_temp.zo_pay(c, S, 130000, 'HAND', 'C1', 10);
+    PERFORM pg_temp.zo_act(sa, 'studentaccounts');
+    SELECT * INTO q FROM finance.overpaid_credits_request(S, ARRAY[a, b], NULL, 'the screenshot''s students paid 28,605 twice', 1000, NULL, false);
+    PERFORM pg_temp.zo_act(b1, 'bursar');
+    BEGIN PERFORM finance.propose_refund(a, 'Student 111', 'refunded by hand', 28605, NULL, NULL, NULL, 'MOAUM-FEE-ZO-AB'); v_open := 'MADE'; EXCEPTION WHEN check_violation THEN v_open := split_part(SQLERRM, ':', 1); END;
+    -- A's request withdrawn; the hand refund raised; the list says nothing is left
+    PERFORM pg_temp.zo_act(sa, 'studentaccounts');
+    PERFORM finance.overpaid_credits_withdraw(NULL, ARRAY[(SELECT x.id FROM finance.legacy_credit_request x WHERE x.student_id = a AND x.status = 'PENDING_BURSAR_APPROVAL')], 'withdrawn for a refund by hand');
+    PERFORM pg_temp.zo_act(b1, 'bursar');
+    rf := finance.propose_refund(a, 'Student 111', 'refunded by hand', 28605, NULL, NULL, NULL, 'MOAUM-FEE-ZO-AB');
+    v_row := (SELECT x.excess || '/' || x.decided || '/' || x.remaining || '/' || coalesce(x.cause, '-') FROM finance.overpaid_read(S, ARRAY[a]) x)
+             || ' overpaid() ' || (SELECT x.remaining || '/' || coalesce(x.decided, 0) || '/' || x.refunded_by_hand || '/' || coalesce(x.decision, '-') FROM finance.overpaid(S) x WHERE x.student_id = a);
+    PERFORM pg_temp.zo_act(sa, 'studentaccounts');
+    SELECT * INTO rq FROM finance.overpaid_credits_request(S, ARRAY[a], NULL, 'asked again after the refund by hand', 1000, NULL, false);
+    v_dec := rq.requested || '/' || (SELECT string_agg(DISTINCT e ->> 'code', ',') FROM jsonb_array_elements(rq.skipped_why) e);
+    PERFORM finance.overpaid_refresh(S);
+    SELECT * INTO dsk FROM finance.overpaid_desk(S, sa) x WHERE x.student_id = a;
+    v_desk := dsk.state || ' decided ' || dsk.decided || ' by hand ' || dsk.refunded_by_hand || ' remaining ' || dsk.remaining;
+    fig := finance.overpaid_figures(S, sa);
+    v_fig := 'byHand ' || (fig #>> '{refunds,byHand}') || '/' || (fig #>> '{refunds,byHandAmount}') || ' raised ' || (fig #>> '{refunds,raised}');
+    -- B: a refund written by another road beside the open request: the approval finds the excess changed
+    INSERT INTO finance.refund (reference, student_id, payer, reason, amount, proposed_by, source_reference) VALUES ('RF-ZO-112', b, 'Student 112', 'raised another way', 28605, b1, 'MOAUM-FEE-ZO-BB');
+    PERFORM pg_temp.zo_act(b2, 'bursar');
+    SELECT * INTO q FROM finance.overpaid_credits_decide(ARRAY[(SELECT x.id FROM finance.legacy_credit_request x WHERE x.student_id = b AND x.status = 'PENDING_BURSAR_APPROVAL')], NULL, 'APPROVE', NULL);
+    v_exc := q.credited || '/' || q.skipped || ' ' || coalesce((SELECT string_agg(DISTINCT e ->> 'code', ',') FROM jsonb_array_elements(q.skipped_why) e), '-');
+    -- C: credited 34,650, then a refund by hand that would pass what is paid
+    PERFORM pg_temp.zo_credit(S, c, sa, b2);
+    PERFORM pg_temp.zo_act(b1, 'bursar');
+    BEGIN PERFORM finance.propose_refund(c, 'Student 113', 'refunded by hand', 100000, NULL, NULL, NULL, 'MOAUM-FEE-ZO-C1'); v_big := 'MADE'; EXCEPTION WHEN check_violation THEN v_big := split_part(SQLERRM, ':', 1); END;
+    PERFORM finance.propose_refund(c, 'Student 113', 'refunded by hand', 95000, NULL, NULL, NULL, 'MOAUM-FEE-ZO-C1'); v_ok := 'made';
+    -- the desk reads what is decided and what is requested for the whole session in one pass: for each student exactly what the readers of one student give
+    -- (a hand refund, a credit, an open request)
+    PERFORM finance.overpaid_refresh(S);
+    v_set := (SELECT count(*) FILTER (WHERE x.decided IS DISTINCT FROM finance.overpayment_decided(x.student_id, S)
+                                       OR x.remaining IS DISTINCT FROM greatest(x.excess - finance.overpayment_decided(x.student_id, S), 0)
+                                       OR x.refunded_by_hand IS DISTINCT FROM finance.overpayment_decided(x.student_id, S)
+                                              - (SELECT coalesce(sum(d.amount), 0) FROM finance.overpayment_decision d WHERE d.student_id = x.student_id AND d.session = S AND d.superseded_at IS NULL)
+                                       OR x.request_id IS DISTINCT FROM (SELECT q2.id FROM finance.legacy_credit_request q2 WHERE q2.student_id = x.student_id AND q2.session = S
+                                                                           AND q2.status IN ('PENDING_BURSAR_APPROVAL', 'RETURNED_FOR_CORRECTION')))
+                     || '/' || count(*) || ' decided ' || string_agg(x.decided::text, ',' ORDER BY x.number)
+                FROM finance.overpaid_desk(S, b1) x WHERE x.student_id IN (a, b, c));
+    msg := 'open request ' || v_open || ' | after the hand refund ' || v_row || ' | a new request ' || v_dec || ' | desk ' || v_desk || ' | figures ' || v_fig || ' | approval beside a refund ' || v_exc || ' | past what is paid ' || v_big || ' then 95,000 ' || v_ok;
+    RAISE EXCEPTION 'the V781 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V781 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V781: the desk reads what is decided and what is requested for the whole session in one pass, the same as for each student alone (a refund by hand, a credit, an open request)',
+      coalesce(v_set = '0/3 decided 28605.00,28605.00,129650.00', false), v_set);
+  PERFORM pg_temp.assert('V781: a refund raised by hand against a school-fees payment counts as decided: only the rest is credited, no hand refund is raised over an open request or beyond what is paid, the desk reads REFUND_BY_HAND and an approval after it finds the excess changed',
+      coalesce(msg = 'open request REFUND_CREDIT_REQUEST_OPEN | after the hand refund 28605.00/28605.00/0.00/PORTAL_TWICE overpaid() 0.00/28605.00/28605.00/- | a new request 0/DECIDED | desk REFUND_BY_HAND decided 28605.00 by hand 28605.00 remaining 0.00 | figures byHand 1/28605.00 raised 0 | approval beside a refund 0/1 LEGACY_CREDIT_EXCESS_CHANGED | past what is paid REFUND_ALREADY_DECIDED then 95,000 made', false), msg);
+END $$;
+
+-- ── V781 · 12. A graduated, withdrawn or deceased student's excess is refunded, never credited to a wallet and never carried. The screenshot's payments
+--           for W (withdrawn), D (deceased), L (expelled), K (cleared for an award in the session), G (graduated) and F (a final-level student still in
+--           study, who may spill over): each but F is read refund-only; a request skips REFUND_ONLY (D, the estate, is refused at once by Legacy Financial
+--           Reconciliation), a carry carries none, the refund route raises W's refund; G is held (the record is closed for fees) and the refund raised by
+--           hand against the payment settles it (nothing remains); a request made while W was in study, W withdrawn afterwards, is refused at the
+--           approval (OVERPAID_WALLET_REFUSED); F is requested like any student ──
+DO $$
+DECLARE
+    S constant text := '9774/9775'; T constant text := '9775/9776'; prog text := pg_temp.zo_prog(); b1 uuid; b2 uuid; sa uuid; w uuid; d uuid; l uuid; k uuid; g uuid; f uuid; x uuid; q record; dc record;
+    v_ro text; v_req text; v_carry text; v_ref text; v_dec text; v_g text; v_late text; v_f text; v_appr text; msg text; v_err text; st text; sts text := '';
+BEGIN
+  BEGIN
+    b1 := pg_temp.zo_person('12B1', 'bursar'); b2 := pg_temp.zo_person('12B2', 'bursar'); sa := pg_temp.zo_person('12SA', 'studentaccounts'); PERFORM pg_temp.zo_sessions(S, T);
+    PERFORM set_config('moaum.reason', 'CHECK V781', true); PERFORM set_config('zo.sa', sa::text, true); PERFORM set_config('zo.b1', b1::text, true);
+    FOR i IN 1..7 LOOP PERFORM pg_temp.zo_fee(S, pg_temp.zo_prog_n(i), CASE WHEN i = 7 THEN finance.final_level(pg_temp.zo_prog_n(7)) ELSE 100 END, 95350); END LOOP;
+    w := pg_temp.zo_student(121, pg_temp.zo_prog_n(1), S, 100, 'WITHDRAWN'); d := pg_temp.zo_student(122, pg_temp.zo_prog_n(2), S, 100, 'DECEASED'); l := pg_temp.zo_student(123, pg_temp.zo_prog_n(3), S, 100, 'EXPELLED');
+    k := pg_temp.zo_student(124, pg_temp.zo_prog_n(4), S); g := pg_temp.zo_student(125, pg_temp.zo_prog_n(5), S, 100, 'GRADUATED'); x := pg_temp.zo_student(126, pg_temp.zo_prog_n(6), S);
+    f := pg_temp.zo_student(127, pg_temp.zo_prog_n(7), S, finance.final_level(pg_temp.zo_prog_n(7)));
+    FOREACH st IN ARRAY ARRAY['w', 'd', 'l', 'k', 'g', 'x', 'f'] LOOP
+        PERFORM pg_temp.zo_base(CASE st WHEN 'w' THEN w WHEN 'd' THEN d WHEN 'l' THEN l WHEN 'k' THEN k WHEN 'g' THEN g WHEN 'x' THEN x ELSE f END, S, 'S' || upper(st));
+    END LOOP;
+    INSERT INTO records.graduand (id, student_id, session, cgpa, award, senate_state, senate_minute, final_level, duration_years, entry_session, approved_at)
+    VALUES (gen_random_uuid(), k, S, 4.00, 'First Class Honours', 'APPROVED', 'SEN/CHK/774', 400, 4, S, now());
+    PERFORM pg_temp.zo_act(b1, 'bursar');
+    v_ro := (SELECT string_agg(coalesce(x2.refund_only, '-') || '/' || x2.suggested || '/' || coalesce(array_to_string(x2.holds, ','), '-'), ' ' ORDER BY x2.number) FROM finance.overpaid_read(S, ARRAY[w, d, l, k, g, f]) x2);
+    -- each acted on
+    v_req := (SELECT string_agg(DISTINCT e ->> 'code', ',') FROM finance.overpaid_credits_request(S, ARRAY[w], NULL, 'asked for a student who has withdrawn', 1000, NULL, true) r, jsonb_array_elements(r.skipped_why) e);
+    PERFORM pg_temp.zo_act(sa, 'studentaccounts');
+    BEGIN PERFORM finance.legacy_credit_initiate(d, S, NULL, 'the estate''s excess asked for on the other desk', 'the old portal''s statement', NULL, false); v_dec := 'MADE'; EXCEPTION WHEN check_violation THEN v_dec := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM finance.legacy_credit_initiate(l, S, NULL, 'a student who has left, asked for on the other desk', 'the old portal''s statement', NULL, false); v_dec := v_dec || ' ' || 'MADE'; EXCEPTION WHEN check_violation THEN v_dec := v_dec || ' ' || split_part(SQLERRM, ':', 1); END;
+    PERFORM pg_temp.zo_act(b1, 'bursar');
+    SELECT * INTO dc FROM finance.decide_overpayments(S, 'CARRY', ARRAY[w], 'carried although the student has withdrawn', 2000, NULL, true); v_carry := dc.carried || '/' || dc.refund_only;
+    SELECT * INTO dc FROM finance.decide_overpayments(S, 'CARRY', ARRAY[l], 'carried although the student has left', 2000, NULL, true); v_carry := v_carry || ' ' || dc.carried || '/' || dc.refund_only;
+    SELECT * INTO dc FROM finance.decide_overpayments(S, 'REFUND', ARRAY[w], 'refunded because the student has withdrawn', 2000, NULL, true); v_ref := dc.refunds || '/' || dc.held;
+    -- K, cleared for an award in the session, has no hold: refunded too
+    SELECT * INTO dc FROM finance.decide_overpayments(S, 'REFUND', ARRAY[k], 'refunded because the award is approved', 2000, NULL, true); v_ref := v_ref || ' K ' || dc.refunds;
+    -- G: held (closed for fees), the refund by hand settles it
+    PERFORM finance.propose_refund(g, 'Student 125', 'refunded by hand: the record is closed for fees', 28605, NULL, NULL, NULL, 'MOAUM-FEE-ZO-SGB');
+    v_g := (SELECT x2.excess || '/' || x2.decided || '/' || x2.remaining FROM finance.overpaid_read(S, ARRAY[g]) x2);
+    -- the final-level student in study may spill over: a request is made
+    PERFORM pg_temp.zo_act(sa, 'studentaccounts');
+    SELECT * INTO q FROM finance.overpaid_credits_request(S, ARRAY[f], NULL, 'a final-level student still in study', 1000, NULL, true); v_f := q.requested || '/' || q.skipped;
+    -- X is requested in study, withdrawn afterwards: the approval is refused
+    SELECT * INTO q FROM finance.overpaid_credits_request(S, ARRAY[x], NULL, 'asked while the student was in study', 1000, NULL, true);
+    UPDATE people.student SET status = 'WITHDRAWN' WHERE id = x;
+    PERFORM pg_temp.zo_act(b2, 'bursar');
+    SELECT * INTO q FROM finance.overpaid_credits_decide(NULL, q.batch_ref, 'APPROVE', NULL);
+    v_appr := q.credited || '/' || q.skipped || ' ' || coalesce((SELECT string_agg(DISTINCT e ->> 'code', ',') FROM jsonb_array_elements(q.skipped_why) e), '-');
+    msg := 'read ' || v_ro || ' | a request ' || v_req || ' | legacy desk ' || v_dec || ' | carry ' || v_carry || ' | refund ' || v_ref || ' | closed G ' || v_g || ' | final level ' || v_f || ' | approval after withdrawal ' || v_appr;
+    RAISE EXCEPTION 'the V781 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V781 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V781: a graduated, withdrawn, deceased or expelled student''s excess, or one whose award is approved, is refunded — never credited to a wallet, never carried — and a final-level student still in study is not one of them',
+      coalesce(msg = 'read WITHDRAWN/REFUND/ DECEASED/REFUND/ LEFT/REFUND/ AWARD_APPROVED/REFUND/ GRADUATED/WAIT/CLOSED_FOR_FEES -/REVIEW_PAYMENTS/ | a request REFUND_ONLY | legacy desk LEGACY_CREDIT_STUDENT OVERPAID_WALLET_REFUSED | carry 0/1 0/1 | refund 1/0 K 1 | closed G 28605.00/28605.00/0.00 | final level 1/0 | approval after withdrawal 0/1 OVERPAID_WALLET_REFUSED', false), msg);
+END $$;
+
+-- ── V781 · 13. Requests made on the desk are returned, rejected or withdrawn in one act. B1 requests A1, A2 and A3 in one batch, the Students Account
+--           Officer A4 and A5 in another; B2 returns the first batch and rejects the second (a note of ten characters is needed), each requester told once
+--           with their own counts and no student told; B1 withdraws what was returned and requests A1 again, the Students Account Officer cannot
+--           withdraw the Bursary officer's batch, and B1 (of the Bursar's office) withdraws the Students Account Officer's request of A6 ──
+DO $$
+DECLARE
+    S constant text := '9774/9775'; T constant text := '9775/9776'; prog text := pg_temp.zo_prog(); b1 uuid; b2 uuid; sa uuid; a uuid[] := '{}'; i int; q1 record; q2 record; r record; v_note text; v_ret text; v_rej text;
+    v_told text; v_students text; v_wd text; v_again text; v_sa text; v_any text; v_st text; msg text; v_err text;
+BEGIN
+  BEGIN
+    b1 := pg_temp.zo_person('13B1', 'bursar'); b2 := pg_temp.zo_person('13B2', 'bursar'); sa := pg_temp.zo_person('13SA', 'studentaccounts'); PERFORM pg_temp.zo_sessions(S, T);
+    PERFORM set_config('moaum.reason', 'CHECK V781', true); PERFORM pg_temp.zo_fee(S, prog, 100, 95350);
+    FOR i IN 1..6 LOOP a := a || pg_temp.zo_student(130 + i, prog, S); PERFORM pg_temp.zo_base(a[i], S, 'A' || i); END LOOP;
+    PERFORM pg_temp.zo_act(b1, 'bursar');
+    SELECT * INTO q1 FROM finance.overpaid_credits_request(S, ARRAY[a[1], a[2], a[3]], NULL, 'the screenshot''s students paid 28,605 twice', 1000, NULL, false);
+    PERFORM pg_temp.zo_act(sa, 'studentaccounts');
+    SELECT * INTO q2 FROM finance.overpaid_credits_request(S, ARRAY[a[4], a[5]], NULL, 'the screenshot''s students paid 28,605 twice', 1000, NULL, false);
+    PERFORM pg_temp.zo_act(b2, 'bursar');
+    BEGIN PERFORM finance.overpaid_credits_decide(NULL, q1.batch_ref, 'RETURN', 'short'); v_note := 'MADE'; EXCEPTION WHEN check_violation THEN v_note := split_part(SQLERRM, ':', 1); END;
+    SELECT * INTO r FROM finance.overpaid_credits_decide(NULL, q1.batch_ref, 'RETURN', 'the statement is missing: correct and ask again'); v_ret := r.returned || '/' || r.skipped || ' remaining ' || r.remaining;
+    SELECT * INTO r FROM finance.overpaid_credits_decide(NULL, q2.batch_ref, 'REJECT', 'the old portal shows these as paid once'); v_rej := r.rejected || '/' || r.skipped || ' remaining ' || r.remaining;
+    v_told := 'B1 told ' || (SELECT count(*) FROM platform.notice n WHERE n.about_kind = 'person' AND n.about_id = b1 AND n.template_key = 'OVERPAID_CREDITS_DECIDED' AND n.channel = 'PORTAL')
+              || ' SA told ' || (SELECT count(*) FROM platform.notice n WHERE n.about_kind = 'person' AND n.about_id = sa AND n.template_key = 'OVERPAID_CREDITS_DECIDED' AND n.channel = 'PORTAL')
+              || ' bursars told of the batches ' || (SELECT count(*) FROM platform.notice n WHERE n.template_key = 'OVERPAID_CREDITS_WAITING' AND n.about_id IN (b1, b2) AND n.channel = 'PORTAL');
+    v_students := 'students told ' || (SELECT count(*) FROM platform.notice n WHERE n.about_kind = 'student' AND n.about_id = ANY (a) AND n.template_key LIKE 'LEGACY_CREDIT%');
+    -- withdrawn: the requester's returned requests; the Students Account Officer may not withdraw another's batch; the Bursar's office withdraws any
+    PERFORM pg_temp.zo_act(b1, 'bursar');
+    v_wd := finance.overpaid_credits_withdraw(q1.batch_ref, NULL, 'withdrawn: asked again with the statement')::text;
+    SELECT * INTO r FROM finance.overpaid_credits_request(S, ARRAY[a[1]], NULL, 'asked again with the statement entered', 1000, NULL, false); v_again := r.requested || '/' || r.skipped;
+    PERFORM pg_temp.zo_act(sa, 'studentaccounts');
+    v_sa := finance.overpaid_credits_withdraw(r.batch_ref, NULL, 'withdrawn by an officer who did not make it')::text;
+    SELECT * INTO r FROM finance.overpaid_credits_request(S, ARRAY[a[6]], NULL, 'asked for the last of the six students', 1000, NULL, false);
+    PERFORM pg_temp.zo_act(b1, 'bursar');
+    v_any := finance.overpaid_credits_withdraw(r.batch_ref, NULL, 'withdrawn by the Bursar''s office')::text;
+    msg := 'a short note ' || v_note || ' | returned ' || v_ret || ' | rejected ' || v_rej || ' | ' || v_told || ' | ' || v_students || ' | withdrawn ' || v_wd || ' | asked again ' || v_again || ' | another officer''s batch ' || v_sa || ' | by the Bursar''s office ' || v_any
+           || ' | statuses ' || (SELECT string_agg(z.st || ':' || z.n, ',' ORDER BY z.st) FROM (SELECT status st, count(*) n FROM finance.legacy_credit_request WHERE student_id = ANY (a) GROUP BY status) z);
+    RAISE EXCEPTION 'the V781 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V781 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V781: requests made on the desk are returned, rejected or withdrawn in one act; a rejection tells no student; what was returned is withdrawn and requested again; another officer''s batch is not withdrawn by one who did not make it',
+      coalesce(msg = 'a short note LEGACY_CREDIT_NOTE | returned 3/0 remaining 0 | rejected 2/0 remaining 0 | B1 told 1 SA told 1 bursars told of the batches 4 | students told 0 | withdrawn 3 | asked again 1/0 | another officer''s batch 0 | by the Bursar''s office 1 | statuses PENDING_BURSAR_APPROVAL:1,REJECTED:2,WITHDRAWN:4', false), msg);
+END $$;
+
+-- ── V781 · 18. A credit request is read by its id, its student and its batch however many there are, and the Legacy desk counts its own. The Students
+--           Account Officer requests five students' credits in two batches on the Overpaid desk and one student's on Legacy Financial Reconciliation (the
+--           two kinds are told apart by bulk); legacy_credit_rows reads a batch two rows a page across three pages, one request by its id, one student by
+--           the student, the Overpaid desk's requests apart from the Legacy desk's, each row carrying the eight added columns; the Legacy desk's figures
+--           count only its own pending request and name the Overpaid desk's as onOverpaidDesk ──
+DO $$
+DECLARE
+    S constant text := '9774/9775'; T constant text := '9775/9776'; prog text := pg_temp.zo_prog(); sa uuid; b1 uuid; a uuid[] := '{}'; i int; q1 record; q2 record; one finance.legacy_credit_request;
+    p0 int; p1 int; p2 int; p3 int; v_by_id int; v_by_student int; v_batch int; v_bulk int; v_legacy int; v_cols text; fig jsonb; msg text; v_err text;
+BEGIN
+  BEGIN
+    b1 := pg_temp.zo_person('18B1', 'bursar'); sa := pg_temp.zo_person('18SA', 'studentaccounts'); PERFORM pg_temp.zo_sessions(S, T); PERFORM set_config('moaum.reason', 'CHECK V781', true);
+    PERFORM pg_temp.zo_fee(S, prog, 100, 95350);
+    FOR i IN 1..6 LOOP a := a || pg_temp.zo_student(180 + i, prog, S); PERFORM pg_temp.zo_base(a[i], S, 'A' || i); END LOOP;
+    PERFORM pg_temp.zo_act(sa, 'studentaccounts');
+    SELECT * INTO q1 FROM finance.overpaid_credits_request(S, ARRAY[a[1], a[2], a[3], a[4], a[5]], NULL, 'the screenshot''s students paid 28,605 twice', 1000, NULL, false);
+    SELECT * INTO q2 FROM finance.overpaid_credits_request(S, ARRAY[a[6]], NULL, 'the screenshot''s student paid 28,605 twice', 1000, NULL, false);
+    -- the Legacy desk's own request is for a seventh student
+    a := a || pg_temp.zo_student(187, prog, S); PERFORM pg_temp.zo_base(a[7], S, 'A7');
+    one := finance.legacy_credit_initiate(a[7], S, NULL, 'the old portal shows the 28,605 paid twice', 'export rows A7', NULL, false);
+    p1 := (SELECT count(*) FROM finance.legacy_credit_rows(NULL, S, NULL, NULL, NULL, 2, NULL, NULL, q1.batch_ref, true, 0));
+    p2 := (SELECT count(*) FROM finance.legacy_credit_rows(NULL, S, NULL, NULL, NULL, 2, NULL, NULL, q1.batch_ref, true, 2));
+    p3 := (SELECT count(*) FROM finance.legacy_credit_rows(NULL, S, NULL, NULL, NULL, 2, NULL, NULL, q1.batch_ref, true, 4));
+    p0 := (SELECT count(*) FROM finance.legacy_credit_rows(NULL, S, NULL, NULL, NULL, 2, NULL, NULL, q1.batch_ref, true, 6));
+    v_batch := (SELECT count(DISTINCT x.id) FROM (SELECT * FROM finance.legacy_credit_rows(NULL, S, NULL, NULL, NULL, 2, NULL, NULL, q1.batch_ref, true, 0)
+                                                  UNION ALL SELECT * FROM finance.legacy_credit_rows(NULL, S, NULL, NULL, NULL, 2, NULL, NULL, q1.batch_ref, true, 2)
+                                                  UNION ALL SELECT * FROM finance.legacy_credit_rows(NULL, S, NULL, NULL, NULL, 2, NULL, NULL, q1.batch_ref, true, 4)) x);
+    v_by_id := (SELECT count(*) FROM finance.legacy_credit_rows(NULL, NULL, NULL, NULL, NULL, 1, one.id));
+    v_by_student := (SELECT count(*) FROM finance.legacy_credit_rows(NULL, NULL, NULL, NULL, NULL, 5000, NULL, a[3]));
+    v_bulk := (SELECT count(*) FROM finance.legacy_credit_rows(NULL, S, NULL, NULL, NULL, 500, NULL, NULL, NULL, true, 0));
+    v_legacy := (SELECT count(*) FROM finance.legacy_credit_rows(NULL, S, NULL, NULL, NULL, 500, NULL, NULL, NULL, false, 0));
+    SELECT 'cause ' || x.cause || ' bulk ' || x.bulk || ' batch ' || (x.request_batch IS NOT NULL) || ' credit batch ' || coalesce(x.credit_batch, '-') || ' checked ' || x.fee_setup_checked
+           || ' initiator ' || (x.initiated_by_id = sa) || ' skip ' || coalesce(x.last_skip_code, '-') INTO v_cols FROM finance.legacy_credit_rows(NULL, NULL, NULL, NULL, NULL, 1, NULL, a[1]) x;
+    fig := finance.legacy_reconciliation_figures(S);
+    msg := 'pages ' || p1 || '/' || p2 || '/' || p3 || '/' || p0 || ' distinct ' || v_batch || ' | by id ' || v_by_id || ' by student ' || v_by_student || ' | bulk ' || v_bulk || ' legacy ' || v_legacy
+           || ' | ' || v_cols || ' | legacy figures pending ' || (fig #>> '{requests,pending}') || ' session ' || (fig #>> '{requests,pendingSession}') || ' onOverpaidDesk ' || (fig #>> '{requests,onOverpaidDesk}');
+    RAISE EXCEPTION 'the V781 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V781 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V781: a credit request is read by its id, its student and its batch however many there are, and the Legacy desk counts its own (the Overpaid desk''s are apart: bulk)',
+      coalesce(msg = 'pages 2/2/1/0 distinct 5 | by id 1 by student 1 | bulk 6 legacy 1 | cause PORTAL_TWICE bulk true batch true credit batch - checked false initiator true skip - | legacy figures pending 1 session 1 onOverpaidDesk 6', false), msg);
+END $$;
+
+-- ── V781 · 14. A charge that rises after a decision is shown as decided above the excess, a student decided and no longer overpaid stays on the kept list, and
+--           what the wallet holds of the hidden amount is not refunded. In 9774/9775 (the calendar's current session) A, the screenshot's student, is credited
+--           28,605 to the wallet; the fee line then rises by 20,000: the row reads state OVER_DECIDED with 20,000 over-decided, advised RECOVER, counted in
+--           overDecided; the wallet's refundable overpaid money falls by that amount (finance.withdrawal_sources, overpaid_refundable, overpaid_kept_back);
+--           a refund of the whole credit requested before the rise is refused at its approval (WALLET_REFUND_KEPT_BACK) and, the charge put back, goes
+--           through; the fee line rising past what is paid leaves A on the kept list with no cause, all 28,605 over-decided and none refundable ──
+DO $$
+DECLARE
+    S constant text := '9774/9775'; T constant text := '9775/9776'; prog text := pg_temp.zo_prog(); b1 uuid; b2 uuid; sa uuid; a uuid; w finance.wallet_withdrawal; dsk record; fig jsonb; req finance.legacy_credit_request;
+    v_before text; v_rise text; v_desk text; v_fig text; v_appr text; v_back text; v_past text; msg text; v_err text;
+BEGIN
+  BEGIN
+    b1 := pg_temp.zo_person('14B1', 'bursar'); b2 := pg_temp.zo_person('14B2', 'bursar'); sa := pg_temp.zo_person('14SA', 'studentaccounts'); PERFORM pg_temp.zo_sessions(S, T, true);
+    PERFORM set_config('moaum.reason', 'CHECK V781', true); PERFORM pg_temp.zo_fee(S, prog, 100, 95350);
+    a := pg_temp.zo_student(141, prog, S); PERFORM pg_temp.zo_base(a, S, 'A'); req := pg_temp.zo_credit(S, a, sa, b2);
+    v_before := (SELECT string_agg(x.source_code || ' ' || x.refundable, ',') FROM finance.withdrawal_sources(a, S) x) || ' refundable ' || finance.overpaid_refundable(a) || ' kept back ' || finance.overpaid_kept_back(a)
+                || ' shortfall ' || finance.overpayment_shortfall(a, S);
+    -- the fee line rises by 20,000: the wallet's refundable overpaid money falls by what the charge now owes, and what falls is kept back
+    UPDATE finance.fee_schedule SET amount = 115350 WHERE session = S AND programme_code = prog;
+    PERFORM finance.overpaid_refresh(S);
+    SELECT * INTO dsk FROM finance.overpaid_desk(S, b1) x WHERE x.student_id = a; fig := finance.overpaid_figures(S, b1);
+    v_desk := dsk.state || ' excess ' || dsk.excess || ' decided ' || dsk.decided || ' remaining ' || dsk.remaining || ' over ' || dsk.over_decided || ' ' || dsk.suggested;
+    v_fig := 'overDecided ' || (fig #>> '{overDecided,students}') || '/' || (fig #>> '{overDecided,amount}');
+    v_rise := (SELECT string_agg(x.source_code || ' ' || x.refundable, ',') FROM finance.withdrawal_sources(a, S) x) || ' refundable ' || finance.overpaid_refundable(a) || ' kept back ' || finance.overpaid_kept_back(a)
+              || ' shortfall ' || finance.overpayment_shortfall(a, S) || ' eligibility ' || (SELECT e.self_refundable FROM finance.withdrawal_eligibility(a, S) e);
+    -- the charge put back, a refund of the whole credit is asked for as the student; the charge rises again
+    UPDATE finance.fee_schedule SET amount = 95350 WHERE session = S AND programme_code = prog;
+    PERFORM pg_temp.zo_act(a, 'student');
+    w := finance.request_withdrawal(a, S, 28605, 'First Bank', '0000014579', 'Student 141', 'OVERPAID');
+    PERFORM pg_temp.zo_act(b1, 'bursar');
+    UPDATE finance.fee_schedule SET amount = 115350 WHERE session = S AND programme_code = prog;
+    -- the approval is refused for the amount kept back; the charge put back, it goes through
+    PERFORM pg_temp.zo_act(b2, 'bursar');
+    BEGIN PERFORM finance.approve_withdrawal(w.id); v_appr := 'APPROVED'; EXCEPTION WHEN check_violation THEN v_appr := split_part(SQLERRM, ':', 1); END;
+    UPDATE finance.fee_schedule SET amount = 95350 WHERE session = S AND programme_code = prog;
+    v_back := (SELECT x.state FROM finance.approve_withdrawal(w.id) x);
+    -- the fee line rising past what is paid: the student stays on the kept list, nothing of the credit is refundable
+    UPDATE finance.fee_schedule SET amount = 130000 WHERE session = S AND programme_code = prog;
+    PERFORM finance.overpaid_refresh(S);
+    SELECT * INTO dsk FROM finance.overpaid_desk(S, b1) x WHERE x.student_id = a; fig := finance.overpaid_figures(S, b1);
+    v_past := coalesce(dsk.cause, 'no cause') || ' ' || dsk.state || ' excess ' || dsk.excess || ' over ' || dsk.over_decided || ' ' || dsk.suggested || ' shortfall ' || finance.overpayment_shortfall(a, S)
+              || ' refundable ' || finance.overpaid_refundable(a) || ' overDecided ' || (fig #>> '{overDecided,students}') || '/' || (fig #>> '{overDecided,amount}') || ' students ' || (fig ->> 'students');
+    msg := 'before ' || v_before || ' | after the rise ' || v_desk || ' | ' || v_fig || ' | ' || v_rise || ' | approval ' || v_appr || ' | put back ' || v_back || ' | past what is paid ' || v_past;
+    RAISE EXCEPTION 'the V781 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V781 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V781: a charge that rises after a decision is shown as decided above the excess, a student decided and no longer overpaid stays on the kept list, and what the wallet holds of the hidden amount is not refunded (a refund requested before the rise is refused at approval; the charge put back, it is refundable again)',
+      coalesce(msg = 'before OVERPAID 28605.00 refundable 28605.00 kept back 0.00 shortfall 0.00 | after the rise OVER_DECIDED excess 8605.00 decided 28605.00 remaining 0 over 20000.00 RECOVER | overDecided 1/20000.00 | OVERPAID 8605.00 refundable 8605.00 kept back 20000.00 shortfall 20000.00 eligibility 8605.00 | approval WALLET_REFUND_KEPT_BACK | put back APPROVED | past what is paid no cause OVER_DECIDED excess -6045.00 over 28605.00 RECOVER shortfall 28605.00 refundable 0 overDecided 1/28605.00 students 0', false), msg);
+END $$;
+
+-- ── V781 · 15. The old fees reset, an upload that takes a record over and the put-right leave the records an overpayment decision or an open request rests on.
+--           Three students' old-portal payments of the screenshot's amounts: A credited to the wallet, C with a request open, B with neither. The reset of the
+--           session deletes B's old-portal record and keeps A's and C's (kept in use, still counted: their excess stands); the one rule
+--           (finance.overpayment_holds_record) is true for a school-fees record of A and C and false for B's, for another session and for another purpose; and
+--           the upload that takes a record over and the put-right carry that test ──
+DO $$
+DECLARE
+    S constant text := '9774/9775'; T constant text := '9775/9776'; prog text := pg_temp.zo_prog(); b1 uuid; b2 uuid; sa uuid; a uuid; b uuid; c uuid; r record; req finance.legacy_credit_request; q record;
+    v_reset text; v_left text; v_rule text; v_fn text; msg text; v_err text;
+BEGIN
+  BEGIN
+    b1 := pg_temp.zo_person('15B1', 'bursar'); b2 := pg_temp.zo_person('15B2', 'bursar'); sa := pg_temp.zo_person('15SA', 'studentaccounts'); PERFORM pg_temp.zo_sessions(S, T);
+    PERFORM set_config('moaum.reason', 'CHECK V781', true); PERFORM pg_temp.zo_fee(S, prog, 100, 95350);
+    a := pg_temp.zo_student(151, prog, S); b := pg_temp.zo_student(152, prog, S); c := pg_temp.zo_student(153, prog, S);
+    PERFORM pg_temp.zo_base(a, S, 'A'); PERFORM pg_temp.zo_base(b, S, 'B'); PERFORM pg_temp.zo_base(c, S, 'C');
+    req := pg_temp.zo_credit(S, a, sa, b2);
+    PERFORM pg_temp.zo_act(sa, 'studentaccounts');
+    SELECT * INTO q FROM finance.overpaid_credits_request(S, ARRAY[c], NULL, 'the screenshot''s student paid 28,605 twice', 1000, NULL, false);
+    PERFORM pg_temp.zo_act(b1, 'bursar');
+    v_rule := finance.overpayment_holds_record(a, S, 'School fees (legacy) · semester 1') || '/' || finance.overpayment_holds_record(c, S, 'School fees 9774/9775') || '/' || finance.overpayment_holds_record(b, S, 'School fees (legacy) · semester 1')
+              || '/' || finance.overpayment_holds_record(a, T, 'School fees (legacy) · semester 1') || '/' || finance.overpayment_holds_record(a, S, 'GST fee 9774/9775');
+    SELECT * INTO r FROM finance.reset_legacy_payments(S, 'RESET', 5000);
+    v_reset := r.deleted || ' deleted, ' || r.kept_in_use || ' kept in use';
+    v_left := (SELECT string_agg(split_part(p.reference, '-', 4), ',' ORDER BY p.reference) FROM finance.payment_reference p WHERE p.reference LIKE 'MOAUM-LEG-ZO-%' AND p.student_id IN (a, b, c))
+              || ' | A''s excess ' || (SELECT x.excess FROM finance.overpaid_read(S, ARRAY[a]) x) || ' C''s ' || (SELECT x.excess FROM finance.overpaid_read(S, ARRAY[c]) x);
+    v_fn := (pg_get_functiondef('finance.import_legacy_payments(jsonb)'::regprocedure) LIKE '%overpayment_holds_record(ph.student_id, ph.session, ph.purpose)%')::text || '/'
+            || (pg_get_functiondef('finance.put_right_legacy_items(text,integer)'::regprocedure) LIKE '%overpayment_holds_record(pr.student_id, pr.session, pr.purpose)%')::text || '/'
+            || (pg_get_functiondef('finance.reset_legacy_payments(text,text,integer)'::regprocedure) LIKE '%AND NOT finance.overpayment_holds_record(r.student_id, r.session, r.purpose)%')::text;
+    msg := 'the rule ' || v_rule || ' | reset ' || v_reset || ' | kept ' || v_left || ' | the three doors carry it ' || v_fn;
+    RAISE EXCEPTION 'the V781 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V781 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V781: the old fees reset, an upload that takes a record over and the put-right leave the records an overpayment decision or an open request rests on',
+      coalesce(msg = 'the rule true/true/false/false/false | reset 1 deleted, 2 kept in use | kept AA,CA | A''s excess 28605.00 C''s 28605.00 | the three doors carry it true/true/true', false), msg);
+END $$;
+
+-- ── V781 · 16. The kept list is the live list, what was decided since is read live, and the figures add up. Five made-up students in 9774/9775: A and B the
+--           screenshot's (ready), H the same with one payment recorded twice (held SAME_PAYMENT), W the same but withdrawn (ready, refund only), F one payment
+--           of 130,000 (apart). Before a refresh the figures say they were never worked out (computed false); a refresh keeps exactly what overpaid_read reads
+--           (compared row for row), the figures' identities hold (every cause's students add to the students; the undecided are held, apart or ready; the ready
+--           are wallet-ready or refund-only); A is then credited by two officers and the desk reads CREDITED with no refresh; refresh_due is true before the
+--           first run, false after it, and true again after a payment confirmed, an old-fees upload recorded or a payment archived since; a session that is not
+--           on the calendar is refused ──
+DO $$
+DECLARE
+    S constant text := '9774/9775'; T constant text := '9775/9776'; prog text := pg_temp.zo_prog(); b1 uuid; b2 uuid; sa uuid; a uuid; b uuid; h uuid; w uuid; f uuid; fig jsonb; fig2 jsonb; r record;
+    v_first text; v_same text; v_ident text; v_state text; v_due text; v_bad text; msg text; v_err text; n1 int; n2 int;
+BEGIN
+  BEGIN
+    b1 := pg_temp.zo_person('16B1', 'bursar'); b2 := pg_temp.zo_person('16B2', 'bursar'); sa := pg_temp.zo_person('16SA', 'studentaccounts'); PERFORM pg_temp.zo_sessions(S, T);
+    PERFORM set_config('moaum.reason', 'CHECK V781', true); PERFORM pg_temp.zo_fee(S, prog, 100, 95350);
+    a := pg_temp.zo_student(161, prog, S); b := pg_temp.zo_student(162, prog, S); h := pg_temp.zo_student(163, prog, S); w := pg_temp.zo_student(164, prog, S, 100, 'WITHDRAWN'); f := pg_temp.zo_student(165, prog, S);
+    PERFORM pg_temp.zo_base(a, S, 'A'); PERFORM pg_temp.zo_base(b, S, 'B'); PERFORM pg_temp.zo_base(h, S, 'H'); PERFORM pg_temp.zo_base(w, S, 'W'); PERFORM pg_temp.zo_pay(f, S, 130000, 'HAND', 'F1', 10);
+    UPDATE finance.gateway_event SET gateway_ref = 'GWREF-SAME-H' WHERE reference IN ('MOAUM-FEE-ZO-HB', 'MOAUM-FEE-ZO-HC');
+    PERFORM pg_temp.zo_act(b1, 'bursar');
+    fig := finance.overpaid_figures(S, b1);
+    v_first := 'never worked out: computed ' || (fig ->> 'computed') || ' students ' || (fig ->> 'students') || ' due ' || finance.overpaid_refresh_due(S);
+    SELECT * INTO r FROM finance.overpaid_refresh(S);
+    v_same := 'refreshed ' || r.refreshed || ' of ' || (r.students >= 5) || ' | due after ' || finance.overpaid_refresh_due(S);
+    -- the kept rows are what the live read gives (compared row for row, the made-up students)
+    n1 := (SELECT count(*) FROM finance.overpaid_snapshot k JOIN finance.overpaid_read(S) x ON x.student_id = k.student_id
+            WHERE k.session = S AND k.student_id IN (a, b, h, w, f) AND k.excess = x.excess AND k.cause = x.cause AND k.bulk = x.bulk AND k.holds = x.holds AND k.suggested = x.suggested
+              AND k.n_payments = x.n_payments AND k.refund_only IS NOT DISTINCT FROM x.refund_only AND k.due = x.due AND k.paid = x.paid AND k.payments = x.payments);
+    v_same := v_same || ' | rows equal ' || n1 || ' of 5';
+    fig := finance.overpaid_figures(S, b1);
+    v_ident := 'computed ' || (fig ->> 'computed') || ' | causes students ' || (SELECT sum((c ->> 'students')::int) FROM jsonb_array_elements(fig -> 'causes') c) || ' = ' || (fig ->> 'students')
+               || ' | undecided ' || (SELECT sum((c ->> 'undecided')::int) FROM jsonb_array_elements(fig -> 'causes') c) || ' = held ' || (fig #>> '{held,students}') || ' + apart ' || (fig #>> '{apart,students}') || ' + ready ' || (fig #>> '{paidTwice,ready}')
+               || ' | ready ' || (fig #>> '{paidTwice,ready}') || ' = wallet ' || (fig #>> '{paidTwice,walletReady}') || ' + refund-only ' || (fig #>> '{paidTwice,refundOnly}') || ' = causes ' || (SELECT sum((c ->> 'ready')::int) FROM jsonb_array_elements(fig -> 'causes') c)
+               || ' | amounts ' || (SELECT sum((c ->> 'undecidedAmount')::numeric) FROM jsonb_array_elements(fig -> 'causes') c) || ' = ' || ((fig #>> '{held,amount}')::numeric + (fig #>> '{apart,amount}')::numeric + (fig #>> '{paidTwice,readyAmount}')::numeric)
+               || ' | held for ' || (fig #>> '{held,reasons}');
+    -- A credited by two officers: the desk reads it at once, with no refresh
+    PERFORM pg_temp.zo_credit(S, a, sa, b2);
+    SELECT * INTO r FROM finance.overpaid_desk(S, b1) x WHERE x.student_id = a; v_state := 'A ' || r.state || ' decided ' || r.decided || ' remaining ' || r.remaining;
+    SELECT * INTO r FROM finance.overpaid_desk(S, b1) x WHERE x.student_id = b; v_state := v_state || ', B ' || r.state;
+    fig2 := finance.overpaid_figures(S, b1);
+    v_state := v_state || ' | credited ' || (fig2 #>> '{credited,students}') || '/' || (fig2 #>> '{credited,amount}') || ' applied ' || (fig2 #>> '{credited,applied}') || ' inWallets ' || (fig2 #>> '{credited,inWallets}')
+               || ' | still undecided ' || (SELECT sum((c ->> 'undecided')::int) FROM jsonb_array_elements(fig2 -> 'causes') c) || ' (was ' || (SELECT sum((c ->> 'undecided')::int) FROM jsonb_array_elements(fig -> 'causes') c) || ')';
+    -- when the list is worked out again: after the refresh (an hour earlier than the transaction), nothing new; then a payment confirmed, an upload, an archive
+    UPDATE finance.overpaid_snapshot_run SET refreshed_at = now() - interval '1 minute' WHERE session = S;
+    v_due := 'quiet ' || finance.overpaid_refresh_due(S);
+    PERFORM pg_temp.zo_pay(b, S, 100, 'PORTAL', 'NEW', 0);
+    v_due := v_due || ', a payment confirmed ' || finance.overpaid_refresh_due(S);
+    UPDATE finance.overpaid_snapshot_run SET refreshed_at = now() + interval '1 minute' WHERE session = S;
+    v_due := v_due || ', after the refresh ' || finance.overpaid_refresh_due(S);
+    UPDATE finance.overpaid_snapshot_run SET refreshed_at = now() - interval '1 minute' WHERE session = S;
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, confirmed_by, channel, receipt_no, note)
+    VALUES (b, S, 'MOAUM-LEG-ZO-UP1', 'School fees (legacy) ' || chr(183) || ' semester 2', 100, now(), now() - interval '2 days', now() - interval '2 days', b1, 'Legacy', 'LEG-ZO-UP1', 'an old fees upload');
+    v_due := v_due || ', an old-fees upload ' || finance.overpaid_refresh_due(S);
+    UPDATE finance.overpaid_snapshot_run SET refreshed_at = now() + interval '1 minute' WHERE session = S;
+    PERFORM finance.archive_payment((SELECT x.id FROM finance.payment_reference x WHERE x.reference = 'MOAUM-FEE-ZO-NEW'), 'UNVERIFIED_PAYMENT', NULL, 'the bank branch slip was not matched on the statement yet', true);
+    UPDATE finance.overpaid_snapshot_run SET refreshed_at = now() - interval '1 minute' WHERE session = S;
+    v_due := v_due || ', a payment archived ' || finance.overpaid_refresh_due(S);
+    BEGIN PERFORM finance.overpaid_refresh('1111/1112'); v_bad := 'MADE'; EXCEPTION WHEN check_violation THEN v_bad := split_part(SQLERRM, ':', 1); END;
+    msg := v_first || ' | ' || v_same || ' | ' || v_ident || ' | ' || v_state || ' | ' || v_due || ' | a session not on the calendar ' || v_bad;
+    RAISE EXCEPTION 'the V781 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V781 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V781: the kept list is the live list, what was decided since is read live, and the figures add up (the causes, the held, the apart, the ready, the wallet-ready and the refund-only); it is worked out again after a payment is confirmed, recorded by an upload or archived, and a session that is not on the calendar is refused',
+      coalesce(msg = 'never worked out: computed false students 0 due true | refreshed true of true | due after false | rows equal 5 of 5 | computed true | causes students 5 = 5 | undecided 5 = held 1 + apart 1 + ready 3 | ready 3 = wallet 2 + refund-only 1 = causes 3 | amounts 149070.00 = 149070.00 | held for {"SAME_PAYMENT": 1} | A CREDITED decided 28605.00 remaining 0.00, B UNDECIDED | credited 1/28605.00 applied 0 inWallets 28605.00 | still undecided 4 (was 5) | quiet false, a payment confirmed true, after the refresh false, an old-fees upload true, a payment archived true | a session not on the calendar OVERPAID_SESSION', false), msg);
+END $$;
+
+-- ── V781 · 17. A wallet credit of overpaid fees is refunded from its own source, from the next session's page as from its own, and never beyond what it holds.
+--           A (the screenshot's, 28,605 credited to the wallet by two officers in 9774/9775) also topped the wallet up with 10,000 of their own money. Once the
+--           next session is the current one (its fees not stated), a refund the student asks for is taken from the source that holds the money: 10,000 from the
+--           top-up (the student's own money first), 28,605 from the overpaid credit, 35,000 from no one source (WALLET_REFUND_ONE_SOURCE, naming each); each
+--           source's figure adds up to what the eligibility reads; the overpaid credit approved by another officer and paid by a third is debited under its own
+--           source (the REFUND entry's), the wallet's overpaid money is then nothing, and the ledger gives Dr 2100 / Cr 1020 for it ──
+DO $$
+DECLARE
+    S constant text := '9774/9775'; T constant text := '9775/9776'; prog text := pg_temp.zo_prog(); b1 uuid; b2 uuid; sa uuid; a uuid; w finance.wallet_withdrawal; w2 finance.wallet_withdrawal; e record; el record;
+    v_sources text; v_sum text; v_one text; v_src text; v_src2 text; v_paid text; v_money text; v_jr text; v_s_page text; v_hint text; msg text; v_err text; ent uuid;
+BEGIN
+  BEGIN
+    b1 := pg_temp.zo_person('17B1', 'bursar'); b2 := pg_temp.zo_person('17B2', 'bursar'); sa := pg_temp.zo_person('17SA', 'studentaccounts'); PERFORM pg_temp.zo_sessions(S, T, true);
+    PERFORM set_config('moaum.reason', 'CHECK V781', true); PERFORM pg_temp.zo_fee(S, prog, 100, 95350);
+    a := pg_temp.zo_student(171, prog, S); PERFORM pg_temp.zo_base(a, S, 'A'); PERFORM pg_temp.zo_credit(S, a, sa, b2);
+    PERFORM pg_temp.zo_act(b1, 'bursar');
+    -- the next session becomes the current one; its fees are not stated for the student, who tops the wallet up with 10,000 of their own in it
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE name = S;
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/CHK/774' WHERE name = T;
+    INSERT INTO finance.wallet_entry (student_id, session, kind, amount, reference, note, source_code) VALUES (a, T, 'TOPUP', 10000, 'ZO-TOPUP', 'a top-up of the student''s own', 'SELF');
+    SELECT * INTO el FROM finance.withdrawal_eligibility(a, T);
+    v_sources := (SELECT string_agg(x.source_code || ' ' || x.refundable, ', ' ORDER BY x.source_code) FROM finance.withdrawal_sources(a, T) x);
+    v_sum := 'sources add to ' || (SELECT sum(x.refundable) FROM finance.withdrawal_sources(a, T) x) || ' = eligibility ' || (el.self_refundable + el.nelfund_refundable) || ' eligible ' || el.eligible
+             || ' | the overpaid session''s own page ' || (SELECT sum(x.refundable) FROM finance.withdrawal_sources(a, S) x);
+    PERFORM pg_temp.zo_act(a, 'student');
+    BEGIN PERFORM finance.request_withdrawal(a, T, 35000, 'First Bank', '0000014579', 'Student 171', NULL); v_one := 'MADE'; EXCEPTION WHEN check_violation THEN v_one := split_part(SQLERRM, ':', 1); GET STACKED DIAGNOSTICS v_hint = PG_EXCEPTION_HINT; END;
+    -- the student's own top-up first: asked for, approved by another officer, paid by a third
+    w := finance.request_withdrawal(a, T, 10000, 'First Bank', '0000014579', 'Student 171', NULL);
+    PERFORM pg_temp.zo_act(b2, 'bursar'); PERFORM finance.approve_withdrawal(w.id);
+    PERFORM pg_temp.zo_act(b1, 'bursar'); PERFORM finance.pay_withdrawal(w.id, 'TRX-ZO-17A', (now() AT TIME ZONE 'Africa/Lagos')::date);
+    -- then the overpaid credit, under its own source
+    PERFORM pg_temp.zo_act(a, 'student');
+    w2 := finance.request_withdrawal(a, T, 28605, 'First Bank', '0000014579', 'Student 171', NULL);
+    v_src := w.source_code || ' ' || w.amount || ' | ' || w2.source_code || ' ' || w2.amount;
+    PERFORM pg_temp.zo_act(b2, 'bursar'); PERFORM finance.approve_withdrawal(w2.id);
+    PERFORM pg_temp.zo_act(b1, 'bursar'); PERFORM finance.pay_withdrawal(w2.id, 'TRX-ZO-17B', (now() AT TIME ZONE 'Africa/Lagos')::date);
+    SELECT e2.id, e2.kind, e2.amount, e2.source_code, e2.session INTO e FROM finance.wallet_entry e2 WHERE e2.student_id = a AND e2.kind = 'REFUND' AND e2.amount = 28605;
+    v_paid := 'entries ' || (SELECT string_agg(x.source_code || ' ' || x.amount, ', ' ORDER BY x.source_code) FROM finance.wallet_entry x WHERE x.student_id = a AND x.kind = 'REFUND');
+    v_money := 'overpaid money after ' || finance.overpaid_wallet_money(a) || ' wallet ' || finance.wallet_balance(a) || ' sources now ' || coalesce((SELECT string_agg(x.source_code || ' ' || x.refundable, ', ') FROM finance.withdrawal_sources(a, T) x), 'none');
+    PERFORM finance.gl_sync(NULL::int);
+    v_jr := (SELECT count(DISTINCT j.id) || ' journal Dr ' || string_agg(DISTINCT p.account, ',' ORDER BY p.account) FILTER (WHERE p.debit > 0) || ' Cr ' || string_agg(DISTINCT p.account, ',') FILTER (WHERE p.credit > 0)
+               FROM finance.gl_journal j JOIN finance.gl_posting p ON p.journal_id = j.id WHERE j.source_type = 'WALLET' AND j.source_ref = 'WALLET-' || e.id);
+    msg := 'sources ' || v_sources || ' | ' || v_sum || ' | 35,000 ' || v_one || ' | asked for 10,000 and 28,605: ' || v_src || ' | paid ' || v_paid || ' | ' || v_money || ' | ledger ' || v_jr;
+    RAISE EXCEPTION 'the V781 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V781 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V781: a wallet credit of overpaid fees is refunded from its own source — from the next session''s page as from its own — and never beyond what it holds; an amount above any one source is refused naming each, and the sources add up to the eligibility''s figures',
+      coalesce(msg = 'sources OVERPAID 28605.00, SELF 10000.00 | sources add to 38605.00 = eligibility 38605.00 eligible true | the overpaid session''s own page 28605.00 | 35,000 WALLET_REFUND_ONE_SOURCE | asked for 10,000 and 28,605: SELF 10000.00 | OVERPAID 28605.00 | paid entries OVERPAID 28605.00, SELF 10000.00 | overpaid money after 0.00 wallet 0.00 sources now none | ledger 1 journal Dr 2100 Cr 1020', false), msg);
+END $$;
+
+-- ── V781 · 19. An old-fees upload leaves a school-fees record that money rests on. Against 95,350, five students each have the old portal's 66,745 as
+--           a record with no payment number and the portal's 28,605 twice (excess 28,605): A is credited to the wallet, C has a credit request open, D has
+--           neither (the control), E has a refund raised by hand against the old record, F has nothing but the record. An upload row of 66,745 for another
+--           item (hostel fees) leaves A's and C's record as it is (still school fees, still counted) and counts as already recorded, and takes D's out of
+--           the school fees as it always did; an upload row of 66,745 for semester 1 leaves E's record under its reference (the refund points at it) and
+--           gives F's the reference of its semester as it always did ──
+DO $$
+DECLARE
+    S constant text := '9774/9775'; T constant text := '9775/9776'; prog text := pg_temp.zo_prog(); b1 uuid; b2 uuid; sa uuid; a uuid; c uuid; d uuid; e uuid; f uuid; r record; q record; req finance.legacy_credit_request;
+    v_a text; v_c text; v_d text; v_e text; v_f text; msg text; v_err text;
+BEGIN
+  BEGIN
+    b1 := pg_temp.zo_person('19B1', 'bursar'); b2 := pg_temp.zo_person('19B2', 'bursar'); sa := pg_temp.zo_person('19SA', 'studentaccounts'); PERFORM pg_temp.zo_sessions(S, T);
+    PERFORM set_config('moaum.reason', 'CHECK V781', true); PERFORM pg_temp.zo_fee(S, prog, 100, 95350);
+    a := pg_temp.zo_student(191, prog, S); c := pg_temp.zo_student(193, prog, S); d := pg_temp.zo_student(194, prog, S); e := pg_temp.zo_student(195, prog, S); f := pg_temp.zo_student(196, prog, S);
+    PERFORM pg_temp.zo_oldrec(a, 191, S, 66745); PERFORM pg_temp.zo_oldrec(c, 193, S, 66745); PERFORM pg_temp.zo_oldrec(d, 194, S, 66745); PERFORM pg_temp.zo_oldrec(e, 195, S, 66745); PERFORM pg_temp.zo_oldrec(f, 196, S, 66745);
+    PERFORM pg_temp.zo_pay(a, S, 28605, 'PORTAL', 'RA1', 20); PERFORM pg_temp.zo_pay(a, S, 28605, 'PORTAL', 'RA2', 14);
+    PERFORM pg_temp.zo_pay(c, S, 28605, 'PORTAL', 'RC1', 20); PERFORM pg_temp.zo_pay(c, S, 28605, 'PORTAL', 'RC2', 14);
+    PERFORM pg_temp.zo_pay(d, S, 28605, 'PORTAL', 'RD1', 20); PERFORM pg_temp.zo_pay(d, S, 28605, 'PORTAL', 'RD2', 14);
+    PERFORM pg_temp.zo_pay(e, S, 28605, 'PORTAL', 'RE1', 20); PERFORM pg_temp.zo_pay(e, S, 28605, 'PORTAL', 'RE2', 14);
+    PERFORM pg_temp.zo_pay(f, S, 28605, 'PORTAL', 'RF1', 20); PERFORM pg_temp.zo_pay(f, S, 28605, 'PORTAL', 'RF2', 14);
+    req := pg_temp.zo_credit(S, a, sa, b2);                                                     -- A: credited to the wallet by two officers
+    PERFORM pg_temp.zo_act(sa, 'studentaccounts');
+    SELECT * INTO q FROM finance.overpaid_credits_request(S, ARRAY[c], NULL, 'the screenshot''s student paid 28,605 twice', 1000, NULL, false);   -- C: a request open
+    PERFORM pg_temp.zo_act(b1, 'bursar');
+    PERFORM finance.propose_refund(e, 'Student 195', 'refunded by hand', 1000, NULL, NULL, NULL, 'MOAUM-LEG-MOAUMZZO77195-9774-9775');       -- E: a refund by hand against the old record
+    -- the upload: 66,745 for another item (hostel fees) for A, C and D
+    FOR r IN SELECT x.n FROM (VALUES (191), (193), (194)) x(n) LOOP
+        PERFORM finance.import_legacy_payments(jsonb_build_array(jsonb_build_object('matric', 'MOAUM/ZZO/77/' || r.n, 'session', S, 'amount', 66745, 'purpose', 'Hostel fee')));
+    END LOOP;
+    -- the upload: 66,745 for semester 1 for E and F
+    FOR r IN SELECT x.n FROM (VALUES (195), (196)) x(n) LOOP
+        PERFORM finance.import_legacy_payments(jsonb_build_array(jsonb_build_object('matric', 'MOAUM/ZZO/77/' || r.n, 'session', S, 'amount', 66745, 'semester', 1)));
+    END LOOP;
+    v_a := (SELECT string_agg(p.reference || ' / ' || p.purpose, ' ; ' ORDER BY p.reference) FROM finance.payment_reference p WHERE p.student_id = a AND p.channel = 'Legacy') || ' excess ' || (SELECT x.excess FROM finance.overpaid_read(S, ARRAY[a]) x);
+    v_c := (SELECT string_agg(p.reference || ' / ' || p.purpose, ' ; ' ORDER BY p.reference) FROM finance.payment_reference p WHERE p.student_id = c AND p.channel = 'Legacy') || ' excess ' || (SELECT x.excess FROM finance.overpaid_read(S, ARRAY[c]) x);
+    v_d := (SELECT string_agg(p.reference || ' / ' || p.purpose, ' ; ' ORDER BY p.reference) FROM finance.payment_reference p WHERE p.student_id = d AND p.channel = 'Legacy') || ' excess ' || coalesce((SELECT x.excess::text FROM finance.overpaid_read(S, ARRAY[d]) x), 'none');
+    v_e := (SELECT string_agg(p.reference || ' / ' || p.purpose, ' ; ' ORDER BY p.reference) FROM finance.payment_reference p WHERE p.student_id = e AND p.channel = 'Legacy');
+    v_f := (SELECT string_agg(p.reference || ' / ' || p.purpose, ' ; ' ORDER BY p.reference) FROM finance.payment_reference p WHERE p.student_id = f AND p.channel = 'Legacy');
+    msg := 'A ' || coalesce(v_a, '?') || ' | C ' || coalesce(v_c, '?') || ' | D ' || coalesce(v_d, '?') || ' | E ' || coalesce(v_e, '?') || ' | F ' || coalesce(v_f, '?');
+    RAISE EXCEPTION 'the V781 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V781 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V781: an old-fees upload leaves a school-fees record a decision or an open request rests on (it is not put under another item) and one a refund points at (it keeps its reference), and still relabels a record nothing rests on',
+      coalesce(msg = 'A MOAUM-LEG-MOAUMZZO77191-9774-9775 / School fees (legacy) ' || chr(183) || ' semester 1 excess 28605.00 | C MOAUM-LEG-MOAUMZZO77193-9774-9775 / School fees (legacy) ' || chr(183) || ' semester 1 excess 28605.00'
+                   || ' | D MOAUM-LEG-MOAUMZZO77194-9774-9775-HOSTELFEE / Hostel fee (legacy) excess none | E MOAUM-LEG-MOAUMZZO77195-9774-9775 / School fees (legacy) ' || chr(183) || ' semester 1'
+                   || ' | F MOAUM-LEG-MOAUMZZO77196-9774-9775-S1 / School fees (legacy) ' || chr(183) || ' semester 1', false), msg);
+END $$;
+
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
 -- reports green over an aborted block. The count of checks that actually ran

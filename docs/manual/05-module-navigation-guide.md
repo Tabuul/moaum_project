@@ -4825,6 +4825,33 @@ Finance → Refunds & Credits → /finance/refunds
 
 > **Screenshot Required:** Refunds & Credits — `/finance/refunds` — the queue and the raise modal.
 
+#### 4.14.7a Overpaid School Fees (V781)
+
+```text
+Finance → Overpaid School Fees → /finance/overpaid          (Bursar)
+Payment Management → Overpaid School Fees → /finance/overpaid   (Students Account Officer)
+```
+**URL** `/finance/overpaid?session=&tab=&cause=&state=&held=&bulk=&faculty=&department=&q=&page=` · **Purpose** Reconcile school fees paid above the
+charge: a wallet credit by two officers, or a refund. · **Who** menu: bursar, studentaccounts; reads: the finance readers; `may` request/refresh:
+bursar, studentaccounts, super; approve/refund: bursar, super. · **Layout** the session select, "Figures as of …", **Refresh**; five cause tiles
+(filters); tabs **Students**, **Approvals**, **Returned**. Students: filters (search, cause, state, held, exact repeat, faculty, department),
+**Select all ready on this page**, **Credit to wallet** / **Credit all ready: {cause}**, **Refund**, **Excel**; the table (Student, Programme · level,
+Charged, Paid, Excess, Cause, Payments, Held for, State; a checkbox that is disabled says why).
+
+| Action | What it does | Endpoint |
+|---|---|---|
+| Refresh | works the session's list out again | `POST /finance/overpaid/refresh` |
+| Credit to wallet | one batch of requests (the reason, the confirmation; the fee-setup tick for one student who is not an exact repeat) | `POST /finance/overpaid/credits/request`, again with the batch while more remain |
+| Approve / Return / Reject | a batch or ticked requests, another Bursary officer | `POST /finance/overpaid/credits/decide`, again with `since` |
+| Withdraw | the requester's open or returned requests | `POST /finance/overpaid/credits/withdraw` |
+| Refund | refunds raised on Refunds & Credits | `POST /finance/overpaid/refund` |
+| Excel | the filtered list | `GET /finance/overpaid/rows?…&export=true` |
+
+**Messages** "Nothing is credited now: another Bursary officer approves."; "Your own request" (a request is never decided by the officer who made it);
+"Not yet worked out for {session}".
+
+> **Screenshot Required:** Overpaid School Fees — `/finance/overpaid` — the cause tiles, the Students table and the Credit to wallet modal.
+
 #### 4.14.8 Funding Sources
 
 ```text
@@ -5763,6 +5790,7 @@ Every tile is computed on request from the modules' own tables (a *read model*);
 | `/finance/hanging` | Hanging now / Resolved without a person / Needs a person / The sweep (**static "Every 10 min"**) | attempts and events | `payments/bursary` | `may` |
 | `/finance/exceptions` | Open / Proposed / Posted / Cash ceiling (**hard-coded ₦1,000**) | `finance.bank_credit` | `finance/bank-credits` | bursar, admin |
 | `/finance/refunds` | Awaiting approval / Approved, to pay / Paid / All (**static "Newest 300"**) | `finance.refund` | `finance/refunds` | refunds readers |
+| `/finance/overpaid` | Five causes (students and the excess), Students / Approvals / Returned | `finance.overpaid_snapshot` (state read live), `finance.legacy_credit_request` | `finance/overpaid` | READERS |
 | `/finance/nelfund` | Received this session / Allocated to students / Unallocated / Reversed to the Fund; Applied / Approved / Not approved / Still with the Fund; Funded / Applied to school fees / Withdrawn / Held in wallets | `nelfund_*`, `wallet_entry`, `funding_summary` | `nelfund/sessions/{s}`, `funding/sessions/{s}/report` | `READERS` |
 | `/finance/reconcile` | Gateway settled / Matched / Exceptions / Hanging; Confirmed in the window / Matched to the bank / Discrepancies / Not yet checked | events; `payment_reconciliation` | `payments/bursary`, `finance/reconciliation` | readers |
 | `/finance/ledger` | Collected / By card / By bank / From the wallet | `finance.day_book` | `finance/ledger` | readers |

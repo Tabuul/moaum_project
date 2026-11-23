@@ -92,3 +92,16 @@ reconciliation with the fee setup pages on the server, ten students a page, and 
   - `GET /history/{id}` (with `part_list`)
   - `GET /history/{id}/payments?page&size` (size up to 200,000 for the Excel)
 - **Tests:** `OldFeesUploadHistoryIT`; check.sql V609; `lib/old-fees-history` tests.
+
+## Records a decision rests on (V781)
+
+A school-fees record of a student and session with an overpayment decision standing, or a wallet credit request open, is kept
+(`finance.overpayment_holds_record`; `docs/overpaid-school-fees.md`):
+
+- **Start over** leaves it, counted among the records "kept in use" with those a refund or a swap points at;
+- **an upload** that would take it over (rewrite its session, amount and purpose) counts it as already recorded instead, and so does
+  one that would relabel a record with no payment number (another item, another reference) when a decision or an open request
+  rests on it and the relabel would take it out of the school fees, or when a refund points at it by its reference;
+- **the put-right of mislabelled items** passes over it.
+
+The decision's money is therefore never uncovered by maintenance of the old fees.

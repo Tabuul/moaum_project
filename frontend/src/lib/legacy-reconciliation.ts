@@ -36,6 +36,11 @@ export interface CreditRequestRow {
   adjustment_reason: string | null; reason: string; evidence: string; status: RequestStatus; initiated_by: string | null; initiated_office: string; initiated_at: string;
   resubmitted_at: string | null; resubmissions: number; decided_by: string | null; decided_office: string | null; decided_at: string | null; decision_note: string | null;
   withdrawn_by: string | null; withdrawn_at: string | null; withdraw_reason: string | null; wallet_reference: string | null; credited_at: string | null; balance_after: number | string | null;
+  /** V781: the cause the request was made for, whether it was made in bulk on the Overpaid school fees desk (and under which batch, and
+   *  credited under which approval batch), whether the fee setup was confirmed, who made it, and the sentence an approval pass left it
+   *  with; `mine` is on the desk's own list only (GET /finance/overpaid/credits) */
+  cause?: string | null; bulk?: boolean; request_batch?: string | null; credit_batch?: string | null; fee_setup_checked?: boolean; initiated_by_id?: string | null;
+  last_skip_code?: string | null; last_skip_why?: string | null; mine?: boolean;
 }
 
 export interface ReconFigures {
@@ -43,7 +48,9 @@ export interface ReconFigures {
   outstanding: { students: number; owes: number; owesAmount: number | string; credit: number; creditAmount: number | string; decided: number; decidedAmount: number | string;
     carried: number; refunded: number; toWallet: number; settled: number; noFee: number };
   requests: { pending: number; pendingAmount: number | string; returned: number; returnedAmount: number | string; credited: number; creditedAmount: number | string;
-    rejected: number; rejectedAmount: number | string; withdrawn: number; adjusted: number; pendingSession: number };
+    rejected: number; rejectedAmount: number | string; withdrawn: number; adjusted: number; pendingSession: number;
+    /** V781: requests made in bulk on the Overpaid school fees desk and waiting there; this desk's own queue and figures leave them out */
+    onOverpaidDesk?: number };
   wallet: { students: number; computed: number; computedAmount: number | string; verified: number; verifiedAmount: number | string; returned: number; returnedAmount: number | string;
     posted: number; postedAmount: number | string; review: number; rejected: number; frozen: number; noBalance: number; applied: number | string };
   overpaidCredited: { amount: number | string; applied: number | string };
@@ -92,7 +99,10 @@ export interface StudentPicture {
   student: { id: string; name: string; matric_no: string | null; jamb_reg_no: string | null; admission_no: string | null; programme_code: string | null; programme: string | null;
     dept_code: string | null; department: string | null; faculty_code: string | null; faculty: string | null; current_level: number | null; status: string; entry_session: string | null };
   sessions: { session: string; due: number | string; paid: number | string; owed: number | string; excess: number | string; legacy_payments: number; legacy_amount: number | string;
-    decision: string | null; decided_amount: number | string | null; decision_reference: string | null }[];
+    decision: string | null; decided_amount: number | string | null; decision_reference: string | null;
+    /** V781: what is left of the excess to decide, why it is paid above the charge, whether it is an exact repeated payment (else the fee
+     *  setup is confirmed with the request), what holds it, and why it is refunded and never credited to a wallet */
+    remaining?: number | string | null; cause?: string | null; bulk?: boolean | null; holds?: string[] | null; refund_only?: string | null }[];
   payments: { reference: string; session: string; purpose: string; amount: number | string; confirmed_at: string; channel: string; receipt_no: string | null; legacy_payref: string | null; note: string | null }[];
   requests: CreditRequestRow[];
   legacyWallet: Record<string, unknown>;

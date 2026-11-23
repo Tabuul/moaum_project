@@ -884,6 +884,24 @@ Wallet and NELFUND: an append-only ledger (`finance.wallet_entry` kinds CREDIT /
 | Export from the NELFUND / wallet desk; Student 360 Finance card ("NOT YET SERVED"); Records & queries "fees" tab | NOT IMPLEMENTED / PLACEHOLDER |
 
 ---
+### 6.7 Overpaid school fees: paid twice → request → approve → wallet → applied or refunded (V781)
+
+| Step | Who | What happens |
+|---|---|---|
+| A student pays a session's fees twice (two portal references, or the old portal and the portal) | the student | Both are confirmed and recorded (money the bank has taken is always recorded). The fees page reads "Paid above the charge", not "Settled" |
+| The list is worked out | the job, or **Refresh** | `finance.overpaid_read` gives each student one cause, whether the repeat makes up the excess exactly (`bulk`), and every hold; the kept list is refreshed every ten minutes for the current session |
+| Request | Students Account Officer or a Bursary officer | Students ticked, or **Credit all ready** for a paid-twice cause; the reason and the confirmation; for a row that is not an exact repeat, one student at a time with the fee setup checked. One batch `OCR/…`, one request `LOR/…` a student; **nothing is credited** |
+| Approve | a Bursar officer other than the requester | The session is read afresh and the student's own fee account under the student's lock; then a wallet CREDIT of source OVERPAID, a WALLET decision, the request CREDITED (`OCA/…`), the student told. A request that cannot be credited is left with its reason and not tried again in the pass. **No fees are paid** |
+| Applied | the student | On the Wallet page, **Apply** pays school fees when they are owed and payment is open (Dr 2100 / Cr 4010); the student pays only the rest |
+| Or refunded | the student, then two officers | Once the current session's fees are paid, the student asks for a refund of the source "Overpaid school fees"; another officer approves; a different officer marks it paid with the transfer reference and the date (Dr 2100 / Cr 1020). Money kept back for a charge that rose after the decision is not refunded |
+| Or refunded by the Bursary | a Bursar officer raises it, another approves | **Refund** on the desk raises a refund against the payment on Refunds & Credits; the same two-officer road |
+
+Holds (fourteen) stop every decision: a past session, a graduate's closed session, a bank check, one payment recorded twice, a PayDirect
+reversal, a payment under review, an open correction, a semester not yet charged or stated, a spillover semester to register, a late fee
+that may still fall, the student's own fee account reading another excess, a merged record. A graduated, withdrawn, deceased or award-cleared
+student is refunded, never credited to a wallet. A decided student who pays again is listed again for the new amount. See
+`docs/overpaid-school-fees.md`.
+
 ## 7. Deferment, transfer, biodata change and status changes
 
 ### 7.1 Deferment (V259, revised by V264 and V265)

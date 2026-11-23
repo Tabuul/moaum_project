@@ -737,6 +737,9 @@ The MBBS Coordinator acts only at the level of their grant (`COLLEGE_NOT_YOUR_LE
 | Payment-history import (`MIGRATORS`) | bursar, super, ict, admin | |
 | Refunds | read: bursar, super, audit, admin; write: bursar, super | **Maker–checker by person, in SQL** — the person who proposed a refund or a bank credit cannot approve it, whatever offices they hold |
 | Accounting: sync, journal, reverse | bursar, super | Readers = finance readers + deputyaudit |
+| Overpaid school fees (V781), read the figures, the rows and the requests (`OverpaidController.READERS`) | bursar, studentaccounts, registrar, dregistrar, academic, audit, deputyaudit, ict, admin, super, vc, dvc | `/api/v1/finance/overpaid/**`; the desk is on the menus of the Bursar and the Students Account Officer only |
+| Overpaid school fees: refresh the list, request a wallet credit, withdraw a request (`REQUESTERS`) | bursar, studentaccounts, super | Withdraw: one's own requests; a Bursar or super may withdraw anyone's |
+| Overpaid school fees: approve, return or reject a wallet credit, raise a refund (`DECIDERS`) | bursar, super | **By person, in SQL**: the officer who requested a credit never approves it (`LEGACY_CREDIT_SAME_OFFICER`, `ck_lcr_two_officers`) |
 | Own position, references, receipts | student (`/me/fees/**`) | |
 
 #### 3.3.20 Payment gateways (`payments`) and wallet (`wallet`)

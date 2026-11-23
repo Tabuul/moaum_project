@@ -296,6 +296,7 @@ export const TITLES: Record<string, string> = {
   "t/nelmatch": "Unmatched remittances",
   "t/reconcile": "Settlement reconciliation",
   "t/refunds": "Refunds & credits",
+  "t/overpaid": "Overpaid school fees",
   "t/paymentswaps": "School fees payment swaps",
   "t/paymentrealloc": "Payment reallocation and correction",
   "t/paymentarchive": "Archived payments",

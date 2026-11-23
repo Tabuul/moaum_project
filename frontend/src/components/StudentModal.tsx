@@ -18,6 +18,7 @@ import type { Problem } from "@/lib/api";
 import type { StudentRecord } from "@/lib/student";
 import { fullName, statusLabel, statusPill } from "@/lib/student";
 import type { Me as Portal } from "@/lib/student-portal";
+import { excessStaffWords } from "@/lib/overpayment";
 import { money } from "@/lib/format";
 
 type Tab = "overview" | "biodata" | "academic" | "fees" | "documents" | "history";
@@ -53,6 +54,10 @@ export function StudentModal({ id, onClose }: { id: string; onClose: () => void 
 
   const s = record?.student;
   const f = portal?.fees;
+  // V781: school fees paid above the charge — what is left to decide, and the whole excess; said as a credit, never as "settled" alone
+  const excessLeft = Number(f?.excessRemaining ?? 0);
+  const excessAll = Number(f?.excess ?? 0);
+  const aboveLine = f && excessLeft >= 1 ? excessStaffWords(f) : null;
   const latestSem = portal?.gpa?.length ? portal.gpa[portal.gpa.length - 1] : null;
   const reg = portal?.registration ?? null;
 
@@ -157,9 +162,11 @@ export function StudentModal({ id, onClose }: { id: string; onClose: () => void 
           <>
             <Tiles items={[
               ["Charged", money(f.due), null, f.session],
-              ["Paid", money(f.paid), f.paid > 0 ? "var(--green-ink)" : null, f.paidInFull ? "in full" : `${f.instalmentsPaid} instalment${f.instalmentsPaid === 1 ? "" : "s"}`],
-              ["Balance", money(f.balance), f.balance > 0 ? "var(--red-ink)" : "var(--green-ink)", f.hasArrears ? "arrears carried" : f.balance > 0 ? "outstanding" : "settled"],
+              ["Paid", money(f.paid), f.paid > 0 ? "var(--green-ink)" : null, excessLeft >= 1 ? `${money(excessAll >= 1 ? excessAll : excessLeft)} above the charge` : f.paidInFull ? "in full" : `${f.instalmentsPaid} instalment${f.instalmentsPaid === 1 ? "" : "s"}`],
+              excessLeft >= 1 ? ["Credit", money(excessLeft), "var(--green-ink)", "paid above the charge"]
+                : ["Balance", money(f.balance), f.balance > 0 ? "var(--red-ink)" : "var(--green-ink)", f.hasArrears ? "arrears carried" : f.balance > 0 ? "outstanding" : excessAll >= 1 ? "excess decided" : "settled"],
             ]} />
+            {aboveLine ? <div className="sub2 mt-2 mb-2">{aboveLine}</div> : null}
             {f.charges.length ? (
               <DTable cols={["Item", "Amount|num"]} rows={f.charges.map((c) => [c.item, <span key="a" className="tnum">{money(c.amount)}</span>])} texts={f.charges.map((c) => c.item)} />
             ) : <div className="sub2">No charge stated for {f.session}.</div>}

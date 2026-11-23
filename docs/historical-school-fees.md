@@ -225,3 +225,13 @@ who uploads evidence, the University chose: the graduate submits it, the Bursary
 - A waiver was not introduced by V654. V665 adds approved waivers and adjustments (one officer proposes, another of the Bursar's
   office approves), netted off the account; see `graduation-at-final-clearance.md`.
 - A refunded or Interswitch-reversed payment counts as `finance.position` counts it.
+- A past session's excess is not decided on the Overpaid school fees desk (V781, the section above).
+
+## A past session's excess (V781)
+
+The Overpaid school fees desk (`docs/overpaid-school-fees.md`) reads a charge as the student stands today, which is right for the
+student's current session and wrong for an earlier one: this account's own finding above. So a student's excess in a session before
+their current one is **listed and never decided there** (hold `PAST_SESSION`: "Not this student's current session — its charge is
+read as the student stands today"), and what a graduate paid above a charge that no longer applies is held `CLOSED_FOR_FEES`
+("Graduated: nothing is charged for this session — refund the payment on Refunds & Credits"). This account is the reader of a past
+session; deciding a past session's excess from it is not part of V781.

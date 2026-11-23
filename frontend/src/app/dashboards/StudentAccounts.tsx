@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import type { BursaryView } from "@/lib/bursary";
@@ -9,6 +10,7 @@ import { money } from "@/lib/format";
 
 import type { ReconFigures } from "@/lib/legacy-reconciliation";
 import { HistoricalFeesDashPanel } from "@/components/finance/HistoricalFeesDashPanel";
+import { OverpaidFeesDashPanel } from "@/components/finance/OverpaidFeesDashPanel";
 import { WalletDebtsPanel } from "@/components/finance/WalletDebtsPanel";
 
 /** the NELFUND desk's figures as the Bursary reads them (finance.nelfund_desk_figures, V327) */
@@ -92,6 +94,8 @@ export async function StudentAccountsDashboard({ session }: { session: string })
           ) : null}
         </>
       ) : null}
+      {/* V781: students paid above their charge, by cause — the officer requests the wallet credit, a Bursary officer approves */}
+      <Suspense fallback={null}><OverpaidFeesDashPanel session={session} mode="request" /></Suspense>
       {/* V654: the historical fee review — the officer assesses, the Bursar approves */}
       <HistoricalFeesDashPanel officer />
       {/* V710: wallets left owing by a payment swap of a credit already used */}

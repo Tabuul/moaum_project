@@ -23,6 +23,7 @@ import { StudentOpen } from "@/components/StudentModal";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { num } from "@/lib/legacy-wallet";
+import { overpaidHref, whyNotRequestable } from "@/lib/overpaid";
 import { DECISION_WORDS, OUTSTANDING_HEADERS, REQUEST_HEADERS, REQUEST_WORDS, STATE_WORDS, TABS, naira, outstandingRows, reconHref, requestRows,
   type CreditRequestRow, type OutstandingPaymentRow, type OutstandingRow, type OutstandingState, type ReconFigures, type RequestStatus, type StudentPicture, type Tab } from "@/lib/legacy-reconciliation";
 import { OutstandingPayments } from "./OutstandingPayments";
@@ -120,6 +121,12 @@ export function LegacyReconciliation({ figures, sessions, filters, outstanding, 
             ["Credited to wallets", n(q.credited), "var(--green-ink)", `${naira(q.creditedAmount)} credited · ${naira(figures.overpaidCredited.applied)} applied to fees`, reconHref({ ...filters, tab: "history", status: "CREDITED" })],
             ["Rejected", n(q.rejected), null, `${naira(q.rejectedAmount)} · ${n(q.withdrawn)} withdrawn`, reconHref({ ...filters, tab: "history", status: "REJECTED" })],
           ]} />
+          {q.onOverpaidDesk ? (
+            <Note kind="info" title={`${n(q.onOverpaidDesk)} wallet credit request${q.onOverpaidDesk === 1 ? "" : "s"} wait on the Overpaid school fees desk`}
+              action={<Link className="lnk" href={overpaidHref({ tab: "approvals" })}>Open the Approvals tab</Link>}>
+              Requests made there, for one student or many, are approved there; this desk&rsquo;s queue and figures hold the single requests made here.
+            </Note>
+          ) : null}
           <div className="eyebrow">Outstanding fees payments (old portal) · every session</div>
           <Tiles items={[
             ["To verify", n(op.waiting + op.returned), op.waiting + op.returned ? "var(--amber-ink)" : null, `${naira(num(op.waitingAmount) + num(op.returnedAmount))} · ${n(op.payments)} payments by ${n(op.students)} students on file`, reconHref({ ...filters, tab: "payments", status: "TO_VERIFY", session: "" })],
@@ -296,7 +303,7 @@ function RequestsTable({ rows, onOpen }: { rows: CreditRequestRow[]; onOpen: (r:
 /* ── one student: the legacy record in full, and the officer's confirmation ── */
 function StudentModal({ row, initiates, session, onClose, onChanged }: { row: OutstandingRow; initiates: boolean; session: string; onClose: () => void; onChanged: () => void }) {
   const [pic, setPic] = useState<StudentPicture | null>(null);
-  const [form, setForm] = useState({ amount: String(num(row.excess)), reason: "", evidence: "", adjust: "", confirmed: false });
+  const [form, setForm] = useState({ amount: String(num(row.excess)), reason: "", evidence: "", adjust: "", confirmed: false, setup: false });
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   useEffect(() => {
@@ -305,19 +312,28 @@ function StudentModal({ row, initiates, session, onClose, onChanged }: { row: Ou
       const r = await fetch(`${BASE}/students/${row.student_id}`, { cache: "no-store" });
       const j = await r.json().catch(() => null);
       if (on) setPic(r.ok && j ? (j as StudentPicture) : null);
+      // V781: what is left of the excess to decide is what may be requested (a decided student who paid again has more)
+      const left = r.ok && j ? (j as StudentPicture).sessions.find((x) => x.session === session)?.remaining : null;
+      if (on && left != null && num(left) !== num(row.excess)) setForm((f) => (f.amount === String(num(row.excess)) ? { ...f, amount: String(num(left)) } : f));
     })();
     return () => { on = false; };
-  }, [row.student_id]);
+  }, [row.student_id, row.excess, session]);
   const excess = num(row.excess);
+  // V781: the session as the Overpaid school fees read has it: what is left to decide, whether it is an exact repeated payment (else the
+  // fee setup is confirmed with the request), and what holds it or makes it a refund
+  const sess = pic?.sessions.find((x) => x.session === session) ?? null;
+  const cap = sess?.remaining != null ? num(sess.remaining) : excess;
+  const blocked = whyNotRequestable(sess);
+  const needsTick = sess?.bulk === false;
   const amount = Number(form.amount);
-  const amountOk = Number.isFinite(amount) && amount >= 1 && amount <= excess;
-  const adjusted = amountOk && amount !== excess;
-  const canConfirm = row.state === "CREDIT" && initiates && !row.request_ref;
-  const ready = canConfirm && amountOk && form.reason.trim().length >= 10 && form.evidence.trim().length >= 3 && (!adjusted || form.adjust.trim().length >= 10) && form.confirmed;
+  const amountOk = Number.isFinite(amount) && amount >= 1 && amount <= cap;
+  const adjusted = amountOk && amount !== cap;
+  const canConfirm = row.state === "CREDIT" && initiates && !row.request_ref && !blocked;
+  const ready = canConfirm && !!pic && amountOk && form.reason.trim().length >= 10 && form.evidence.trim().length >= 3 && (!adjusted || form.adjust.trim().length >= 10) && (!needsTick || form.setup) && form.confirmed;
   async function submit() {
     setBusy(true);
     try {
-      const r = await post<CreditRequestRow>("/requests", { student: row.student_id, session, amount, reason: form.reason, evidence: form.evidence, adjustmentReason: adjusted ? form.adjust : null, confirmed: form.confirmed },
+      const r = await post<CreditRequestRow>("/requests", { student: row.student_id, session, amount, reason: form.reason, evidence: form.evidence, adjustmentReason: adjusted ? form.adjust : null, confirmed: form.confirmed, feeSetupChecked: needsTick ? form.setup : undefined },
         `Legacy credit request for ${row.matric_no ?? row.name}: ${naira(amount)} overpaid on ${session}`);
       if (r) { notify(`${r.ref} submitted to the Bursar: ${naira(r.confirmed_amount)} for ${row.name}. The wallet is not credited until the Bursar approves.`); onChanged(); }
     } finally { setBusy(false); setConfirming(false); }
@@ -364,6 +380,7 @@ function StudentModal({ row, initiates, session, onClose, onChanged }: { row: Ou
               <Pil key="s" kind={REQUEST_WORDS[r.status][1]}>{REQUEST_WORDS[r.status][0]}</Pil>, `${r.initiated_by ?? ""} · ${day(r.initiated_at)}`, r.decided_at ? `${r.decided_by ?? ""} · ${day(r.decided_at)}` : "—"])} />
         </>
       ) : null}
+      {row.state === "CREDIT" && initiates && !row.request_ref && blocked ? <Note kind="bad" title="This excess cannot be requested now">{blocked}</Note> : null}
       {row.state === "OWES" ? (
         <Note kind="bad" title="Student owes the University">
           This record is an outstanding fee payable by the student: {naira(row.owed)} stays on the student&rsquo;s account as a liability. It is never credited to the wallet.
@@ -372,9 +389,9 @@ function StudentModal({ row, initiates, session, onClose, onChanged }: { row: Ou
       {canConfirm ? (
         <>
           <div className="eyebrow" style={{ marginTop: "var(--s-3)" }}>Confirm the legacy record</div>
-          <KvGrid cls="grid--4" pairs={[["Original amount", naira(row.excess)], ["Already used", "—"], ["Eligible amount", naira(row.excess)], ["Amount to credit", amountOk ? naira(amount) : "—"]]} />
+          <KvGrid cls="grid--4" pairs={[["Original amount", naira(row.excess)], ["Already decided", cap < excess ? naira(excess - cap) : "—"], ["Eligible amount", naira(cap)], ["Amount to credit", amountOk ? naira(amount) : "—"]]} />
           <div className="grid grid--2">
-            <Field id="lc-amount" label="Confirmed amount" hint={`Up to ${naira(row.excess)}, the excess the records show`} required>
+            <Field id="lc-amount" label="Confirmed amount" hint={cap < excess ? `Up to ${naira(cap)}, what is left of the excess to decide` : `Up to ${naira(cap)}, the excess the records show`} required>
               <input id="lc-amount" className="ctl tnum" inputMode="decimal" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></Field>
             <Field id="lc-evidence" label="Supporting evidence or reference" hint="The old portal's statement, the receipt, the export row" required>
               <input id="lc-evidence" className="ctl" value={form.evidence} onChange={(e) => setForm({ ...form, evidence: e.target.value })} /></Field>
@@ -385,6 +402,12 @@ function StudentModal({ row, initiates, session, onClose, onChanged }: { row: Ou
           ) : null}
           <Field id="lc-reason" label="Confirmation reason or remarks" hint="Ten characters or more; the Bursar reads it" required full>
             <input id="lc-reason" className="ctl" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} /></Field>
+          {needsTick ? (
+            <label className="row row--inline row--tight mb-2" style={{ alignItems: "flex-start", gap: 8 }}>
+              <input type="checkbox" checked={form.setup} onChange={(e) => setForm({ ...form, setup: e.target.checked })} />
+              <span>The fee setup for this student&rsquo;s programme and level, and the payments, were checked. This excess is not a repeated payment that makes it up exactly.</span>
+            </label>
+          ) : null}
           <label className="row row--inline row--tight" style={{ alignItems: "flex-start", gap: 8 }}>
             <input type="checkbox" checked={form.confirmed} onChange={(e) => setForm({ ...form, confirmed: e.target.checked })} />
             <span>I confirm that the legacy record and amount have been reviewed against the available records and that the amount entered is correct.</span>
@@ -394,7 +417,7 @@ function StudentModal({ row, initiates, session, onClose, onChanged }: { row: Ou
       {confirming ? (
         <Modal title="Confirm legacy financial record" sub={`${row.name} · ${session}`} onClose={() => setConfirming(false)}
           foot={<><Btn kind="primary" busy={busy} busyLabel="Submitting for Bursar approval…" disabled={busy} onClick={submit}>Confirm &amp; submit</Btn><Btn kind="ghost" disabled={busy} onClick={() => setConfirming(false)}>Cancel</Btn></>}>
-          <KvGrid cls="grid--2" pairs={[["Student", row.name], ["Legacy type", "Outstanding fees: credit held (overpaid school fees)"], ["Legacy amount", naira(row.excess)], ["Eligible", naira(row.excess)],
+          <KvGrid cls="grid--2" pairs={[["Student", row.name], ["Legacy type", "Outstanding fees: credit held (overpaid school fees)"], ["Legacy amount", naira(row.excess)], ["Eligible", naira(cap)],
             ["Amount to credit", naira(amount)], ["Adjusted", adjusted ? `Yes: ${form.adjust}` : "No"], ["Evidence", form.evidence], ["Reason", form.reason]]} />
           <Note kind="bad" title="Nothing is credited yet">
             Once submitted, this record goes to the Bursar for approval. The student&rsquo;s wallet will NOT be credited until a Bursar officer other than you approves it.
@@ -410,12 +433,25 @@ function RequestModal({ row, initiates, decides, onClose, onChanged }: { row: Cr
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [approving, setApproving] = useState(false);
-  const [fix, setFix] = useState({ amount: String(num(row.confirmed_amount)), reason: row.reason, evidence: row.evidence, adjust: row.adjustment_reason ?? "", confirmed: false });
+  const [fix, setFix] = useState({ amount: String(num(row.confirmed_amount)), reason: row.reason, evidence: row.evidence, adjust: row.adjustment_reason ?? "", confirmed: false, setup: false });
   const pending = row.status === "PENDING_BURSAR_APPROVAL";
   const returned = row.status === "RETURNED_FOR_CORRECTION";
+  // V781: a request that was made without the fee-setup confirmation, for an excess that is not an exact repeated payment, is resubmitted with it
+  const [bulk, setBulk] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!returned) return;
+    let on = true;
+    (async () => {
+      const r = await fetch(`${BASE}/students/${row.student_id}`, { cache: "no-store" });
+      const j = await r.json().catch(() => null);
+      if (on && r.ok && j) setBulk((j as StudentPicture).sessions.find((x) => x.session === row.session)?.bulk ?? null);
+    })();
+    return () => { on = false; };
+  }, [returned, row.student_id, row.session]);
+  const needsTick = returned && bulk === false && !row.fee_setup_checked;
   const excess = num(row.legacy_amount);
   const fixAmount = Number(fix.amount);
-  const fixOk = Number.isFinite(fixAmount) && fixAmount >= 1 && fixAmount <= excess && fix.reason.trim().length >= 10 && fix.evidence.trim().length >= 3 && (fixAmount === excess || fix.adjust.trim().length >= 10) && fix.confirmed;
+  const fixOk = Number.isFinite(fixAmount) && fixAmount >= 1 && fixAmount <= excess && fix.reason.trim().length >= 10 && fix.evidence.trim().length >= 3 && (fixAmount === excess || fix.adjust.trim().length >= 10) && (!needsTick || fix.setup) && fix.confirmed;
   async function decide(action: "APPROVE" | "REJECT" | "RETURN") {
     setBusy(action);
     try {
@@ -429,7 +465,7 @@ function RequestModal({ row, initiates, decides, onClose, onChanged }: { row: Cr
   async function resubmit() {
     setBusy("resubmit");
     try {
-      const r = await post<CreditRequestRow>(`/requests/${row.id}/resubmit`, { amount: fixAmount, reason: fix.reason, evidence: fix.evidence, adjustmentReason: fixAmount === excess ? null : fix.adjust, confirmed: fix.confirmed },
+      const r = await post<CreditRequestRow>(`/requests/${row.id}/resubmit`, { amount: fixAmount, reason: fix.reason, evidence: fix.evidence, adjustmentReason: fixAmount === excess ? null : fix.adjust, confirmed: fix.confirmed, feeSetupChecked: needsTick ? fix.setup : undefined },
         `Legacy credit ${row.ref} resubmitted: ${naira(fixAmount)}`);
       if (r) { notify(`${r.ref} resubmitted to the Bursar.`); onChanged(); }
     } finally { setBusy(null); }
@@ -474,6 +510,12 @@ function RequestModal({ row, initiates, decides, onClose, onChanged }: { row: Cr
           </div>
           {Number.isFinite(fixAmount) && fixAmount !== excess ? <Field id="lf-adjust" label="Reason for the difference" required full><input id="lf-adjust" className="ctl" value={fix.adjust} onChange={(e) => setFix({ ...fix, adjust: e.target.value })} /></Field> : null}
           <Field id="lf-reason" label="Confirmation reason or remarks" required full><input id="lf-reason" className="ctl" value={fix.reason} onChange={(e) => setFix({ ...fix, reason: e.target.value })} /></Field>
+          {needsTick ? (
+            <label className="row row--inline row--tight mb-2" style={{ alignItems: "flex-start", gap: 8 }}>
+              <input type="checkbox" checked={fix.setup} onChange={(e) => setFix({ ...fix, setup: e.target.checked })} />
+              <span>The fee setup for this student&rsquo;s programme and level, and the payments, were checked. This excess is not a repeated payment that makes it up exactly.</span>
+            </label>
+          ) : null}
           <label className="row row--inline row--tight" style={{ alignItems: "flex-start", gap: 8 }}>
             <input type="checkbox" checked={fix.confirmed} onChange={(e) => setFix({ ...fix, confirmed: e.target.checked })} />
             <span>I confirm that the legacy record and amount have been reviewed against the available records and that the amount entered is correct.</span>

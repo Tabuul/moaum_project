@@ -454,7 +454,35 @@ public class StudentPortalService {
         out.put("schemeProblem", schemeProblem);
         out.put("references", repo.references(id));
         // V519: what the Bursary decided for school fees the student paid beyond a session's charge
-        out.put("overpayments", repo.overpayments(id));
+        List<Map<String, Object>> overpayments = repo.overpayments(id);
+        out.put("overpayments", overpayments);
+        // V781: school fees paid above the charge — the whole excess, what is decided of it, what is left, what a wallet credit request waits
+        // for, and its cause and holds when the Bursary's list reads the same excess; asked only when a charge is stated and the position
+        // just read shows ₦1 or more paid above it (absent otherwise: the page says "settled" only of a student with nothing above the charge)
+        BigDecimal due = pos.get("due") instanceof BigDecimal d ? d : BigDecimal.ZERO;
+        BigDecimal paidNow = pos.get("paid") instanceof BigDecimal p ? p : BigDecimal.ZERO;
+        if (Boolean.TRUE.equals(out.get("stated")) && due.signum() > 0 && paidNow.subtract(due).compareTo(BigDecimal.ONE) >= 0) {
+            repo.studentExcess(id, session).ifPresent(x -> {
+                out.put("excess", x.get("excess"));
+                out.put("excessDecided", x.get("decided"));
+                out.put("excessRemaining", x.get("remaining"));
+                out.put("excessRequested", x.get("requested"));
+                if (x.get("cause") != null) {
+                    out.put("excessCause", x.get("cause"));
+                }
+                if (Boolean.TRUE.equals(x.get("listed"))) {
+                    String holds = (String) x.get("holds");
+                    out.put("excessHolds", holds == null || holds.isEmpty() ? List.of() : List.of(holds.split(",")));
+                }
+            });
+        }
+        // V781: the overpaid school fees the Bursary credited to the wallet and the student has not yet used or taken back
+        if (overpayments.stream().anyMatch(o -> "WALLET".equals(o.get("decision")))) {
+            BigDecimal inWallet = repo.walletOverpaid(id);
+            if (inWallet != null && inWallet.signum() > 0) {
+                out.put("walletOverpaid", inWallet);
+            }
+        }
         // V379: a CCE student is pointed only to the sessions whose fee lines are theirs (never the full-time students' lines)
         out.put("sessions", ownCalendar(id) ? repo.sessionsWithChargesFor(id) : repo.sessionsWithCharges());   // V389: and a PG student
         out.put("window", repo.windowFor(id, "SCHOOL_FEES_PAYMENT", session, null));   // V288: open, scheduled, closed, or in the late period (V380: the CCE window for a CCE student)

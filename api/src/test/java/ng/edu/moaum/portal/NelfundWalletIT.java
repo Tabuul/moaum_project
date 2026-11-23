@@ -22,7 +22,9 @@ import org.springframework.transaction.PlatformTransactionManager;
 /**
  * V327 — the funding wallet over the API: the student reads their wallet by source and the top-up decision; a top-up above the
  * shortfall and a top-up when nothing is short are refused by the server whatever the screen says; a scholarship cannot be
- * refunded as NELFUND; a student cannot credit a wallet nor read another's; the old portal's NELFUND payments are posted once.
+ * refunded as NELFUND; a student cannot credit a wallet nor read another's; the old portal's NELFUND payments are posted once. V781: a hand
+ * credit of overpaid school fees is refused (they reach a wallet only by the credit request a second Bursary officer approves), and a refund names
+ * the source that holds the student's own money.
  * Needs DATABASE_URL.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -139,6 +141,10 @@ class NelfundWalletIT {
         assertThat(new BigDecimal(String.valueOf(elig.get("nelfund_refundable")))).isEqualByComparingTo("100000");
         assertThat(new BigDecimal(String.valueOf(elig.get("grant_held")))).isEqualByComparingTo("20000");
         assertThat(elig.get("nelfund_after_settlement")).isEqualTo(true);
+        // V781: and what each source may give back as a refund now, the figure the server never exceeds: the Fund's money only (the
+        // scholarship is a grant, never refunded)
+        assertThat((List<Map<String, Object>>) elig.get("sources")).extracting(x -> x.get("code") + ":" + new BigDecimal(String.valueOf(x.get("refundable"))).intValue() + ":" + x.get("nature"))
+                .containsExactly("NELFUND:100000:LOAN");
         assertThat(((Map<String, Object>) w.getBody().get("topup")).get("reason")).isEqualTo("FEES_SETTLED");
         // the scholarship cannot be refunded as NELFUND, nor more than the Fund's money
         ResponseEntity<Map> grant = as(me, "student", HttpMethod.POST, "/api/v1/me/wallet/withdrawal",
@@ -181,6 +187,41 @@ class NelfundWalletIT {
         assertThat(((Map<String, Object>) fig.getBody().get("figures")).get("refunds_paid")).isNotNull();
         ResponseEntity<Map> rows = as(bursar, "bursar", HttpMethod.GET, "/api/v1/nelfund/students?session=" + SESSION + "&filter=PAID_BEFORE_FUND&q=" + matric, null);
         assertThat(rows.getStatusCode().value()).isEqualTo(200);
+    }
+
+    /** V781: overpaid school fees reach a wallet only through the credit request a second Bursary officer approves — never by hand — and a
+     *  refund of the student's own money names the source that holds it (a top-up first) */
+    @Test
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    void aHandCreditOfOverpaidFeesIsRefusedAndARefundOfOwnMoneyNamesItsSource() {
+        UUID s = student();
+        String matric = jdbc.sql("SELECT matric_no FROM people.student WHERE id = :id").param("id", s).query(String.class).single();
+        String me = TestTokens.token(s, List.of("student"));
+        it.db(() -> jdbc.sql("SELECT finance.confirm_payment(finance.new_reference(:s, :n, 100000, NULL), 'WebPAY', 'paid personally')").param("s", s).param("n", SESSION).query(String.class).single());
+        // a hand credit of source OVERPAID is refused whatever the reason: the money is credited from the request the Overpaid school fees desk makes
+        ResponseEntity<Map> byHand = as(bursar, "bursar", HttpMethod.POST, "/api/v1/nelfund/credit",
+                Map.of("number", matric, "session", SESSION, "amount", 5000, "reason", "overpaid school fees credited by hand", "source", "OVERPAID"));
+        assertThat(byHand.getStatusCode().value()).as(String.valueOf(byHand.getBody())).isEqualTo(422);
+        assertThat(byHand.getBody()).containsEntry("code", "WALLET_OVERPAID_ROUTE");
+        assertThat(jdbc.sql("SELECT count(*) FROM finance.wallet_entry WHERE student_id = :s AND source_code = 'OVERPAID'").param("s", s).query(Long.class).single()).isZero();
+        // the student's own money in the wallet (a sponsor's off-gateway payment, a source of their own): refundable, from its own source
+        assertThat(as(bursar, "bursar", HttpMethod.POST, "/api/v1/nelfund/credit", Map.of("number", matric, "session", SESSION, "amount", 7000, "reason", "sponsor's payment off the gateway", "source", "SELF"))
+                .getStatusCode().value()).isEqualTo(200);
+        ResponseEntity<Map> w = as(me, "student", HttpMethod.GET, "/api/v1/me/wallet?session=" + SESSION, null);
+        assertThat(w.getStatusCode().value()).as(String.valueOf(w.getBody())).isEqualTo(200);
+        Map<String, Object> elig = (Map<String, Object>) w.getBody().get("eligibility");
+        assertThat((List<Map<String, Object>>) elig.get("sources")).extracting(x -> x.get("code") + ":" + new BigDecimal(String.valueOf(x.get("refundable"))).intValue() + ":" + x.get("nature"))
+                .containsExactly("SELF:7000:SELF");
+        assertThat(w.getBody()).doesNotContainKeys("overpaid", "overpaidKeptBack");
+        // above what its one source holds: refused with the figure; the amount it holds: the refund names the source
+        ResponseEntity<Map> over = as(me, "student", HttpMethod.POST, "/api/v1/me/wallet/withdrawal",
+                Map.of("session", SESSION, "amount", 8000, "bank", "Zenith", "accountNo", "0123 456 788", "accountName", "ZZNELFUND", "source", "SELF"));
+        assertThat(over.getStatusCode().value()).as(String.valueOf(over.getBody())).isEqualTo(422);
+        ResponseEntity<Map> req = as(me, "student", HttpMethod.POST, "/api/v1/me/wallet/withdrawal",
+                Map.of("session", SESSION, "amount", 7000, "bank", "Zenith", "accountNo", "0123 456 788", "accountName", "ZZNELFUND"));
+        assertThat(req.getStatusCode().value()).as(String.valueOf(req.getBody())).isEqualTo(200);
+        assertThat(req.getBody().get("source_code")).isEqualTo("SELF");
+        assertThat(new BigDecimal(String.valueOf(req.getBody().get("amount")))).isEqualByComparingTo("7000");
     }
 
     @Test

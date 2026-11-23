@@ -1,7 +1,12 @@
 /** The funding wallet and the Bursary's desk, as the API states them (V033, V079). */
 export interface WalletEntry { origin?: string | null; legacy_reference?: string | null; legacy_paid_at?: string | null; id: string; at: string; session: string; kind: string; amount: number; reference: string | null; note: string | null; source_code: string | null; source_name: string | null; nature: string | null; balance: number }
 export interface FundStatus { session: string; number: string; state: string; reason: string | null; correctable: boolean; loaded_at: string }
-export interface Eligibility { eligible: boolean; balance: number; cleared: boolean; arrears: boolean; pending: boolean; reason: string; nelfund_refundable?: number; self_refundable?: number; grant_held?: number; nelfund_after_settlement?: boolean; refund_natures?: string }
+export interface Eligibility { eligible: boolean; balance: number; cleared: boolean; arrears: boolean; pending: boolean; reason: string; nelfund_refundable?: number; self_refundable?: number; grant_held?: number; nelfund_after_settlement?: boolean; refund_natures?: string;
+  /** V781: what each source may be refunded now (the Fund's money, the student's own top-up, overpaid school fees): the refund is asked of
+   *  one source, never the sum of several as one cap; absent on an older answer */
+  sources?: RefundSource[] }
+/** V781: one source of money a refund may be asked of, and how much of it now */
+export interface RefundSource { code: string; name: string; nature: string; refundable: number }
 export interface Withdrawal { id: string; session: string; amount: number; source_code?: string | null; bank_name: string; account_no: string; account_name: string; state: string; reason: string | null; requested_at: string; decided_at: string | null; paid_at: string | null; paid_ref: string | null; /** V540: the day the money left */ paid_on?: string | null }
 /** V327: the wallet by source — what was credited, applied, reversed, refunded, held for a pending refund, and what is available */
 export interface SourceBalance { source_code: string; source_name: string; nature: string; credited: number; applied: number; reversed: number; refunded: number; held: number; available: number }
@@ -22,6 +27,9 @@ export interface StudentWallet {
   topup: TopupEligibility;
   /** V714: what the wallet owes (a credit moved to its owner after it was used), the swap that left it so, a reference to pay it still open */
   owed?: WalletOwed | null;
+  /** V781: overpaid school fees on the wallet (every session's), and how much of them is kept for the current session's fees, which rose
+   *  after they were credited — not refunded; each absent unless above nothing */
+  overpaid?: number; overpaidKeptBack?: number;
 }
 /** V714: what a wallet owes, and the reference to pay it */
 export interface WalletOwed { owed: number; swap_ref: string | null; reference: string | null; amount: number | null; expires_at: string | null }

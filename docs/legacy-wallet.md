@@ -137,3 +137,16 @@ a top-up and a payment on one day, ₦59,000; an ordinary balance as before; an 
 to the date-order balance is not "differs"; verified, posted (the note saying what was paid before) and applied to fees; a verified
 balance re-dated goes back; a posted one is marked). `LegacyWalletIT.aTopUpAfterTheWalletPaidBeyondWhatWasOnFileIsTheBalanceAndReachesTheStudentsWallet`
 through the desk and the student's wallet. `lib/legacy-wallet.test.ts`.
+
+## 8. Overpaid school fees on the same wallet (V781)
+
+The old e-wallet's credit (funding source `LEGACY_WALLET`, this desk) and the credit of overpaid school fees (source `OVERPAID`,
+V625) are two sources of one wallet and stay apart. This desk is unchanged. What V781 changes for the second:
+
+- The credit is asked for in bulk on the **Overpaid school fees** desk (`docs/overpaid-school-fees.md`) as well as one student at a
+  time on Legacy Financial Reconciliation, for any overpaid student, old portal or new; a different Bursary officer approves.
+- **A hand credit of source `OVERPAID` is refused** (`WALLET_OVERPAID_ROUTE`) and so is a wallet reset while one is on the wallet
+  (`WALLET_RESET_OVERPAID_CREDIT`): the credit is written by an approved request only, whatever tries to write it.
+- Its statement line is plain: "Overpaid school fees of {session} credited to your wallet ({reference})", with no officer and no
+  evidence. The migration made the notes already on wallets plain (the evidence stays on the request).
+- The student applies it on the Wallet page exactly as any wallet money (Apply), or asks there for it as a refund of that source.

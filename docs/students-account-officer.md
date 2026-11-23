@@ -57,6 +57,7 @@ refusal comes from the office check and not from the form.
 | Old Fees History (V591, V607) | The Bursary's Old Fees History desk (`/finance/legacy-fees`): the file is sent to the Bursar for approval ("Send N rows to the Bursar for approval"), and **Uploads for the Bursar's approval** lists each upload with its state; the tabs; the Bursary-only acts (double charges, payments never received, overpaid decisions, the ledger, the reset) are shown without their buttons |
 | Old GST Payments (V591) | The Bursary's Old GST Payments desk (`/finance/legacy-gst`), every act |
 | Legacy Financial Reconciliation (V625) | `/finance/legacy-reconciliation`: outstanding fees, e-wallet top-ups, wallet credit requests, history; the dashboard's legacy tiles |
+| Overpaid School Fees (V781) | `/finance/overpaid`, under Payment Management after School Fees Payment Swaps: every student paid above their charge, by cause, with what holds each back; the dashboard's panel **Overpaid school fees** |
 
 ## 4. Changes made
 
@@ -114,3 +115,12 @@ filters and the serial printed on the document; Internal Audit reads it on **Exp
   the officer as well as the Bursar. The gateway alerts (the Quickteller door gone quiet, notifications not settled) stay with
   the Bursary and ICT.
 - **Remittance matching:** NELFUND remittance matching stays with the offices that hold it today.
+
+### V781: Overpaid School Fees
+
+The officer reads the desk and the dashboard panel (`GET /api/v1/finance/overpaid/figures`, `/rows`, `/credits`), works a session's
+list out again (**Refresh**), **requests a wallet credit** for the students ticked or for a whole paid-twice cause, with the reason
+and the confirmation that the payments were looked at (and, for one student who is not an exact repeated payment, that the fee setup
+was checked), and **withdraws** requests of their own. A different Bursary officer approves, returns or rejects them: the officer's
+panel reads "Waiting for the Bursar" and "Returned to you", with no Approve. The officer never raises a refund or approves
+(`OverpaidController`: READERS, REQUESTERS, DECIDERS; the database holds the rule). `docs/overpaid-school-fees.md` has the rest.

@@ -373,8 +373,35 @@ A read follows the same path without step 9's write and without any need for an 
 | Help-desk auto-closer | `helpdesk/AutoCloser` | initial delay 5 min, fixed delay 1 h | fixed in code | server | When the Director of ICT has set a quiet period in days, a `RESOLVED` ticket the requester has not answered closes itself after it, on the record, and the requester is told. Does nothing while the setting is empty (the shipped state). |
 | Hostel clock | `hostel/HostelClock` | cron `0 5 * * * *` (five past every hour) | `moaum.hostel.cron` | Africa/Lagos | An expired unpaid hold lapses and the bed passes to the next name on the waiting list. |
 | Payments sweep | `payments/PaymentsService.sweep()` | fixed delay 600 000 ms (10 min), first run after 120 000 ms | `moaum.payments.sweep-every-ms` | server | Re-verifies hanging gateway attempts on the channel they were opened on (Paystack verify, Flutterwave verify-by-reference, Quickteller WebPAY requery; Pay on Quickteller attempts are not polled — Interswitch reports them). Skips attempts younger than 5 minutes or already checked 12 times. Returns at once when no gateway is on. A reference the gateway now says is paid is settled exactly as a webhook would settle it. |
+| Overpaid school fees refresh (V781) | `finance/OverpaidWatch.refreshDue()`, `refreshAll()` | cron `0 */10 * * * *` and `0 20 2 * * *` | `moaum.overpaid.refresh-cron`, `moaum.overpaid.refresh-all-cron`, switch `moaum.overpaid.enabled` (`MOAUM_OVERPAID_ENABLED`) | Africa/Lagos | Works the kept list of students paid above their charge out for the current session when a school-fees payment was confirmed, uploaded or archived since, or after an hour; every session once worked out, nightly. Does nothing while the switch is false. |
 
 There is no nightly audit-chain verification job (the Security screen's wording notwithstanding — `audit.verify_chain` is called only from `db/check.sql`), no due-return reminder, and no offer-lapse job (see §11).
+
+**Overpaid school fees (V781).** One more job, `finance/OverpaidWatch`, works the kept list of students paid above their charge out
+(`finance.overpaid_snapshot`): `refreshDue()` every ten minutes (`moaum.overpaid.refresh-cron`, default `0 */10 * * * *`, Africa/Lagos) for
+the University's current session when `finance.overpaid_refresh_due` says so, and `refreshAll()` once a night (`moaum.overpaid.refresh-all-cron`,
+default `0 20 2 * * *`) for every session once worked out; both under the `JobLock` `overpaid-snapshot`, and both do nothing unless
+`moaum.overpaid.enabled` is true (`MOAUM_OVERPAID_ENABLED`, on by default; `api/src/test/resources/config/application.properties` turns it off
+in the integration tests, which also call the two methods themselves). The database holds the rules (`docs/overpaid-school-fees.md`):
+
+- **Functions.** `finance.overpaid` (restated; it is `overpaid_of` for every student), `overpaid_read` (the live, set-based read with the cause, `bulk` and the fourteen holds,
+  cut to the students asked for: `overpaid_of`, `session_charges_of`, `session_payments_of`, `fee_profiles_of`, `fee_sums_of` and `possible_double_charges_of` are the
+  functions of the same names without `_of` with their rows cut to those students, restated by anchor, so one student costs one student),
+  `overpaid_refresh`, `overpaid_refresh_due`, `overpaid_desk`, `overpaid_figures`; `decide_overpayments` (restated: one read, every hold, the
+  one-student confirmation); `legacy_credit_excess`, `legacy_credit_initiate`, `legacy_credit_resubmit`, `legacy_credit_rows`
+  (restated), `legacy_credit_decide`, `legacy_reconciliation_figures` (patched); `overpaid_credits_request`, `overpaid_credits_decide`,
+  `overpaid_credits_withdraw` and the one posting `overpaid_credit_post`; `overpayment_decided` and `overpayment_shortfall`;
+  `withdrawal_sources`, `overpaid_wallet_money`, `overpaid_refundable`, `overpaid_kept_back`; and `overpayment_decisions_covered`,
+  `overpayment_holds_record`, which patch the archive, swap, reallocation, never-received and old-fees maintenance refusals. `credit_wallet`,
+  `reset_wallet`, `withdrawal_eligibility`, `request_withdrawal`, `approve_withdrawal` and `propose_refund` are patched by anchor.
+- **Locks, always in this order:** `pg_advisory_xact_lock(hashtext('overpay:<student>:<session>'))`, then `('wallet:<student>')`; loops take
+  students in `student_id` order. A block that catches errors passes `deadlock_detected`, `serialization_failure` and `lock_not_available`
+  through (check K42), so `DeadlockRetry` runs the door again.
+- **Journals.** Nothing is posted by V781's own code: a wallet credit is Dr 4010 [overpaid session] / Cr 2100 by `finance.gl_sync`; the
+  student's Apply is Dr 2100 / Cr 4010 [session paid]; a wallet refund paid is Dr 2100 / Cr 1020.
+- **Migration.** One transaction under `lock_timeout` 5 s; it does not work the list out; its two triggers (`trg_overpayment_decision_within_excess`,
+  `trg_overpaid_credit_by_request`, the second a deferred constraint trigger that takes a share lock on `finance.wallet_entry`) are the last
+  statements before `COMMIT`; its data steps make the notes of OVERPAID credits plain and re-source refunds waiting under the wrong source.
 
 ### 2.7 File and document handling
 

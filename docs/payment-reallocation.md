@@ -68,7 +68,8 @@ Refusals, each with its code:
 - the destination: an unknown or unsupported purpose (`REALLOC_PURPOSE_UNKNOWN`, `REALLOC_PURPOSE_UNSUPPORTED`), a session not on
   the calendar or a semester it does not have (`REALLOC_SESSION_UNKNOWN`, `REALLOC_SEMESTER_UNKNOWN`), the same as now
   (`REALLOC_SAME`), no school fees stated (`REALLOC_FEES_NOT_STATED`), the GST and deferment rules above (`REALLOC_GST_…`,
-  `REALLOC_DEFERMENT_…`), an overpayment decision standing on either session's school fees (`REALLOC_OVERPAYMENT_DECISION`)
+  `REALLOC_DEFERMENT_…`), an overpayment decision the payment leaving the session's school fees would uncover
+  (`REALLOC_OVERPAYMENT_DECISION`; V781: less than is decided or requested would remain above the charge, see below)
 
 A payment credited to the wrong student goes through the payment swap (V527), not here.
 
@@ -175,3 +176,12 @@ The student record (`GET /api/v1/finance/payment-swaps/of/{student}`) and the st
   payment unchanged but for its purpose and session, the notice, the student's own fees page and receipt, the student's own
   corrections and another student's none, never twice, and the balance paid through the normal payment page.
 - `lib/payment-reallocations.test.ts`.
+
+## Overpayment decisions (V781)
+
+The refusal `REALLOC_OVERPAYMENT_DECISION` is arithmetic now, not the mere presence of a decision
+(`finance.overpayment_decisions_covered`). A payment is refused its move **out of** a session's school fees only when, without it,
+less would remain above the charge than is decided or requested there; a decided student's later duplicate can be moved. Money
+arriving **into** a decided student's session is no longer refused: it is "a decided student pays again", listed again on the
+Overpaid school fees desk for the new amount (`docs/overpaid-school-fees.md`). A reallocation from or into the session while it is
+pending or returned holds the student's excess (`OPEN_CORRECTION`).

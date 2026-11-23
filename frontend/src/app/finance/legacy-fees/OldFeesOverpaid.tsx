@@ -5,16 +5,22 @@
  *  the next session (a CARRIED school-fees record there, which the fee gate counts; the ledger moves the income across, no new
  *  cash) or a refund raised on the Refunds & Credits desk (approved and paid there by two officers, as every refund). All the
  *  undecided at once or one student at a time, with a reason kept on each, the student told; the list as Excel. On Old Fees History
- *  and on Refunds & Credits. */
+ *  and on Refunds & Credits.
+ *  V781: a wallet credit (V625) is a decision too, and a decided student who paid again has more left to decide (the excess less every
+ *  decision and refund). One student is decided with the officer's confirmation that the fee setup and the payments were checked; an
+ *  "all" decides only the exact repeated payments and says who was left. The wallet credit itself is asked for on the Overpaid school
+ *  fees desk. */
 import { useEffect, useState } from "react";
 import type { Problem } from "@/lib/api";
+import Link from "next/link";
 import { reasonHeader } from "@/lib/reason";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { Btn, Note, Panel, PBody, Pil, Tiles, Two } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Field, Modal, money } from "@/components/proto/blocks";
 import { brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
-import { DECISION, OVERPAID_HEADERS, decideDone, overpaidRow, type Decision, type OverpaidRow } from "@/lib/old-fees";
+import { DECISION, OVERPAID_HEADERS, decideDone, decideLeft, overpaidRow, undecided, type Decision, type OverpaidRow } from "@/lib/old-fees";
+import { overpaidHref } from "@/lib/overpaid";
 
 interface Overpaid {
   session: string; sessions: string[]; nextSession: string | null; count: number; excess: number | string; undecided: number;
@@ -35,6 +41,9 @@ export function OldFeesOverpaid({ may, tick = 0, onChanged }: { may: boolean; ti
   const [busy, setBusy] = useState<string | null>(null);
   const [asking, setAsking] = useState<Asking | null>(null);
   const [reason, setReason] = useState("");
+  // V781: one student is decided only with the confirmation that the fee setup and the payments were checked
+  const [setup, setSetup] = useState(false);
+  const [left, setLeft] = useState<string[]>([]);
   const [progress, setProgress] = useState<string | null>(null);
   const [said, setSaid] = useState<string | null>(null);
 
@@ -78,18 +87,22 @@ export function OldFeesOverpaid({ may, tick = 0, onChanged }: { may: boolean; ti
     const { decision, who } = asking;
     setBusy("decide");
     setSaid(null);
-    const t = { carried: 0, refunds: 0, held: 0 };
+    const t = { carried: 0, refunds: 0, held: 0, apart: 0, requested: 0, uncertain: 0, refundOnly: 0, unchecked: 0 };
+    setLeft([]);
     try {
       for (;;) {
         const r = await fetch("/api/bff/api/v1/finance/legacy-fees/overpaid/decide", {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Reason": reasonHeader(`Overpaid fees of ${data.session} ${decision === "CARRY" ? "carried into the next session" : "to be refunded"}: ${reason.trim()}`) },
-          body: JSON.stringify({ session: data.session, decision, students: who ? [who.student_id] : null, reason: reason.trim(), limit: 2000 }),
+          body: JSON.stringify({ session: data.session, decision, students: who ? [who.student_id] : null, reason: reason.trim(), limit: 2000, ...(who ? { feeSetupChecked: setup } : {}) }),
         });
         const j = await r.json().catch(() => null);
         if (!r.ok) { notifyProblem((j ?? { status: r.status, title: r.statusText }) as Problem); break; }
-        const w = j as { carried: number; refunds: number; held?: number; remaining: number };
+        const w = j as { carried: number; refunds: number; held?: number; remaining: number; apart?: number; requested?: number; uncertain?: number; refundOnly?: number; unchecked?: number };
         t.carried += Number(w.carried); t.refunds += Number(w.refunds); t.held = Number(w.held ?? 0);
+        // every call reads each student again, so what was left is the last call's, whole
+        t.apart = Number(w.apart ?? 0); t.requested = Number(w.requested ?? 0); t.uncertain = Number(w.uncertain ?? 0);
+        t.refundOnly = Number(w.refundOnly ?? 0); t.unchecked = Number(w.unchecked ?? 0);
         setProgress(`${(t.carried + t.refunds).toLocaleString()} decided${Number(w.remaining) ? `, ${Number(w.remaining).toLocaleString()} to go` : ""}…`);
         if (decideDone(w)) break;
       }
@@ -99,12 +112,10 @@ export function OldFeesOverpaid({ may, tick = 0, onChanged }: { may: boolean; ti
           : `${t.refunds.toLocaleString()} refund${t.refunds === 1 ? "" : "s"} raised on the Refunds & Credits desk, to be approved and paid there.`);
         notify(t.carried ? "Carried into the next session" : "Refunds raised");
       }
-      // V561: those whose school fees the bank may have charged twice wait for the Bursary's check with the bank
-      if (t.held > 0) {
-        notify(`${t.held.toLocaleString()} held until their possible double charge is checked with the bank (Possible bank double charges, below)`, "warn");
-      }
-      setAsking(null);
-      setReason("");
+      // V781: who was left, and why (every hold, named: a possible bank double charge is one of fourteen)
+      setLeft(decideLeft(t, decision, !!who));
+      // a refusal for the confirmation leaves the dialog open, to be ticked
+      if (!(who && t.unchecked > 0)) { setAsking(null); setReason(""); setSetup(false); }
     } finally {
       setProgress(null);
       setBusy(null);
@@ -130,6 +141,13 @@ export function OldFeesOverpaid({ may, tick = 0, onChanged }: { may: boolean; ti
         </div>
       </PBody>
       {said ? <PBody><Note kind="ok" title="Decided">{said} Each decision is kept with your reason.</Note></PBody> : null}
+      {left.length ? (
+        <PBody>
+          <Note kind="info" title="Some students were left" action={data ? <Link className="lnk" href={overpaidHref({ session: data.session })}>Overpaid school fees desk</Link> : null}>
+            {left.map((l) => <span key={l} className="blk">{l}</span>)}
+          </Note>
+        </PBody>
+      ) : null}
       {!data ? <PBody><div className="sub2">{loading ? "Looking…" : ""}</div></PBody>
         : !data.count ? (
           <PBody><div className="sub2">No student paid more than the fee setup says was due for {data.session}.</div></PBody>
@@ -141,6 +159,7 @@ export function OldFeesOverpaid({ may, tick = 0, onChanged }: { may: boolean; ti
                 ["Not decided", data.undecided.toLocaleString(), data.undecided ? "var(--red-ink)" : null, money(Number(data.undecidedExcess))],
                 ["Carried into the next session", (decided.CARRY ?? 0).toLocaleString(), null, next ? `Into ${next}` : "No next session on the calendar"],
                 ["Refund raised", (decided.REFUND ?? 0).toLocaleString(), null, "On the Refunds & Credits desk"],
+                ["Credited to the wallet", (decided.WALLET ?? 0).toLocaleString(), null, "Asked for on the Overpaid school fees desk"],
               ]} />
               {may && data.undecided > 0 ? (
                 <div className="row mt-2">
@@ -166,12 +185,13 @@ export function OldFeesOverpaid({ may, tick = 0, onChanged }: { may: boolean; ti
                 <span key="p" className="tnum">{money(Number(o.paid))}</span>,
                 <b key="x" className="tnum">{money(Number(o.excess))}</b>,
                 o.decision
-                  ? <span key="c" className="sub2"><Pil kind="info">{DECISION[o.decision]}</Pil><div className="tnum">{o.reference}{o.refund_state ? ` · ${o.refund_state.toLowerCase()}` : ""}</div></span>
+                  ? <span key="c" className="sub2"><Pil kind="info">{DECISION[o.decision]}</Pil><div className="tnum">{o.reference}{o.refund_state ? ` · ${o.refund_state.toLowerCase()}` : ""}</div>
+                    {undecided(o) ? <div>{money(Number(o.remaining ?? 0))} not yet decided</div> : null}</span>
                   : <span key="c" className="sub2">Not decided</span>,
-                may && !o.decision ? (
+                may && undecided(o) ? (
                   <span key="a" className="row" style={{ gap: "var(--s-2)" }}>
-                    <Btn kind="ghost" size="sm" disabled={!!busy || loading || !next} onClick={() => setAsking({ decision: "CARRY", who: o })} aria-label={`Carry the excess of ${o.name} into the next session`}>Carry</Btn>
-                    <Btn kind="ghost" size="sm" disabled={!!busy || loading} onClick={() => setAsking({ decision: "REFUND", who: o })} aria-label={`Raise a refund of the excess of ${o.name}`}>Refund</Btn>
+                    <Btn kind="ghost" size="sm" disabled={!!busy || loading || !next} onClick={() => { setSetup(false); setAsking({ decision: "CARRY", who: o }); }} aria-label={`Carry the excess of ${o.name} into the next session`}>Carry</Btn>
+                    <Btn kind="ghost" size="sm" disabled={!!busy || loading} onClick={() => { setSetup(false); setAsking({ decision: "REFUND", who: o }); }} aria-label={`Raise a refund of the excess of ${o.name}`}>Refund</Btn>
                   </span>
                 ) : <span key="a" />,
               ])} />
@@ -180,11 +200,11 @@ export function OldFeesOverpaid({ may, tick = 0, onChanged }: { may: boolean; ti
         )}
       {asking && data ? (
         <Modal title={asking.decision === "CARRY"
-            ? (asking.who ? `Carry ${money(Number(asking.who.excess))} into ${next}` : `Carry ${data.undecided.toLocaleString()} excesses into ${next}`)
-            : (asking.who ? `Raise a refund of ${money(Number(asking.who.excess))}` : `Raise ${data.undecided.toLocaleString()} refunds`)}
+            ? (asking.who ? `Carry ${money(Number(asking.who.remaining ?? asking.who.excess))} into ${next}` : `Carry ${data.undecided.toLocaleString()} excesses into ${next}`)
+            : (asking.who ? `Raise a refund of ${money(Number(asking.who.remaining ?? asking.who.excess))}` : `Raise ${data.undecided.toLocaleString()} refunds`)}
           onClose={() => { if (!busy) setAsking(null); }}
           foot={<><Btn kind="ghost" disabled={!!busy} onClick={() => setAsking(null)}>Cancel</Btn>
-            <Btn kind="primary" disabled={!!busy || reason.trim().length < 10} onClick={() => void decide()}>
+            <Btn kind="primary" disabled={!!busy || reason.trim().length < 10 || (!!asking.who && !setup)} onClick={() => void decide()}>
               {busy === "decide" ? (progress ?? "Deciding…") : asking.decision === "CARRY" ? "Carry" : "Raise the refund" + (asking.who ? "" : "s")}
             </Btn></>}>
           {asking.decision === "CARRY" ? (
@@ -205,6 +225,12 @@ export function OldFeesOverpaid({ may, tick = 0, onChanged }: { may: boolean; ti
             <textarea id="ofo-reason" className="ctl" rows={2} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)}
               placeholder={asking.decision === "CARRY" ? "e.g. overpaid old-portal fees counted towards the next session" : "e.g. overpaid old-portal fees returned to the students"} />
           </Field>
+          {asking.who ? (
+            <label className="row row--inline row--tight mt-2" style={{ alignItems: "flex-start", gap: 8 }}>
+              <input type="checkbox" checked={setup} onChange={(e) => setSetup(e.target.checked)} />
+              <span>The fee setup and the payments for this student were checked.</span>
+            </label>
+          ) : null}
         </Modal>
       ) : null}
     </Panel>
