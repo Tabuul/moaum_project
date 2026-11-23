@@ -82,6 +82,9 @@ export interface MenuItem {
   deferred?: boolean; deferred_from?: string | null;
   /** V314: a GST/EPS course the unpaid GST fee locks, and the reason */
   gstLocked?: boolean; gstGate?: string | null;
+  /** V777: a SIWES course (every one carries the SIWES fee) the unpaid fee locks, and the reason — the database's words, the first word
+   *  its code (SIWES_UNPAID, SIWES_FEE_NOT_SET, SIWES_NOT_IN_REACH); read with lib/siwes siwesLockKind, never shown whole */
+  siwesLocked?: boolean; siwesGate?: string | null;
   /** V482: the prerequisites not yet passed; locked where the Academic Office enforces prerequisites */
   prerequisitesUnmet?: string; prerequisiteLocked?: boolean;
 }
@@ -178,6 +181,8 @@ export interface FoundCourse {
   on_registration: boolean; recommended: boolean | null;
   /** V512: a GST/EPS course the student could add, held while the GST fee they owe is not paid (the gate's words) */
   gstHeld?: string | null;
+  /** V777: a SIWES course the student could add, held while the SIWES fee for the session is not paid (the gate's words) */
+  siwesHeld?: string | null;
 }
 export interface CourseSearch { session: string; semester: number; page: number; size: number; total: number; results: FoundCourse[];
   /** V507: YOUR_COURSES (no code, title, department or faculty: the student's own courses) or SEARCH (every course) */

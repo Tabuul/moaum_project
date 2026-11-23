@@ -17,6 +17,7 @@ import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { useAct } from "./common";
 import { shownCode } from "@/lib/course-code";
+import { SIWES_LOCK_TITLE, siwesLockKind, siwesLockNotes } from "@/lib/siwes";
 
 interface Dept { code: string; name: string; faculty_code: string | null; faculty: string | null }
 
@@ -111,6 +112,8 @@ export function AddOtherCourse({ session, semester, level, total, max, addDrop, 
   const from = found && found.total ? found.page * found.size + 1 : 0;
   const to = found ? Math.min(found.total, (found.page + 1) * found.size) : 0;
   const closed = found && !found.flex.allow_other_courses;
+  // V777: the SIWES courses of the page the SIWES fee holds (every SIWES course carries it): the notes of Course Registration's own words
+  const siwesNotes = siwesLockNotes(rows.filter((c) => c.siwesHeld && !c.refusal && !c.on_registration).map((c) => ({ code: shownCode(c.course_code), gate: c.siwesHeld })), session);
 
   return (
     <Modal wide title={carryMode ? "ADD CARRY-OVER COURSE" : "ADD OTHER COURSE"} onClose={onClose}
@@ -158,6 +161,10 @@ export function AddOtherCourse({ session, semester, level, total, max, addDrop, 
         <div className="mt-2"><Note kind="bad" title="GST/EPS PAYMENT REQUIRED" action={<LinkBtn kind="primary" href={`/student/gst?session=${encodeURIComponent(session)}`}>PAY GST/EPS FEE</LinkBtn>}>
           A GST or EPS course — a carry-over too — is registered only once your GST/EPS fee is paid and confirmed. One payment covers GST and EPS.</Note></div>
       ) : null}
+      {siwesNotes.map((x) => (
+        <div key={x.title} className="mt-2"><Note kind={x.kind} title={x.title}
+          action={x.pay ? <LinkBtn kind="primary" href={`/student/siwes?session=${encodeURIComponent(session)}`}>PAY SIWES FEE</LinkBtn> : undefined}>{x.words}</Note></div>
+      ))}
       {failed ? <div className="mt-2"><Note kind="bad" title={failed} /></div> : null}
       <div className="sub2 mt-2" aria-live="polite">
         {loading ? "Searching..." : found ? listWords(found, from, to, cat) : null}
@@ -189,6 +196,7 @@ export function AddOtherCourse({ session, semester, level, total, max, addDrop, 
                   <td><Pil kind={st.ok ? "ok" : st.label === "Already added" || st.label === "Added automatically" ? "info" : "warn"}>{st.label}</Pil></td>
                   <td className="num">
                     <Btn kind="primary" size="sm" disabled={!st.ok || after.over || busy !== null} busy={busy === key} busyLabel="Adding..."
+                      title={!c.refusal && c.siwesHeld ? SIWES_LOCK_TITLE[siwesLockKind(c.siwesHeld)] : undefined}
                       onClick={() => void add(c)}>ADD COURSE</Btn>
                   </td>
                 </tr>

@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import ng.edu.moaum.portal.shared.DeadlockRetry;
 import ng.edu.moaum.portal.shared.DomainRuleViolation;
 import ng.edu.moaum.portal.shared.CheckCodes;
 import ng.edu.moaum.portal.shared.NotFound;
@@ -923,6 +924,19 @@ public class StudentPortalService {
                 m.put("gstGate", gate);
             }
         }
+        // V777: every SIWES course carries the SIWES registration fee, paid once a session before the course is registered, whatever the
+        // programme, level or semester: a SIWES course on the menu says whether the fee holds it and in what words (the entry trigger's
+        // own), asked for the whole menu in one call — the form locks the row, the SIWES page takes the payment
+        Map<String, String> siwesGates = repo.siwesFeeGates(id, session, menu.stream()
+                .map(m -> String.valueOf(m.get("course_code"))).collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new)));
+        for (Map<String, Object> m : menu) {
+            String code = String.valueOf(m.get("course_code"));
+            if (siwesGates.containsKey(code)) {
+                String gate = siwesGates.get(code);
+                m.put("siwesLocked", gate != null);
+                m.put("siwesGate", gate);
+            }
+        }
         // V482: a course whose prerequisite the student has not passed says which; where the Academic Office enforces
         // prerequisites the engine refuses it, so the form locks it (a carry-over is never held to them)
         String prerequisiteMode = repo.prerequisiteMode();
@@ -1107,6 +1121,10 @@ public class StudentPortalService {
                 && !Boolean.TRUE.equals(r.get("on_registration"));
         Map<String, String> gates = repo.gstGates(id, session, rows.stream().filter(addableGst)
                 .map(r -> String.valueOf(r.get("course_code"))).collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new)));
+        // V777: the SIWES registration fee's gate of every course of the page that the student could add, asked in one call
+        java.util.function.Predicate<Map<String, Object>> addable = r -> r.get("refusal") == null && !Boolean.TRUE.equals(r.get("on_registration"));
+        Map<String, String> siwesGates = repo.siwesFeeGates(id, session, rows.stream().filter(addable)
+                .map(r -> String.valueOf(r.get("course_code"))).collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new)));
         out.put("results", rows.stream().map(r -> {
             Map<String, Object> m = new LinkedHashMap<>(r);
             m.remove("total");
@@ -1114,6 +1132,11 @@ public class StudentPortalService {
             if (addableGst.test(m)) {
                 String gate = gates.get(String.valueOf(m.get("course_code")));
                 if (gate != null) m.put("gstHeld", gate);
+            }
+            // V777: a SIWES course the student could add is held while the SIWES registration fee is not paid (or cannot be: SIWES_NOT_IN_REACH)
+            if (addable.test(m)) {
+                String gate = siwesGates.get(String.valueOf(m.get("course_code")));
+                if (gate != null) m.put("siwesHeld", gate);
             }
             return m;
         }).toList());
@@ -1225,6 +1248,15 @@ public class StudentPortalService {
             r.put("gst_held", h);
             r.put("gst_to_pay", h ? hold.get("toPay") : null);
         }
+        // V777: a SIWES course among the carry-overs is marked before it is ticked too — added, it would be refused (SIWES_UNPAID) until the
+        // SIWES registration fee is paid; siwes_gate is the database's own words (registration.siwes_fee_gate_many), null where nothing holds it
+        Map<String, String> siwes = repo.siwesFeeGates(id, session, rows.stream().filter(r -> Boolean.TRUE.equals(r.get("selectable")))
+                .map(r -> String.valueOf(r.get("course_code"))).distinct().toList());
+        for (Map<String, Object> r : rows) {
+            String gate = Boolean.TRUE.equals(r.get("selectable")) ? siwes.get(String.valueOf(r.get("course_code"))) : null;
+            r.put("siwes_held", gate != null);
+            r.put("siwes_gate", gate);
+        }
         out.put("rows", rows);
         // V682: a spillover student sees what the semester costs as soon as a course is ticked — every course they add is a carry-over,
         // and the semester's spillover fee is owed once one is on the registration (V616)
@@ -1295,11 +1327,14 @@ public class StudentPortalService {
             String why = "Carry-over " + code + " added by the student" + (row.get("origin_session") == null ? "" : " (last registered " + row.get("origin_session") + ")")
                     + " — " + row.get("status");
             try {
-                Map<String, Object> one = ownTransaction.execute(t -> {
+                // V777: a deadlock the database ends (a SIWES course added while another door holds the same registration: LOCKS.md C2, C5)
+                // rolls this course's own transaction back whole, so it is run again in a fresh one (DeadlockRetry) — never the whole call,
+                // which has added the courses before this one already; a refusal is never run again
+                Map<String, Object> one = DeadlockRetry.run(() -> ownTransaction.execute(t -> {
                     repo.reason(why);
                     repo.declareCarryOvers();   // a no-record course of the programme comes as a declared carry-over here, nowhere else
                     return addOne(id, session, semester, null, code);
-                });
+                }));
                 r.put("added", true);
                 r.put("offering", one == null ? null : one.get("offering"));   // the class it was added by: the draft's selection keeps it
                 added++;
@@ -1351,7 +1386,7 @@ public class StudentPortalService {
         // carry-over or deferred course, which waits for a later semester (the database's word) — never the SIWES course itself: the
         // programme's course or, after a remap, the one a SIWES registration was made on, whether or not one stands yet (the database
         // refuses the standing one too, SIWES_COURSE_KEPT)
-        if (assertWindowOpen(id, session, semester, true) && repo.siwesCourse(id, offering)) {
+        if (assertWindowOpen(id, session, semester, true) && repo.siwesCourse(id, session, semester, offering)) {
             throw new DomainRuleViolation("SIWES_COURSE_KEPT", "This is your SIWES course; it is registered on the SIWES page and is not dropped here.",
                     new DomainRuleViolation.Remedy("The Academic Office or ICT Support undoes a SIWES registration.", "Academic Office"));
         }

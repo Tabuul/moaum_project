@@ -1,8 +1,11 @@
 "use client";
 /** V752: the SIWES registration fee — the University's master prompt of 12 November 2026 set it at ₦4,000. The Bursary states a figure
  *  for a session (the Bursar, the Students Account Officer, the Super Administrator) as a draft, and the Bursar publishes it; the
- *  published figure stays in force while a restatement waits beside it, so stating a new figure never stops students paying. It is paid
- *  once a session by the 300 Level students of the programmes taking SIWES, through the gateways every fee uses; it is never a school fee
+ *  published figure stays in force while a restatement waits beside it, so stating a new figure never stops students paying. V777 (the
+ *  user's word of 22 November 2026, "yes charge every siwes course"): every SIWES course carries it — it is paid once a session by every
+ *  student who registers one, whatever the programme, level or semester, before the course is registered, through the gateways every fee
+ *  uses (nothing is registered while no fee is published); students who registered a SIWES course before the rule are asked it now, and
+ *  their list is on the SIWES desk's Unpaid courses. It is never a school fee
  *  and never counted with one or with the GST fee. A reference already drawn keeps its amount until it expires or is renewed: a new
  *  amount applies to the references drawn after it is published. Every change is kept on the fee's history. */
 import { useState } from "react";
@@ -15,7 +18,7 @@ import { DTable } from "@/components/proto/DTable";
 import { Field } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { day } from "@/lib/format";
-import { FEE_PUBLISHERS, FEE_STATERS, byWords, feeChange, feeStanding, naira, type SiwesFeeView } from "@/lib/siwes";
+import { FEE_PUBLISHERS, FEE_STATERS, SIWES_DESK_READERS, byWords, feeChange, feeStanding, naira, siwesFeeScopeWords, type SiwesFeeView } from "@/lib/siwes";
 
 export function SiwesFeePanel({ session, data, actingOffice }: { session: string; data: SiwesFeeView | null; actingOffice: string | null }) {
   const router = useRouter();
@@ -66,12 +69,11 @@ export function SiwesFeePanel({ session, data, actingOffice }: { session: string
       <PBody>
         {problem ? <ProblemNotice problem={problem} /> : null}
         <div className="sub2">
-          Paid once a session by the 300 Level students of the programmes taking SIWES in the Second Semester (the Academic Office sets them on SIWES
-          Registration). A payment of its own: never a school fee, never with the GST fee. A figure stated is a draft until the Bursar publishes it; the
+          {siwesFeeScopeWords(inForce?.amount)} A payment of its own: never a school fee, never with the GST fee. A figure stated is a draft until the Bursar publishes it; the
           published figure stays in force meanwhile. A reference already drawn keeps its amount until it expires or is renewed. A SIWES payment made on
-          the old portal for the session counts.
+          the old portal for the session counts, of either semester.
         </div>
-        {!inForce ? <Note kind="info" title={`No SIWES registration fee in force for ${session}`}>Until one is published, no student can pay it or register the SIWES course.</Note> : null}
+        {!inForce ? <Note kind="info" title={`No SIWES registration fee in force for ${session}`}>Until one is published, no student can pay it, and no SIWES course can be registered.</Note> : null}
         <div className="grid grid--2 mt-2">
           <div>
             <div className="eyebrow mb-1">In force</div>
@@ -112,6 +114,10 @@ export function SiwesFeePanel({ session, data, actingOffice }: { session: string
         ) : <div className="sub2 mt-2">The Bursary states and publishes the SIWES registration fee.</div>}
         <div className="row mt-2" style={{ flexWrap: "wrap" }}>
           <LinkBtn kind="ghost" size="sm" href={`/finance/siwes-payments?session=${encodeURIComponent(session)}`}>SIWES fee payments</LinkBtn>
+          {/* V777: the SIWES courses held on a registration with no SIWES fee paid — those who registered one before the rule; linked only for
+              the offices that read the desk (the Administrator, who reads this panel, and the auditors do not: the page would refuse them) */}
+          {SIWES_DESK_READERS.includes(actingOffice ?? "")
+            ? <LinkBtn kind="ghost" size="sm" href={`/siwes/registration?${new URLSearchParams({ session, tab: "unpaid" }).toString()}`}>SIWES courses held without the fee</LinkBtn> : null}
         </div>
       </PBody>
       {history.length ? (

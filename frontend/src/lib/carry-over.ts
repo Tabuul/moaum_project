@@ -4,6 +4,7 @@
 
 import type { SpilloverQuote } from "./spillover";
 import { shownCode } from "./course-code.ts";
+import { SIWES_LOCK_PILL, SIWES_LOCK_TITLE, siwesLockKind, type SiwesLockKind } from "./siwes.ts";
 
 export type CarryStatus = "OUTSTANDING" | "NO_RESULT" | "NO_RECORD" | "AWAITED" | "CLEARED" | "ALREADY_REGISTERED" | "NOT_OWED";
 
@@ -13,6 +14,10 @@ export interface CarryRow {
   last_grade: string | null; offering_id: string | null; selectable: boolean; reason: string;
   /** V691: a GST/EPS course the GST fee holds: added, it would be refused until the fee is paid — and what the fee comes to */
   gst_held?: boolean; gst_to_pay?: number | null;
+  /** V777: a SIWES course (every one carries the SIWES fee) the fee holds: added, it would be refused until the fee is paid, or because
+   *  it cannot be paid for at all — and the database's words (the first word their code: SIWES_UNPAID, SIWES_FEE_NOT_SET,
+   *  SIWES_NOT_IN_REACH), read with lib/siwes siwesLockKind and never shown whole */
+  siwes_held?: boolean; siwes_gate?: string | null;
 }
 
 export interface CarryList {
@@ -78,8 +83,9 @@ export function groupRows(rows: CarryRow[]): { level: number; semesters: { semes
   return out;
 }
 
-/** V691: a course that may be ticked — one the student may add, and not a GST/EPS course the GST fee holds */
-export const tickable = (r: CarryRow) => r.selectable && !r.gst_held;
+/** V691, V777: a course that may be ticked — one the student may add, and not a GST/EPS course the GST fee holds, nor a SIWES course
+ *  the SIWES fee holds */
+export const tickable = (r: CarryRow) => r.selectable && !r.gst_held && !r.siwes_held;
 
 /** V691: the GST fee the shown courses wait for, once (one payment covers GST and EPS), or null when none waits */
 export function gstHeld(rows: CarryRow[]): { count: number; toPay: number | null } | null {
@@ -87,6 +93,62 @@ export function gstHeld(rows: CarryRow[]): { count: number; toPay: number | null
   if (!held.length) return null;
   const amounts = held.map((r) => Number(r.gst_to_pay)).filter((n) => Number.isFinite(n) && n > 0);
   return { count: held.length, toPay: amounts.length ? Math.max(...amounts) : null };
+}
+
+/* ── V777: every SIWES course carries the SIWES fee, paid once a session on the SIWES page before the course is added ── */
+
+/** the SIWES courses the SIWES fee holds, by what holds them: the fee unpaid, the fee not yet published, or a course that is not
+ *  open to the student (their programme carries no SIWES course at their level, so the fee cannot be paid for it) */
+export interface SiwesWait { count: number; unpaid: number; notPublished: number; notOpen: number }
+
+/** V777: the shown courses the SIWES fee holds, counted by kind of hold (the fee is paid once, so one note says it), or null when none is held */
+export function siwesHeld(rows: CarryRow[]): SiwesWait | null {
+  const kinds = rows.filter((r) => r.siwes_held).map((r) => siwesLockKind(r.siwes_gate));
+  if (!kinds.length) return null;
+  const n = (k: SiwesLockKind) => kinds.filter((x) => x === k).length;
+  return { count: kinds.length, unpaid: n("UNPAID"), notPublished: n("FEE_NOT_SET"), notOpen: n("NOT_IN_REACH") };
+}
+
+/** the notes over the picker for the SIWES courses it holds — one for each kind of hold, the fee unpaid first (the only one that
+ *  links to the SIWES page, where the fee is paid); the titles are those of Course Registration's own notes (lib/siwes siwesLockNotes) */
+export function siwesWaitNotes(w: SiwesWait | null): { kind: "bad" | "info"; title: string; words: string; pay: boolean }[] {
+  if (!w) return [];
+  const courses = (n: number, first = true) => (n === 1 ? `${first ? "A" : "a"} SIWES course below is` : `${n} SIWES courses below are`);
+  const out: { kind: "bad" | "info"; title: string; words: string; pay: boolean }[] = [];
+  if (w.unpaid) {
+    out.push({ kind: "bad", pay: true, title: "SIWES fee first",
+      words: `${courses(w.unpaid)} added once the SIWES fee is paid. It is paid once a session, on your SIWES page, whichever SIWES course you add.` });
+  }
+  if (w.notPublished) {
+    out.push({ kind: "info", pay: false, title: "SIWES fee not published yet",
+      words: `The Bursary has not published the SIWES fee for this session; ${courses(w.notPublished, false)} added once it is published and paid.` });
+  }
+  if (w.notOpen) {
+    out.push({ kind: "info", pay: false, title: "SIWES course not open to you",
+      words: `${w.notOpen === 1 ? "A SIWES course below cannot be added" : `${w.notOpen} SIWES courses below cannot be added`}: your programme carries no SIWES course at your level, `
+        + `so the fee cannot be paid for ${w.notOpen === 1 ? "it" : "them"}. Ask the Academic Office.` });
+  }
+  return out;
+}
+
+/** the pill on a held SIWES row, and the line under its title, in plain words (never a code); null for a row nothing holds. The fee unpaid
+ *  reads "SIWES fee first", as the GST fee does on this screen; the other holds read as Course Registration's rows do */
+export function siwesRowWords(r: Pick<CarryRow, "siwes_held" | "siwes_gate">): { pill: string; line: string } | null {
+  if (!r.siwes_held) return null;
+  const kind = siwesLockKind(r.siwes_gate);
+  return kind === "UNPAID"
+    ? { pill: "SIWES fee first", line: "Pay the SIWES fee on your SIWES page, then add this course." }
+    : { pill: SIWES_LOCK_PILL[kind], line: `${SIWES_LOCK_TITLE[kind]}.` };
+}
+
+/** the SIWES courses an add refused for the fee, from its answers (the database's code of each refusal): the same counts as siwesHeld,
+ *  for the note over the answers — a fee paid, or a window closed, between the list and the add */
+export function siwesRefused(results: CarryResult[]): SiwesWait | null {
+  const refused = results.filter((x) => !x.added);
+  const n = (code: string) => refused.filter((x) => x.code === code).length;
+  const w = { unpaid: n("SIWES_UNPAID"), notPublished: n("SIWES_FEE_NOT_SET"), notOpen: n("SIWES_NOT_IN_REACH") };
+  const count = w.unpaid + w.notPublished + w.notOpen;
+  return count ? { count, ...w } : null;
 }
 
 /** what is ticked: the number of courses and their units, and how many from each level */

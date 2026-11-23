@@ -1,8 +1,13 @@
 /** V752 — SIWES registration at 300 Level, Second Semester (the University's master prompt of 12 November 2026): the words, the
  *  student's next step and the export rows every SIWES screen shares (the student's page and dashboard card, the Academic Office's
  *  desk, the Bursary's fee panel and payments report). The rules are the database's (registration.siwes_eligibility, siwes_applies,
- *  finance.siwes_paid); nothing here decides who may register or what is owed — it says what the server said. */
+ *  finance.siwes_paid); nothing here decides who may register or what is owed — it says what the server said.
+ *  V777 (the user's word of 22 November 2026, "yes charge every siwes course"): every SIWES course carries the fee, paid once a session
+ *  before the student registers any of them, whatever the programme, level or semester. Two shapes of the student's page: SEMESTER
+ *  (V752's: the Second Semester of a programme SIWES binds is the SIWES course alone, registered on the SIWES page) and COURSE (a SIWES
+ *  course among the student's ordinary courses: the fee is paid on the SIWES page, the course is registered on Course Registration). */
 import { dayWord, naira, num, type Money } from "./summer.ts";
+import { shownCode } from "./course-code.ts";
 
 export { naira, num, type Money };
 
@@ -30,15 +35,43 @@ export interface SiwesCourse {
   state?: "LIVE" | "BOARD" | "SENATE" | "ENDED" | string | null;
 }
 
+/** V777: a SIWES course that is the student's, as GET /me/siwes lists them (registration.siwes_reach): each with its own level and
+ *  semester, and why it is theirs — HELD (on a registration of the session), CARRYOVER (failed, owed), STRUCTURE (their programme's
+ *  structure at their level). `passed`: a published pass of an earlier session — neither owed nor asked for. `registrationStatus`: the
+ *  status of the registration that holds the course (DRAFT, RETURNED, SUBMITTED, APPROVED or LOCKED), null when none holds it (a course
+ *  owed or in the structure), absent from an older answer — read there as before: registered */
+export interface SiwesOwnCourse {
+  code: string; title?: string | null; units?: number | null; level?: number | null; semester?: number | null;
+  basis?: string | null; state?: string | null;
+  why?: "HELD" | "CARRYOVER" | "STRUCTURE" | string | null;
+  held?: boolean | null; passed?: boolean | null;
+  registrationStatus?: "DRAFT" | "RETURNED" | "SUBMITTED" | "APPROVED" | "LOCKED" | string | null;
+}
+
 /** what GET /api/v1/me/siwes answers: registration.siwes_eligibility for the student, as is */
 export interface MySiwes {
+  /** V777: eligible = bound to the SIWES semester (`bound`) or asked the fee for a SIWES course of theirs (mode COURSE) */
   eligible: boolean;
   /** registration.siwes_applies for the student and session: the SIWES rule binds their Second Semester (absent from an older answer) */
   applies?: boolean | null;
+  /** V777: how SIWES reaches the student — SEMESTER (the Second Semester is SIWES alone, registered on the SIWES page; V752's shape),
+   *  COURSE (a SIWES course among their ordinary courses: the fee is paid here, the course registered on Course Registration), or
+   *  null (nothing to pay for). Absent from an older answer: SEMESTER */
+  mode?: "SEMESTER" | "COURSE" | null;
+  /** V777: V752's `eligible` — the student's Second Semester is SIWES alone */
+  bound?: boolean | null;
+  /** V777: the SIWES courses that are the student's (each with its own level and semester); `level`, `semester`, `course`,
+   *  `semesterFees` are null and `otherCourses` empty for mode COURSE */
+  courses?: SiwesOwnCourse[] | null;
+  /** V777: where the course is registered — the SIWES page (SEMESTER) or Course Registration (COURSE) */
+  registerOn?: "SIWES_PAGE" | "COURSE_REGISTRATION" | null;
+  /** V777: the server's word that the student may pay the fee now (the fee published, nothing paid, a SIWES course theirs) */
+  canPay?: boolean | null;
   reasons: string[];
   session: string | null;
   level: number | null;
-  semester: number;
+  /** the SIWES semester's number (2): null for mode COURSE, where each course carries its own */
+  semester: number | null;
   programme: { code: string; name: string } | null;
   department?: UnitRef;
   faculty?: UnitRef;
@@ -125,6 +158,8 @@ export const REASON_WORD: Record<string, string> = {
   NO_PERIOD: "The Academic Office has not opened SIWES registration for this session.",
   NO_COURSE: "No SIWES course is set for your programme yet; the Academic Office sets it.",
   ALREADY_PASSED: "You have already passed your SIWES course.",
+  // V777: a student the fee is asked of in principle (an undergraduate in study) who has no SIWES course to pay for
+  NO_SIWES_COURSE: "Your programme carries no SIWES course at your level, and you hold or owe none: no SIWES fee is asked of you.",
 };
 
 /** the same reasons, short, for the desk's lists */
@@ -137,25 +172,44 @@ export const REASON_SHORT: Record<string, string> = {
   NO_PERIOD: "No SIWES period",
   NO_COURSE: "No SIWES course set",
   ALREADY_PASSED: "SIWES already passed",
+  NO_SIWES_COURSE: "No SIWES course at the level",
 };
 
 export function reasonWord(code: string): string {
   return REASON_WORD[code] ?? code.replaceAll("_", " ").toLowerCase();
 }
 
+/** V777: the reasons of the bound shape that speak of the Academic Office's configuration (the programme taking part, the period, the
+ *  course set, the 300 Level) say nothing true of a student whose programme simply carries no SIWES course at their level: beside
+ *  NO_SIWES_COURSE they are left out, so the student is told the one reason that stands */
+const CONFIGURATION = new Set(["NOT_300_LEVEL", "NOT_CONFIGURED", "NO_PERIOD", "NO_COURSE"]);
+
+/** the reasons to say: all of them, but beside NO_SIWES_COURSE not those of the configuration */
+export function reasonsToSay(codes: string[] | null | undefined): string[] {
+  const all = codes ?? [];
+  return all.includes("NO_SIWES_COURSE") ? all.filter((r) => !CONFIGURATION.has(r)) : all;
+}
+
 export function reasonWords(codes: string[] | null | undefined): string[] {
-  return (codes ?? []).map(reasonWord);
+  return reasonsToSay(codes).map(reasonWord);
 }
 
 /** the reasons that leave a student outside SIWES altogether, as registration.siwes_applies reads them: with none of them, the SIWES
  *  rule binds the student's Second Semester whether or not they can register yet. NOT_IN_STUDY is one (K22: siwes_applies binds only
  *  a student in study, ACTIVE or PROBATION, by the roster's and the eligibility's own test); so is ALREADY_PASSED (a student who passed
- *  SIWES registers the Second Semester as before). */
-const OUTSIDE = new Set(["NOT_UNDERGRADUATE", "CCE", "NOT_IN_STUDY", "NOT_300_LEVEL", "NOT_CONFIGURED", "NO_PERIOD", "ALREADY_PASSED"]);
+ *  SIWES registers the Second Semester as before). V777: and NO_SIWES_COURSE (nothing to pay for) */
+const OUTSIDE = new Set(["NOT_UNDERGRADUATE", "CCE", "NOT_IN_STUDY", "NOT_300_LEVEL", "NOT_CONFIGURED", "NO_PERIOD", "ALREADY_PASSED", "NO_SIWES_COURSE"]);
 
-/** whether the SIWES rule binds the student's Second Semester: the server's `applies` when it sends it, else read from the reasons */
-export function siwesApplies(e: Pick<MySiwes, "eligible" | "reasons" | "registration" | "applies"> | null | undefined): boolean {
+/** V777: whether the student's page is the COURSE shape — a SIWES course among their ordinary courses, the fee paid first */
+export function isCourseMode(e: Pick<MySiwes, "mode"> | null | undefined): boolean {
+  return e?.mode === "COURSE";
+}
+
+/** whether the SIWES rule binds the student's Second Semester: the server's `applies` when it sends it, else read from the reasons
+ *  (never for the COURSE shape, whose semester is not SIWES alone) */
+export function siwesApplies(e: Pick<MySiwes, "eligible" | "reasons" | "registration" | "applies" | "mode"> | null | undefined): boolean {
   if (!e) return false;
+  if (e.mode === "COURSE") return false;
   if (typeof e.applies === "boolean") return e.applies;
   if (e.eligible || e.registration) return true;
   return !(e.reasons ?? []).some((r) => OUTSIDE.has(r));
@@ -177,9 +231,10 @@ export function dropOthersWords(courses: string[], clearing?: MySiwes["clearing"
   return `Add and drop is not open and your Second Semester registration cannot be reset now: ask the Academic Office or ICT Support to remove ${list}`;
 }
 
-/** Course Registration's Second Semester, where the student removes or resets what stands in the SIWES course's way */
-export function courseRegistrationPage(session: string | null | undefined): { href: string; label: string } {
-  return { href: `/student/register?${session ? `session=${encodeURIComponent(session)}&` : ""}semester=2`, label: "Course Registration" };
+/** Course Registration's Second Semester (V752: where the student removes or resets what stands in the SIWES course's way), or — V777 —
+ *  the semester a SIWES course is taught in, where it is registered among the student's other courses */
+export function courseRegistrationPage(session: string | null | undefined, semester: number | null | undefined = 2): { href: string; label: string } {
+  return { href: `/student/register?${session ? `session=${encodeURIComponent(session)}&` : ""}semester=${semester ?? 2}`, label: "Course Registration" };
 }
 
 /** whether the student can clear the courses in the way themselves now (Remove or the reset on Course Registration): true from an older
@@ -277,9 +332,157 @@ export function siwesClearing(o: { addDropOpen?: boolean | null; resetAllowed?: 
   return { remove, reset, words };
 }
 
-/** a Second Semester registration of this session is the student's SIWES registration */
+/** a Second Semester registration of this session is the student's SIWES registration (V752's shape: a COURSE-shape SIWES course is
+ *  an ordinary course of an ordinary registration, which prints as one) */
 export function isSiwesRegistration(e: Pick<MySiwes, "session" | "registration"> | null | undefined, session: string, semester: number): boolean {
   return !!e && semester === 2 && e.session === session && !!e.registration;
+}
+
+// ── V777: the COURSE shape — a SIWES course among the student's ordinary courses ───────────────────────────────────────────────
+
+/** "A", "A and B", "A, B and C" */
+function listed(words: string[]): string {
+  return words.length < 2 ? words.join("") : `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
+}
+
+const isAre = (n: number) => (n === 1 ? "is" : "are");
+
+/** the SIWES courses the fee is asked for: the student's own, never one already passed */
+export function ownCourses(d: Pick<MySiwes, "courses"> | null | undefined): SiwesOwnCourse[] {
+  return (d?.courses ?? []).filter((c) => !!c && !!c.code && c.passed !== true);
+}
+
+/** those already on a registration of the session (held, as the server says) and those still to register */
+export function heldCourses(d: Pick<MySiwes, "courses"> | null | undefined): SiwesOwnCourse[] {
+  return ownCourses(d).filter((c) => c.held === true);
+}
+export function coursesToRegister(d: Pick<MySiwes, "courses"> | null | undefined): SiwesOwnCourse[] {
+  return ownCourses(d).filter((c) => c.held !== true);
+}
+
+/** where a held SIWES course stands on the registration that holds it, as the student reads it: UNSENT (the registration is a draft, or
+ *  was returned to them: the course is on it, not submitted), AWAITING (submitted, waiting for approval), REGISTERED (approved or
+ *  locked — and an older answer that does not say, read as before) */
+export type HeldStanding = "UNSENT" | "AWAITING" | "REGISTERED";
+export function heldStanding(c: Pick<SiwesOwnCourse, "registrationStatus">): HeldStanding {
+  const s = c.registrationStatus;
+  return s === "DRAFT" || s === "RETURNED" ? "UNSENT" : s === "SUBMITTED" ? "AWAITING" : "REGISTERED";
+}
+
+/** the held SIWES courses of the student that stand in the given way on their registration */
+export function heldAs(d: Pick<MySiwes, "courses"> | null | undefined, standing: HeldStanding): SiwesOwnCourse[] {
+  return heldCourses(d).filter((c) => heldStanding(c) === standing);
+}
+
+/** the held courses in words, each group by where it stands: "ZZG 301 (...) is already on your registration; ZZG 312 (...) is on your
+ *  registration, not yet submitted" — registered ones first, then those waiting for approval, then those not submitted */
+function heldClause(held: SiwesOwnCourse[]): string {
+  const by = (s: HeldStanding) => held.filter((c) => heldStanding(c) === s);
+  const done = by("REGISTERED"), waiting = by("AWAITING"), unsent = by("UNSENT");
+  return [
+    done.length ? `${ownCourseList(done)} ${isAre(done.length)} already on your registration` : "",
+    waiting.length ? `${ownCourseList(waiting)} ${isAre(waiting.length)} on your registration, waiting for approval` : "",
+    unsent.length ? `${ownCourseList(unsent)} ${isAre(unsent.length)} on your registration, not yet submitted` : "",
+  ].filter(Boolean).join("; ");
+}
+
+/** where a SIWES course is taught, from its own level and semester: "300 Level, First Semester" (either half alone from an answer
+ *  short of the other; empty with neither) */
+export function courseWhere(c: Pick<SiwesOwnCourse, "level" | "semester">, sep = ", "): string {
+  const semester = c.semester != null ? semesterWords(String(c.semester)) : "";
+  return [c.level != null ? `${c.level} Level` : "", semester].filter(Boolean).join(sep);
+}
+
+/** the courses for a sentence, each with where it is taught: "ZZG 311 (300 Level, First Semester) and ZZG 312 (300 Level, Second Semester)".
+ *  The code is shown without its curriculum mark ("MAC 399 BMAS" reads "MAC 399", as everywhere else); the key stays the raw code */
+export function ownCourseList(cs: SiwesOwnCourse[]): string {
+  return listed(cs.map((c) => { const w = courseWhere(c); return `${shownCode(c.code)}${w ? ` (${w})` : ""}`; }));
+}
+
+/** a course of the student's as a line: "ZZG 301 — SIWES (6 units) · 300 Level · First Semester" */
+export function ownCourseLine(c: SiwesOwnCourse): string {
+  return [courseWords({ code: shownCode(c.code), title: c.title ?? null, units: c.units ?? null }), courseWhere(c, " · ")].filter(Boolean).join(" · ");
+}
+
+/** the semesters the courses are taught in, once each, in order: where the student registers them on Course Registration */
+export function courseSemesters(cs: SiwesOwnCourse[]): number[] {
+  return [...new Set(cs.map((c) => c.semester).filter((s): s is number => typeof s === "number"))].sort((a, b) => a - b);
+}
+
+// V777: a SIWES course on Course Registration's menu (or the search) locked while its fee is unpaid, as the GST fee locks a GST/EPS course
+
+/** what holds a SIWES course on the form: the fee unpaid, the fee not yet published, or a course that is not open to the student */
+export type SiwesLockKind = "UNPAID" | "FEE_NOT_SET" | "NOT_IN_REACH";
+
+/** the kind of hold a SIWES course's gate words name, by the code the database's message begins with (never shown to the student);
+ *  words with none known are the fee's: it is what holds a SIWES course */
+export function siwesLockKind(gate: string | null | undefined): SiwesLockKind {
+  const code = (gate ?? "").split(":")[0].trim();
+  return code === "SIWES_FEE_NOT_SET" ? "FEE_NOT_SET" : code === "SIWES_NOT_IN_REACH" ? "NOT_IN_REACH" : "UNPAID";
+}
+
+/** the pill on a locked row, and the hint over it */
+export const SIWES_LOCK_PILL: Record<SiwesLockKind, string> = { UNPAID: "SIWES fee required", FEE_NOT_SET: "SIWES fee not published", NOT_IN_REACH: "Not open to you" };
+export const SIWES_LOCK_TITLE: Record<SiwesLockKind, string> = {
+  UNPAID: "Locked until the SIWES fee is paid",
+  FEE_NOT_SET: "Locked until the Bursary publishes the SIWES fee and it is paid",
+  NOT_IN_REACH: "Your programme carries no SIWES course at your level; ask the Academic Office",
+};
+
+/** the notes over the form for the SIWES courses it locks — one for each kind of hold, the fee unpaid first — saying what is done:
+ *  pay the SIWES fee (once a session, whichever SIWES course), then register the course; or wait for the Bursary to publish it. The
+ *  amount is named only when the answer has it (a published fee). The codes are shown without a curriculum mark. `shut`: the words of
+ *  siwesPayShutWords, when the fee cannot be paid now (the SIWES window is not open): the note then offers no payment and says when */
+export function siwesLockNotes(locked: { code: string; gate?: string | null }[], session: string, fee?: Money, shut?: string | null): { kind: "bad" | "info"; title: string; words: string; pay: boolean }[] {
+  const by = (k: SiwesLockKind) => [...new Set(locked.filter((l) => siwesLockKind(l.gate) === k).map((l) => shownCode(l.code)))];
+  const out: { kind: "bad" | "info"; title: string; words: string; pay: boolean }[] = [];
+  const amount = num(fee) > 0 ? ` of ${naira(fee)}` : "";
+  const unpaid = by("UNPAID");
+  if (unpaid.length && shut) {
+    out.push({ kind: "bad", pay: false, title: "SIWES fee required",
+      words: `${listed(unpaid)} ${unpaid.length === 1 ? "carries" : "carry"} the SIWES registration fee${amount} for ${session}, paid once a session before ${unpaid.length === 1 ? "it is" : "they are"} registered. ${shut}` });
+  } else if (unpaid.length) {
+    out.push({ kind: "bad", pay: true, title: "SIWES fee required",
+      words: `Pay the SIWES registration fee${amount} for ${session} to register ${listed(unpaid)}. It is paid once a session, whichever SIWES course you register: pay it on the SIWES page, then register the course here.` });
+  }
+  const unset = by("FEE_NOT_SET");
+  if (unset.length) {
+    out.push({ kind: "info", pay: false, title: "SIWES fee not published yet",
+      words: `The Bursary has not published the SIWES registration fee for ${session}; ${listed(unset)} ${isAre(unset.length)} registered once it is published and paid.` });
+  }
+  const noReach = by("NOT_IN_REACH");
+  if (noReach.length) {
+    out.push({ kind: "info", pay: false, title: "SIWES course not open to you",
+      words: `${listed(noReach)} ${noReach.length === 1 ? "is a SIWES course" : "are SIWES courses"}, but your programme carries no SIWES course at your level, so the fee cannot be paid for ${noReach.length === 1 ? "it" : "them"}: ask the Academic Office.` });
+  }
+  return out;
+}
+
+/** a SIWES course already on the student's registration with the fee unpaid (registered before every SIWES course carried it): the
+ *  words of the note over the form, with the courses named. `shut`: the words of siwesPayShutWords, when the fee cannot be paid now
+ *  (the SIWES window is not open) — in place of "you have to pay it now, on the SIWES page" */
+export function siwesUnpaidRegisteredWords(codes: string[], session: string, fee?: Money, shut?: string | null): string {
+  const amount = num(fee) > 0 ? ` of ${naira(fee)}` : "";
+  return `${listed(codes)} ${isAre(codes.length)} on your registration, but the SIWES registration fee${amount} for ${session} is not paid. You registered ${codes.length === 1 ? "it" : "them"} before every SIWES course carried the fee; `
+    + (shut ? `it is asked of every student who registers one, once a session. ${shut}` : "it is asked of every student who registers one, once a session, so you have to pay it now, on the SIWES page.");
+}
+
+/** where the student registers a SIWES course now the fee is paid: Course Registration of the semester it is taught in, one link for each semester */
+export function registerLinks(d: Pick<MySiwes, "session" | "courses">): { href: string; label: string }[] {
+  const semesters = courseSemesters(coursesToRegister(d));
+  if (!semesters.length) return [];
+  return semesters.map((s) => ({ href: courseRegistrationPage(d.session, s).href,
+    label: semesters.length > 1 ? `Course Registration, ${semesterWords(String(s))}` : "Course Registration" }));
+}
+
+/** where the student submits the registration that holds a SIWES course only as a draft (or returned to them): Course Registration of
+ *  the semester the course is taught in, one link for each semester — leaving out a semester registerLinks already links to */
+export function submitLinks(d: Pick<MySiwes, "session" | "courses">): { href: string; label: string }[] {
+  const semesters = courseSemesters(heldAs(d, "UNSENT"));
+  const already = new Set(registerLinks(d).map((l) => l.href));
+  const links = semesters.map((s) => ({ href: courseRegistrationPage(d.session, s).href,
+    label: semesters.length > 1 ? `Course Registration, ${semesterWords(String(s))}` : "Course Registration" }));
+  return links.filter((l) => !already.has(l.href));
 }
 
 export const PERIOD_WORD: Record<string, [string, "grey" | "info" | "ok" | "bad" | "warn"]> = {
@@ -292,6 +495,33 @@ export function periodWords(p: Pick<SiwesPeriod, "state"> | null | undefined, op
   if (!p) return ["Not set", "grey"];
   if (p.state === "OPEN" && openNow === false) return ["Open — outside its dates", "warn"];
   return PERIOD_WORD[p.state] ?? [p.state, "grey"];
+}
+
+/** whether the period holds the programmes listed on the desk to SIWES alone in their 300 Level Second Semester: only a period that has
+ *  been opened (registration.siwes_applies reads no draft, and none that is not set) */
+export function periodHolds(p: Pick<SiwesPeriod, "state"> | null | undefined): boolean {
+  return !!p && p.state !== "DRAFT";
+}
+
+/** the desk's first panel's row on what the listed programmes are held to: said as a fact only once the period is opened; while it is a
+ *  draft (or not set) nobody is held, and the students of those programmes pay and register as every other student does */
+export function heldToSiwesRow(p: Pick<SiwesPeriod, "state"> | null | undefined): [string, string] {
+  return periodHolds(p)
+    ? ["Held to SIWES alone", "300 Level · Second Semester of the programmes below"]
+    : ["Held to SIWES alone", "Nobody yet: once the period is opened, the 300 Level · Second Semester of the programmes below. Until then their students pay the SIWES fee and register the course on Course Registration, like every other student."];
+}
+
+/** the question asked before a programme is taken out of SIWES for a session: what it ends is said only where it is in force */
+export function removeProgrammeWords(name: string, code: string, session: string, p: Pick<SiwesPeriod, "state"> | null | undefined): string {
+  const fee = "they register the Second Semester as before, and still pay the SIWES fee when they register a SIWES course.";
+  return `Take ${name} (${code}) out of SIWES for ${session}? `
+    + (periodHolds(p) ? `Its 300 Level students are then no longer held to the SIWES course alone: ${fee}` : `Its 300 Level students will not be held to the SIWES course alone when the period is opened: ${fee}`);
+}
+
+/** whether the desk shows its Unpaid courses tab: the list was read, or its read failed for a reason other than a refusal (403: the
+ *  acting office does not read it, so the tab is not theirs) — a failed read keeps the tab, to say so, never a silent landing elsewhere */
+export function unpaidTabShown(unpaid: unknown[] | null | undefined, problem: { status?: number } | null | undefined): boolean {
+  return !!unpaid || (!!problem && problem.status !== 403);
 }
 
 /** "1 December 2026", or a dash */
@@ -319,7 +549,11 @@ export function lagosToday(now: Date = new Date()): string {
 
 export type SiwesStep =
   | "NO_PERIOD" | "NOT_ELIGIBLE" | "FEE_NOT_SET" | "NOT_OPEN" | "CLOSED" | "PAY" | "PAY_REFERENCE"
-  | "PAID_NOT_ELIGIBLE" | "PAID_CLOSED" | "DROP_OTHERS" | "PAY_SCHOOL_FEES" | "REGISTER" | "REGISTERED" | "ELSEWHERE" | "UNDONE";
+  | "PAID_NOT_ELIGIBLE" | "PAID_CLOSED" | "DROP_OTHERS" | "PAY_SCHOOL_FEES" | "REGISTER" | "REGISTERED" | "ELSEWHERE" | "UNDONE"
+  // V777 (the COURSE shape): a SIWES course already on the student's registration with its fee unpaid — they pay it now; the fee paid,
+  // the course to register on Course Registration; the fee paid and the course on a registration not yet submitted (SUBMIT_REGISTRATION)
+  // or submitted and waiting for approval (AWAITING_APPROVAL)
+  | "PAY_HELD" | "REGISTER_COURSE" | "SUBMIT_REGISTRATION" | "AWAITING_APPROVAL";
 
 /** a SIWES registration that no longer stands: its SIWES course dropped or withdrawn (an office undid it) */
 const UNDONE = new Set(["DROPPED", "WITHDRAWN"]);
@@ -342,7 +576,29 @@ export function siwesUndone(d: Pick<MySiwes, "session" | "history" | "paid" | "r
 /** whether the dashboard shows the SIWES card: SIWES binds the student's Second Semester of the session, or they have paid or registered
  *  it — never for a student SIWES no longer binds (a past registrant, whose menu still carries the SIWES page), nor for a draft period */
 export function siwesCardShown(d: MySiwes | null | undefined): boolean {
-  return !!d && (siwesApplies(d) || !!d.paid || !!d.registration);
+  // V777: and while a SIWES course is theirs to pay for (mode COURSE): the fee is asked before it is registered
+  return !!d && (isCourseMode(d) || siwesApplies(d) || !!d.paid || !!d.registration);
+}
+
+/** V777: the COURSE shape's tiles — the session and where its courses are taught, the student, the fee, the courses: the training
+ *  dates and registration window are the SIWES semester's (the programmes SIWES binds), never theirs */
+function courseTiles(d: MySiwes): [string, string, string][] {
+  const s = d.session ?? "this session";
+  const own = ownCourses(d);
+  const held = heldCourses(d);
+  const toRegister = coursesToRegister(d);
+  const where = [...new Set(own.map((c) => courseWhere(c, " · ")).filter(Boolean))];
+  const published = d.fee?.state === "PUBLISHED";
+  return [
+    ["SIWES session", s, where.length === 1 ? where[0] : where.length ? `${own.length} courses` : "Every SIWES course is charged"],
+    // a course only on a draft (or returned) registration is not registered: it is on the registration, not submitted
+    ["You", held.length && !toRegister.length
+      ? (held.some((c) => heldStanding(c) === "UNSENT") ? "Not submitted" : held.some((c) => heldStanding(c) === "AWAITING") ? "Awaiting approval" : "Registered")
+      : "Eligible", d.programme?.name ?? ""],
+    ["SIWES fee", d.paid ? "Paid" : published ? naira(d.fee?.amount) : "—",
+      d.paid ? `${naira(d.paid.amount)} · ${dateWord(d.paid.at)}` : published ? "Not paid" : "Not published yet"],
+    ["SIWES courses", String(own.length), own.map((c) => shownCode(c.code)).join(", ") || "—"],
+  ];
 }
 
 /** the SIWES page's tiles — [label, value, sub] — by where the student stands (v4-2). On ELSEWHERE, the student's own SIWES sessions and
@@ -350,6 +606,7 @@ export function siwesCardShown(d: MySiwes | null | undefined): boolean {
  *  has paid and registered nothing in it, owes nothing for it (a draft period binds nobody) */
 export function siwesTiles(d: MySiwes, step: SiwesStep): [string, string, string][] {
   const s = d.session ?? "this session";
+  if (isCourseMode(d)) return courseTiles(d);
   if (step === "ELSEWHERE") {
     return [
       ["Your SIWES", siwesElsewhere(d).map((h) => h.session).join(", ") || "—", "300 Level · Second Semester"],
@@ -395,8 +652,80 @@ function windowWords(p: SiwesPeriod, today: string): { step: "NOT_OPEN" | "CLOSE
   return { step: "CLOSED", title: "SIWES registration is closed" };
 }
 
+/** V777: a student SIWES binds (mode SEMESTER) whose First or Third Semester form holds a SIWES course while the SIWES window is not
+ *  open: the server says the fee cannot be paid now (canPay false, the fee published and unpaid), though the form locks the course on
+ *  the fee. The words say so — when SIWES registration opens, the fee is paid then; closed, the Academic Office — and null when the
+ *  fee can be paid (or nothing says it cannot): the form then links to the SIWES page as ever */
+export function siwesPayShutWords(d: Pick<MySiwes, "mode" | "canPay" | "fee" | "paid" | "registrationOpen" | "period"> | null | undefined, today: string = lagosToday()): string | null {
+  if (!d || isCourseMode(d) || d.canPay !== false || d.registrationOpen !== false || d.paid || d.fee?.state !== "PUBLISHED") return null;
+  const w = d.period ? windowWords(d.period, today) : { step: "CLOSED" as const, title: "SIWES registration is closed" };
+  return w.step === "NOT_OPEN"
+    ? `${w.title}: the SIWES registration fee cannot be paid before then. Pay it once SIWES registration opens, then register the course here.`
+    : `${w.title}, so the SIWES registration fee cannot be paid now: ask the Academic Office.`;
+}
+
+/** V777: the next step of a student whose SIWES course is among their ordinary courses (mode COURSE): pay the fee — a student who holds
+ *  an unpaid SIWES course from before the rule is told so, and that they pay it now — then register the course on Course Registration
+ *  (never here: the SIWES page registers only the SIWES semester's course). No other course is "in the way" of it, and no school fees
+ *  hold it here: Course Registration judges its own. The server's `registrationOpen` is the fee's being published; nothing is taken
+ *  before it is */
+function courseNext(d: MySiwes): SiwesNext {
+  const base = { pay: false, register: false, receipt: false, print: false, link: null };
+  const session = d.session ?? "the session";
+  const portalPaid = !!d.paid && d.paid.source !== "OLD_PORTAL" && !!d.paid.reference;
+  const fee = d.fee && d.fee.state === "PUBLISHED" ? d.fee.amount : null;
+  const held = heldCourses(d);
+  const toRegister = coursesToRegister(d);
+  const codes = (cs: SiwesOwnCourse[]) => listed(cs.map((c) => shownCode(c.code))) || "your SIWES course";
+  const toRegisterWords = ownCourseList(toRegister) || "your SIWES course";
+  const toRegisterIs = isAre(toRegister.length || 1);
+  const unsent = held.filter((c) => heldStanding(c) === "UNSENT");
+  const awaiting = held.filter((c) => heldStanding(c) === "AWAITING");
+  if (d.paid) {
+    if (!toRegister.length && held.length) {
+      // a course on a registration that is only a draft (or was returned) is not registered: submit the registration; one on a submitted
+      // registration waits for its approval; only one on an approved registration is registered
+      if (unsent.length) {
+        return { ...base, step: "SUBMIT_REGISTRATION", tone: "info", receipt: portalPaid, link: courseRegistrationPage(d.session, courseSemesters(unsent)[0] ?? 2),
+          title: `Submit your registration to register ${codes(unsent)}`,
+          words: `The SIWES registration fee for ${session} is paid. ${sentence(heldClause(held))}: a SIWES course is registered only once the registration that holds it is submitted and approved. `
+            + "Submit your registration on Course Registration." };
+      }
+      if (awaiting.length) {
+        return { ...base, step: "AWAITING_APPROVAL", tone: "info", receipt: portalPaid, title: `${codes(awaiting)} ${isAre(awaiting.length)} waiting for approval`,
+          words: `The SIWES registration fee for ${session} is paid. ${sentence(heldClause(held))}: a SIWES course is registered once the registration that holds it is approved.` };
+      }
+      return { ...base, step: "REGISTERED", tone: "ok", receipt: portalPaid, title: "SIWES course registered",
+        words: `${codes(held)} ${isAre(held.length)} on your registration for ${session}, and the SIWES registration fee is paid.` };
+    }
+    return { ...base, step: "REGISTER_COURSE", tone: "info", receipt: portalPaid, link: courseRegistrationPage(d.session, courseSemesters(toRegister)[0] ?? 2),
+      title: `Fee paid: register ${codes(toRegister)} on Course Registration`,
+      words: `Your SIWES registration fee for ${session} is paid: it covers every SIWES course you register in the session. Register ${toRegisterWords} on Course Registration`
+        + `${held.length ? `; ${heldClause(held)}` : ""}. Paying does not register it.${unsent.length ? " A course is registered only once the registration that holds it is submitted." : ""}` };
+  }
+  if (fee == null) {
+    return { ...base, step: "FEE_NOT_SET", tone: "info", title: "The SIWES registration fee is not published yet",
+      words: held.length
+        ? `${ownCourseList(held)} ${isAre(held.length)} on your registration. The Bursary publishes the SIWES registration fee; you pay it here once it does.`
+        : `The Bursary publishes the SIWES registration fee; ${toRegisterWords} ${toRegisterIs} registered only once it is published and paid.` };
+  }
+  const pay = d.canPay !== false;
+  if (d.openReference) {
+    return { ...base, step: "PAY_REFERENCE", tone: "info", pay, title: `Pay ${naira(d.openReference.amount)} to register ${codes(toRegister.length ? toRegister : held)}`,
+      words: `Pay the SIWES registration fee against reference ${d.openReference.reference}${held.length && !toRegister.length ? "." : `, then register ${toRegisterWords} on Course Registration.`}` };
+  }
+  if (held.length) {
+    return { ...base, step: "PAY_HELD", tone: "bad", pay, title: `Pay the SIWES registration fee of ${naira(fee)}`,
+      words: `You registered ${ownCourseList(held)} for ${session} before every SIWES course carried the SIWES registration fee. It is asked of every student who registers one, once a session, `
+        + `so you have to pay it now${toRegister.length ? `; then register ${ownCourseList(toRegister)} on Course Registration` : ""}.` };
+  }
+  return { ...base, step: "PAY", tone: "info", pay, title: `Pay the SIWES registration fee of ${naira(fee)}`,
+    words: `Every SIWES course carries the fee, paid once a session. Pay it, then register ${toRegisterWords} on Course Registration.` };
+}
+
 /** the student's next step on the SIWES page and card, from the server's answer: never more than the server allows */
 export function siwesNext(d: MySiwes, today: string = lagosToday()): SiwesNext {
+  if (isCourseMode(d)) return courseNext(d);
   const base = { pay: false, register: false, receipt: false, print: false, link: null };
   const portalPaid = !!d.paid && d.paid.source !== "OLD_PORTAL" && !!d.paid.reference;
   const fee = d.fee && d.fee.state === "PUBLISHED" ? d.fee.amount : null;
@@ -425,6 +754,11 @@ export function siwesNext(d: MySiwes, today: string = lagosToday()): SiwesNext {
     return { ...base, step: "UNDONE", tone: "info", title: `Your SIWES of ${undone.session} was undone`,
       words: `Your SIWES course${undone.registration?.courseCode ? ` ${undone.registration.courseCode}` : ""} of ${undone.session} was dropped by the Academic Office or ICT Support, `
         + `and no SIWES payment of yours stands for the session. SIWES is not part of your registration for ${undone.session}. If you believe this is wrong, ask your department or the Academic Office.` };
+  }
+  // V777: a student whose programme carries no SIWES course at their level, and who holds or owes none, has nothing to pay for, whatever
+  // the period says: told the one reason that stands, never "not set for this session"
+  if (!d.paid && (d.reasons ?? []).includes("NO_SIWES_COURSE")) {
+    return { ...base, step: "NOT_ELIGIBLE", tone: "info", title: "No SIWES fee is asked of you", words: reasonWords(d.reasons).join(" ") };
   }
   if (!d.period && !d.paid) {
     return { ...base, step: "NO_PERIOD", tone: "info", title: "SIWES registration is not set for this session", words: REASON_WORD.NO_PERIOD };
@@ -500,8 +834,9 @@ export function siwesFormRows(d: Pick<MySiwes, "period" | "paid"> | null | undef
  *  one does. Absent where there is no course, and from an older answer */
 export type SiwesCourseSource = "SET" | "STRUCTURE" | "DEPARTMENT";
 
-/** V776: a SIWES course the programme's own structure carries where SIWES registration does not reach it — SIWES registration and its
- *  fee are the Second Semester of 300 Level's. `semester`: FIRST, SECOND or BOTH, as registration.siwes_courses_elsewhere names it */
+/** V776: a SIWES course the programme's own structure carries outside the Second Semester of 300 Level — the semester the desk sets a
+ *  course for and SIWES holds alone. V777: it carries the SIWES fee all the same; its students pay it when they register the course,
+ *  on Course Registration. `semester`: FIRST, SECOND or BOTH, as registration.siwes_courses_elsewhere names it */
 export interface SiwesElsewhere { code: string; title?: string | null; level?: number | null; semester?: "FIRST" | "SECOND" | "BOTH" | string | null }
 
 /** V776: what a programme's 300 Level Second Semester is (registration.siwes_semester_load): `attachment`, the SIWES semester — the
@@ -511,8 +846,8 @@ export interface SiwesSemesterLoad { attachment?: boolean | null; otherRequired?
 
 /** V776: what the catalogue offers where no SIWES course is set or written down yet (the API leaves a key with nothing in it out):
  *  `found`, the one course the catalogue now gives — setting it takes it — and `choices`, every candidate (several of equal standing
- *  and no `found`: the Academic Office says which); `elsewhere`, the SIWES courses the programme carries where SIWES registration does
- *  not reach. `found` also comes beside a course written down from the catalogue (source STRUCTURE) when the catalogue would now give
+ *  and no `found`: the Academic Office says which); `elsewhere`, the SIWES courses the programme carries outside the Second Semester of
+ *  300 Level (V777: charged all the same, its students pay when they register them on Course Registration). `found` also comes beside a course written down from the catalogue (source STRUCTURE) when the catalogue would now give
  *  another, or the course has ended; a course set on the desk never has one */
 export interface SiwesCourseOffer { found?: SiwesCourse | null; choices?: SiwesCourse[] | null; elsewhere?: SiwesElsewhere[] | null }
 
@@ -639,11 +974,15 @@ export const COURSE_SOURCE_WORD: Record<string, string> = {
 /** a course written down from the catalogue is written by the desk's own acts, never read afresh: what that means for the officer */
 export const RECOGNISED_STANDS = "A course written down stands until the Academic Office sets another; the catalogue changing later does not move it.";
 
-/** the sentence under the programmes taking SIWES: whose Second Semester changes, how a programme comes by its course, and that a
- *  course once written down stands. Saving the period and adding a programme do not take every course by themselves: the course is
- *  written down only where the programme's Second Semester is the SIWES semester, or when a course added to the SIWES courses gives a
- *  waiting programme its own structure's course; otherwise the row says what is found and the Academic Office takes it */
-export const PROGRAMMES_HINT = "A programme not taking SIWES keeps its Second Semester as before. A programme's SIWES course is the one set here. "
+/** the sentence under the programmes taking SIWES: that the fee is every SIWES course's whether or not its programme is listed here,
+ *  what listing a programme does (its 300 Level Second Semester is the SIWES course alone, registered on the SIWES page), how a
+ *  programme comes by its course, and that a course once written down stands. Saving the period and adding a programme do not take
+ *  every course by themselves: the course is written down only where the programme's Second Semester is the SIWES semester, or when a
+ *  course added to the SIWES courses gives a waiting programme its own structure's course; otherwise the row says what is found and
+ *  the Academic Office takes it */
+export const PROGRAMMES_HINT = "Every SIWES course carries the SIWES registration fee, whether or not its programme is listed here: a student who registers one pays it first, "
+  + "once a session, and registers the course on Course Registration. A programme listed here is also held to SIWES alone in its 300 Level Second Semester, "
+  + "registered on the SIWES page once the period is open; a programme not listed keeps its Second Semester as before. A programme's SIWES course is the one set here. "
   + "A course its own 300 Level structure carries is written down as its course when the programme is added — only where its Second Semester is the SIWES semester, "
   + "the SIWES course alone — or when a course is added to the SIWES courses that gives a waiting programme its own structure's course; "
   + "otherwise the row says what the catalogue offers and the Academic Office takes the course. "
@@ -674,7 +1013,7 @@ export interface SiwesCourseLine {
 const aCourse = (c: SiwesCourse | null | undefined): c is SiwesCourse => !!c && !!c.code;
 
 /** what the catalogue offers, as the answer carries it. Beside no course: the course found, the choices, the SIWES courses carried
- *  where SIWES registration does not reach. Beside a course written down from the catalogue (source other than SET): the course found
+ *  outside the Second Semester of 300 Level. Beside a course written down from the catalogue (source other than SET): the course found
  *  when it is another's — a course set on the desk has no such offer, from an older answer too. Nothing from an older answer */
 function offerOf(o: SiwesCourseOffer & { course?: SiwesCourse | null; source?: string | null }): Pick<SiwesCourseLine, "found" | "choices" | "elsewhere"> {
   const found = o.found;
@@ -713,8 +1052,9 @@ export function offeredCourseWords(c: Pick<SiwesCourse, "code" | "title" | "unit
   return `${c.code}${c.title ? ` ${c.title}` : ""}${c.units != null ? ` (${c.units} unit${c.units === 1 ? "" : "s"})` : ""}`;
 }
 
-/** the pill of a row whose SIWES course the programme carries only where SIWES registration does not reach it */
-export const NO_COURSE_300 = "No 300 Level SIWES course";
+/** the pill of a row whose SIWES course the programme carries outside the Second Semester of 300 Level (V777: not a dead end — its
+ *  students pay the fee when they register the course, on Course Registration; nothing is set for it here) */
+export const ON_COURSE_REGISTRATION = "Registered on Course Registration";
 
 /** the First Semester (or another) in words where a course is not taught in the Second Semester; nothing for one that is (SECOND, BOTH) */
 const outsideSecond = (semester: string | null | undefined): string => (semester && semester !== "SECOND" && semester !== "BOTH" ? semesterWords(semester) : "");
@@ -735,9 +1075,9 @@ function elsewhereShort(e: Pick<SiwesElsewhere, "level" | "semester">): string {
 }
 
 /** what a programme or cohort with no SIWES course in the Second Semester of 300 Level but one carried elsewhere is told: where that
- *  course stands, and that SIWES registration and its fee do not reach it yet (the University has decided every SIWES course is charged: the
- *  desk follows). Plain: no "set it"
- *  invitation the database would refuse. `words` and `action` are two sentences, each without its full stop; null with nothing carried
+ *  course stands, and (V777: the University has decided every SIWES course is charged) what happens to its students — they pay the
+ *  SIWES fee when they register it, on Course Registration. Plain: no "set it" invitation the database would refuse — Set course is
+ *  for the semester SIWES holds alone. `words` and `action` are two sentences, each without its full stop; null with nothing carried
  *  elsewhere */
 export function elsewhereWords(list: SiwesElsewhere[] | null | undefined, most = 3): { words: string; action: string } | null {
   const all = (list ?? []).filter((e) => !!e && !!e.code);
@@ -748,14 +1088,15 @@ export function elsewhereWords(list: SiwesElsewhere[] | null | undefined, most =
   const rest = all.length - named.length;
   const words = one ? `Its SIWES course ${name(all[0])} is ${elsewhereWhere(all[0])}`
     : `Its SIWES courses are ${named.map((e) => `${name(e)} (${elsewhereShort(e)})`).join("; ")}${rest > 0 ? `; and ${rest} more` : ""}`;
-  return { words, action: `SIWES registration and its fee cover the Second Semester of 300 Level only for now, so ${one ? "it cannot" : "they cannot"} be set for this programme yet` };
+  return { words, action: `Its students pay the SIWES fee when they register ${one ? "it" : "one of them"}, on Course Registration` };
 }
 
 /** where no SIWES course is written down for a programme, a curriculum or a cohort: what the catalogue offers and what is done.
  *  FOUND, the one course the catalogue now gives (the row offers "Use it" to the offices that set; `action` is what the note under
  *  the table and a reader are told); CHOICES, several and no one of them at the head — never a guess, the Academic Office says
- *  which; ELSEWHERE, nothing at 300 Level in the Second Semester but a SIWES course the programme carries where SIWES registration
- *  does not reach (its words and what follows from that: nothing is invited that the database would refuse); NONE, nothing: as before.
+ *  which; ELSEWHERE, nothing at 300 Level in the Second Semester but a SIWES course the programme carries outside it (a First Semester
+ *  or 400 Level course: where it stands, and that its students pay the SIWES fee when they register it, on Course Registration —
+ *  nothing is invited that the database would refuse: Set course is for the semester SIWES holds alone); NONE, nothing: as before.
  *  An older answer, with none of the keys, is NONE */
 export interface SiwesCourseHint { kind: "FOUND" | "CHOICES" | "ELSEWHERE" | "NONE"; found: SiwesCourse | null; words: string; action: string }
 
@@ -777,7 +1118,7 @@ export function courseHint(o: SiwesCourseOffer | null | undefined, maySet: boole
 }
 
 /** a hint as one sentence without its full stop: "Found in the catalogue: … — set it as the programme's course above"; an ELSEWHERE
- *  hint is two sentences, "Its SIWES course … is a 400 Level course. SIWES registration and its fee cover …" */
+ *  hint is two sentences, "Its SIWES course … is a 400 Level course. Its students pay the SIWES fee when they register it, on Course Registration" */
 export function courseHintWords(h: Pick<SiwesCourseHint, "words" | "action"> & { kind?: SiwesCourseHint["kind"] }): string {
   return h.kind === "ELSEWHERE" ? `${h.words}. ${h.action}` : `${h.words} — ${h.action}`;
 }
@@ -819,8 +1160,11 @@ export function foundInsteadWords(course: Pick<SiwesCourse, "code" | "state">, f
   return course.state === "ENDED" ? `${course.code} has ended; the ${instead}` : `The ${instead}`;
 }
 
-/** the hint under the Set course form: the desk refuses a course the programme does not carry at 300 Level (SIWES_COURSE_LEVEL) */
-export const SIWES_COURSE_LEVEL_HINT = "A programme's SIWES course is a 300 Level course, taught in the Second Semester.";
+/** the hint under the Set course form: the desk refuses a course the programme does not carry at 300 Level (SIWES_COURSE_LEVEL). V777:
+ *  Set course names the course of the semester SIWES holds alone — a 300 Level, Second Semester course; a SIWES course at another
+ *  level or in the First Semester is not set here, and carries the fee all the same: its students pay it when they register it */
+export const SIWES_COURSE_LEVEL_HINT = "Set course names the programme's course for the semester SIWES holds alone: a 300 Level course, taught in the Second Semester. "
+  + "A SIWES course at another level or in the First Semester is not set here; its students pay the SIWES fee when they register it, on Course Registration.";
 
 const studentsWord = (n: number) => `${n.toLocaleString("en-NG")} student${n === 1 ? "" : "s"}`;
 
@@ -882,10 +1226,15 @@ export function unreachedLines(config: Pick<SiwesConfig, "unreached"> & { progra
   };
 }
 
-/** what holds the cohorts no SIWES course reaches: those who have not paid are not asked to pay or to register until a course
- *  reaches them; those who have paid on the portal or registered stay held to SIWES and wait for the course */
+/** V777: what the cohorts no SIWES course reaches wait for — to be held to the SIWES course alone, registered on the SIWES page: a
+ *  SIWES course their programme carries is charged all the same, paid when they register it on Course Registration */
+const UNREACHED_WAITS = "not held to the SIWES course alone until a SIWES course reaches them; a SIWES course their programme carries still asks them the SIWES fee when they register it, on Course Registration";
+
+/** what holds the cohorts no SIWES course reaches: those who have not paid are not held to the SIWES course alone until a course
+ *  reaches them (they pay the fee when they register a SIWES course on Course Registration); those who have paid on the portal or
+ *  registered stay held to SIWES and wait for the course */
 export function unreachedWords(paid = 0, students = 0): string {
-  const waits = "not asked to pay the SIWES registration fee or to register until a SIWES course reaches them";
+  const waits = UNREACHED_WAITS;
   if (paid <= 0) return `They are ${waits}.`;
   if (paid >= students) return `They have paid or registered: they stay ${HELD}.`;
   return `Those who have paid or registered stay ${HELD}; the others are ${waits}.`;
@@ -903,7 +1252,7 @@ export function programmeAddedWords(config: { programmes?: SiwesConfigProgramme[
   const none = lines.filter((l) => !l.course);
   if (none.length) {
     const which = none.filter((l) => l.curriculum).map((l) => l.curriculum).join(" and ");
-    const waits = "Its 300 Level students are not asked to pay or register until a SIWES course reaches them.";
+    const waits = "Its 300 Level students are not held to the SIWES course alone until one is set; they pay the SIWES fee when they register a SIWES course, on Course Registration.";
     const hints = none.map((l) => courseHint(l, true));
     const offered = hints.find((h) => h.kind === "FOUND" || h.kind === "CHOICES");
     if (offered) {
@@ -912,7 +1261,8 @@ export function programmeAddedWords(config: { programmes?: SiwesConfigProgramme[
       return { tone: "warn", words: `${added}, but its SIWES course${which ? ` (${which})` : ""} is not set yet. ${offered.words} — `
         + `${offered.kind === "FOUND" ? "use it on the programme's row, or set another" : offered.action}. ${semester ? `${semester}. ` : ""}${waits}` };
     }
-    // its SIWES course is carried where SIWES registration does not reach yet: nothing to set that the database would not refuse
+    // its SIWES course is carried outside the Second Semester of 300 Level: nothing to set that the database would not refuse (V777: its
+    // students pay the fee when they register it, on Course Registration — said)
     const away = hints.find((h) => h.kind === "ELSEWHERE");
     if (away) return { tone: "warn", words: `${added}. ${courseHintWords(away)}.` };
     return { tone: "warn", words: `${added}, but no SIWES course is found for it${which ? ` (${which})` : ""} yet: set it, or add the course to the SIWES courses. ${waits}` };
@@ -952,7 +1302,8 @@ export function siwesCourseKnownWords(c: Pick<SiwesCatalogueCourse, "byTitle" | 
 
 /** why no programme comes by a SIWES course on its own, from the course's own fields (recognised false: not 300 Level, not taught in
  *  the Second Semester, or ended), and what it still counts for; null for a course a programme can come by, or an answer that does
- *  not say */
+ *  not say. V777: a course in force carries the SIWES fee whether or not a programme comes by it — said, so that "no programme comes
+ *  by it" is never read as "not charged" */
 export function notRecognisedWords(c: Pick<SiwesCatalogueCourse, "recognised" | "state" | "level" | "semester">): string | null {
   if (c.recognised !== false) return null;
   const ended = c.state === "ENDED";
@@ -963,9 +1314,10 @@ export function notRecognisedWords(c: Pick<SiwesCatalogueCourse, "recognised" | 
     level ? `it is a ${c.level} Level course, not 300 Level` : null,
     semester ? `it is taught in the ${semesterWords(c.semester)}, not the Second` : null,
   ].filter(Boolean);
-  if (!why.length) return "No programme comes by it on its own: it is not a 300 Level, Second Semester course in force.";
+  const charged = ended ? "" : " Students who register it pay the SIWES fee all the same.";
+  if (!why.length) return `No programme comes by it on its own: it is not a 300 Level, Second Semester course in force.${charged}`;
   // a Second Semester course in force at another level is still a programme's SIWES course where it is set for the programme
-  return `No programme comes by it on its own: ${why.join("; ")}.${!ended && !semester ? " It is a programme's SIWES course only where it is set for the programme." : ""}`;
+  return `No programme comes by it on its own: ${why.join("; ")}.${!ended && !semester ? " It is a programme's SIWES course only where it is set for the programme." : ""}${charged}`;
 }
 
 /** the names of the programmes the configuration knows (those taking SIWES, those that could, and those a SIWES course's structure
@@ -1041,13 +1393,12 @@ export function siwesCourseAddedWords(list: SiwesCatalogueCourse[] | null | unde
   const fresh = Array.isArray(before) ? newlyRecognised(before, list) : [];
   const told = fresh.slice(0, 4).map((f) => `${names[f.code] || f.code}${f.curriculum ? ` (${f.curriculum})` : ""} — ${f.course}`).join("; ");
   const recognised = fresh.length ? `Now written down as the course of: ${told}${fresh.length > 4 ? `; and ${fresh.length - 4} more` : ""}.` : "";
-  const added = `${code} is now a SIWES course`;
+  // V777: marking a course starts charging it at once — said (where the reason no programme comes by it says so, it says it)
+  const added = why ? `${code} is now a SIWES course` : `${code} is now a SIWES course, and carries the SIWES registration fee`;
   if (!why && !recognised) return { words: added, tone: "ok" };
   return { words: [`${added}.`, why, recognised].filter(Boolean).join(" "), tone: why ? "warn" : "ok" };
 }
 
-/** what "Not a SIWES course" does, asked before it is done (registration.siwes_mark_course's rules): the programmes it was only
- *  recognised for wait for a course again, and the attachment semesters that rest on it end — each named */
 /** what the desk says instead of asking, when a course is set here as a programme's SIWES course: the database refuses taking it off while
  *  it is (SIWES_COURSE_IN_USE) — the officer is told which programme, and to set another course for it first. Empty when it is not set */
 export function siwesCourseSetHereWords(c: Pick<SiwesCatalogueCourse, "code" | "setFor">, names: Record<string, string> = {}): string {
@@ -1055,27 +1406,33 @@ export function siwesCourseSetHereWords(c: Pick<SiwesCatalogueCourse, "code" | "
   return who ? `${c.code} is set here as the SIWES course of ${who}: set another course for ${(c.setFor ?? []).filter((s) => !recognisedFor(s)).length === 1 ? "it" : "them"} first, and then it can be taken off.` : "";
 }
 
+/** what "Not a SIWES course" does, asked before it is done (registration.siwes_mark_course's rules): the course stops charging the SIWES
+ *  fee (V777: marking a course starts charging it, taking it off stops), the programmes it was only recognised for wait for a course
+ *  again, and the attachment semesters that rest on it end — each named */
 export function siwesCourseOffWords(c: Pick<SiwesCatalogueCourse, "code" | "title" | "setFor" | "attachmentFor" | "marked">, names: Record<string, string> = {}): string {
   const recognised = recognisedForWords(c, names);
   const one = (c.setFor ?? []).filter(recognisedFor).length === 1;
   const attachment = attachmentForWords(c, Infinity);
   return `Take ${c.code}${c.title ? ` — ${c.title}` : ""} off the SIWES courses?\n\n`
-    + "The portal then reads it as an ordinary course: no programme comes by it as its SIWES course. "
+    + "The portal then reads it as an ordinary course: it stops charging the SIWES registration fee, and no programme comes by it as its SIWES course. "
     + (recognised ? `${one ? "The programme it was written down for" : "The programmes it was written down for"} (${recognised}) ${one ? "waits" : "wait"} for a SIWES course again: `
-      + `${one ? "its" : "their"} 300 Level students are not asked to pay the SIWES registration fee or to register until one is set or written down. ` : "")
+      + `${one ? "its" : "their"} 300 Level students are not held to the SIWES course alone until one is set or written down. ` : "")
     + "It stays off while its title stands, until it is added here again.\n\n"
     + (attachment ? `Taking it off also ends the attachment semester — the semester that holds the SIWES course alone — of ${attachment}.\n\n` : "")
-    + "It is refused while the course is set here as a programme's SIWES course, while students who have paid or registered for SIWES are reached by it, "
-    + "or while students are registered in an attachment semester it makes.";
+    + "It is refused while the course is set here as a programme's SIWES course, while a student holds it, in a session still to come or running, on a registration that stands on the SIWES fee, "
+    + "while students who have paid or registered for SIWES are reached by it, or while students are registered in an attachment semester it makes.";
 }
 
-/** the sentence under the SIWES courses: each department's own course, how one comes to be listed, and the fee before any of them —
- *  the amount named only once the Bursary has published it */
+/** the sentence under the SIWES courses: each department's own course, how one comes to be listed, and which of them carry the fee —
+ *  every one that has not ended, paid once a session before any is registered (the amount named only once the Bursary has published
+ *  it); a course listed only because a programme's SIWES course is set to it is charged to the students that programme holds to
+ *  SIWES alone, and an ended course is not charged while it stays ended */
 export function siwesCoursesHint(fee: SiwesConfig["fee"] | undefined): string {
   const amount = fee && fee.state === "PUBLISHED" && num(fee.amount) > 0 ? `${naira(fee.amount)} ` : "";
   return "Each department carries SIWES under its own course code and title; a course whose title reads SIWES or Industrial Training is listed "
-    + `as it is added to the catalogue; the ${amount}SIWES registration fee is paid before a student registers the SIWES course of the Second Semester of 300 Level `
-    + "(a SIWES course at another level or in the First Semester is not covered yet).";
+    + `as it is added to the catalogue. Every course listed here that has not ended carries the ${amount}SIWES registration fee: a student pays it once a session, before registering any of them, `
+    + "whatever the programme, level or semester. A course listed only because it is set as a programme's SIWES course is charged to the students that programme holds to SIWES alone, "
+    + "and an ended course is not charged while it stays ended. Adding a course here starts charging it; taking one off stops.";
 }
 
 /** what adding a course here does for the programmes taking SIWES: a programme still waiting whose own 300 Level structure carries it
@@ -1166,7 +1523,7 @@ export interface SiwesStudentPage { total: number; page: number; size: number; r
 
 /** "Not eligible: Not 300 Level, No SIWES course set" — the short word of each reason */
 export function notEligibleWords(reasons: string[] | null | undefined): string {
-  const w = (reasons ?? []).map((r) => REASON_SHORT[r] ?? r.replaceAll("_", " ").toLowerCase());
+  const w = reasonsToSay(reasons).map((r) => REASON_SHORT[r] ?? r.replaceAll("_", " ").toLowerCase());
   return w.length ? `Not eligible: ${w.join(", ")}` : "Not eligible";
 }
 
@@ -1277,6 +1634,74 @@ export interface SiwesHistoryRow {
   registration: { id?: string; at?: string | null; registeredAt?: string | null; status?: string | null; courseCode?: string | null } | null;
 }
 
+// ── V777: SIWES courses on a registration of the session with no SIWES fee paid — the Bursary's list ─────────────────────────────
+
+/** a SIWES course standing on a registration of the session whose student has paid no SIWES fee (GET /api/v1/siwes/admin/unpaid-entries;
+ *  registration.siwes_entries_unpaid): those who registered one before every SIWES course carried the fee are asked to pay it now.
+ *  `payable`: the SIWES page asks them for the fee now (the session is their current one) */
+export interface SiwesUnpaidEntry {
+  studentId: string; matricNo: string | null; name: string; programme: string | null; currentLevel: number | null;
+  courseCode: string; courseTitle: string | null; level: number | null; semester: number | null;
+  registrationStatus: string | null; payable: boolean;
+}
+
+/** a row of the list read from the names the API gives it (camelCase, or the database's own) */
+export function unpaidEntry(raw: Record<string, unknown>): SiwesUnpaidEntry {
+  const pick = (...ks: string[]) => { for (const k of ks) if (raw[k] != null && raw[k] !== "") return raw[k]; return null; };
+  const text = (...ks: string[]) => { const v = pick(...ks); return v == null ? null : String(v); };
+  const int = (...ks: string[]) => { const v = pick(...ks); const n = v == null ? NaN : Number(v); return Number.isFinite(n) ? n : null; };
+  return {
+    studentId: text("studentId", "student_id") ?? "", matricNo: text("matricNo", "matric_no", "matric"), name: text("name") ?? "",
+    programme: text("programme"), currentLevel: int("currentLevel", "current_level"),
+    courseCode: text("courseCode", "course_code") ?? "", courseTitle: text("courseTitle", "course_title"),
+    level: int("level"), semester: int("semester"), registrationStatus: text("registrationStatus", "registration_status"),
+    payable: raw.payable === true,
+  };
+}
+
+/** the answer's rows: the array the API sends (or the rows of a page), each read; nothing from an answer that is neither */
+export function unpaidEntries(raw: unknown): SiwesUnpaidEntry[] {
+  const list = Array.isArray(raw) ? raw : raw && typeof raw === "object" && Array.isArray((raw as { rows?: unknown }).rows) ? (raw as { rows: unknown[] }).rows : [];
+  return list.filter((r): r is Record<string, unknown> => !!r && typeof r === "object").map(unpaidEntry);
+}
+
+/** the page the API answers ({ rows, total, students }: it pages the list as the desk's students are paged): how many rows there are in
+ *  all (null from an answer that does not say, as a bare array does not) — so a screen fetches the pages that follow */
+export function unpaidTotal(raw: unknown): number | null {
+  const t = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as { total?: unknown }).total : null;
+  return t == null || t === "" || !Number.isFinite(Number(t)) ? null : Number(t);
+}
+
+/** where the course is taught, "300 Level, First Semester": the registration's own level and semester */
+export function unpaidWhere(r: Pick<SiwesUnpaidEntry, "level" | "semester">): string {
+  return courseWhere({ level: r.level, semester: r.semester });
+}
+
+/** where a student on the list stands: asked to pay now, or not asked in this session (it is not their current one) */
+export function unpaidStanding(r: Pick<SiwesUnpaidEntry, "payable">): [string, "bad" | "grey"] {
+  return r.payable ? ["Asked to pay now", "bad"] : ["Not asked in this session", "grey"];
+}
+
+/** the figures over the list: the courses, the students holding them (each once), those asked to pay now, and what they owe at the
+ *  fee in force (null while none is published) */
+export function unpaidTotals(rows: Pick<SiwesUnpaidEntry, "studentId" | "payable">[], fee: Money | null | undefined): { entries: number; students: number; payable: number; owed: number | null } {
+  const students = new Set(rows.map((r) => r.studentId));
+  const payable = new Set(rows.filter((r) => r.payable).map((r) => r.studentId));
+  const amount = fee == null || fee === "" ? null : num(fee);
+  return { entries: rows.length, students: students.size, payable: payable.size, owed: amount != null && amount > 0 ? payable.size * amount : null };
+}
+
+export const UNPAID_WORDS = "Students who hold a SIWES course on a registration of the session and have paid no SIWES fee for it. Every SIWES course carries the fee, "
+  + "paid once a session; a student who registered a course before the rule is asked to pay it now, on the SIWES page. Nothing here changes a registration.";
+
+export const UNPAID_HEAD = ["Matric Number", "Name", "Programme", "Level", "SIWES Course", "Title", "Course Level", "Semester", "Registration", "Status"];
+
+/** a row of the list as the Excel workbook and the printed list carry it */
+export function unpaidLine(r: SiwesUnpaidEntry): (string | number | null)[] {
+  return [r.matricNo ?? "", r.name, r.programme ?? "", r.currentLevel ?? "", r.courseCode, r.courseTitle ?? "", r.level ?? "",
+    r.semester != null ? semesterWords(String(r.semester)) : "", r.registrationStatus ? capital(r.registrationStatus) : "", unpaidStanding(r)[0]];
+}
+
 export const HISTORY_HEAD = ["Session", "Fee paid", "Registration"];
 
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
@@ -1345,6 +1770,14 @@ export function feeStanding(v: SiwesFeeView | null | undefined): {
   const draft = v.draft && given(v.draft.amount) ? v.draft
     : v.state === "DRAFT" && given(v.amount) ? { amount: v.amount, note: v.note ?? null } : null;
   return { inForce, draft };
+}
+
+/** V777: what the SIWES fee is paid for, on the Bursary's fee panel: every SIWES course carries it, once a session, whoever registers
+ *  one — the amount named only once the Bursary has published it (`inForce`: the fee in force) */
+export function siwesFeeScopeWords(inForce: Money | null | undefined): string {
+  const amount = num(inForce) > 0 ? ` of ${naira(inForce)}` : "";
+  return `Every SIWES course carries the SIWES registration fee${amount}: it is paid once a session by every student who registers one, whatever the programme, level or semester, `
+    + "before the course is registered. A student who registers several SIWES courses in a session pays it once.";
 }
 
 /** who made a change or a draft: the person's name (with the office), else the office alone — never the person's id */

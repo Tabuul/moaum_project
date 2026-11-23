@@ -1,6 +1,10 @@
 "use client";
-/** V752 · the SIWES registration desk — the University's master prompt of 12 November 2026. One desk, three tabs, each shown when the API
- *  answers it for the acting office:
+/** V752 · the SIWES registration desk — the University's master prompt of 12 November 2026. One desk, four tabs, each shown when the API
+ *  answers it for the acting office. V777 (the user's word of 22 November 2026, "yes charge every siwes course"): every SIWES course of
+ *  the catalogue carries the fee, paid once a session before the course is registered, whatever the programme, level or semester — a
+ *  programme listed here is also held to the SIWES course alone in its 300 Level Second Semester, registered on the SIWES page; the
+ *  others register their SIWES course on Course Registration, among their courses, once the fee is paid (a SIWES course of the First
+ *  Semester or of another level included: the row says so, with nothing to set):
  *  - Configuration: the session's SIWES period (registration opens and closes, training starts and its expected completion, the length
  *    in months, DRAFT until opened), the programmes taking SIWES that session and each programme's SIWES course per curriculum — a course
  *    of the catalogue named by its code, never a new course and never tied to a session. The Academic Office, the Registrar, the Deputy
@@ -9,8 +13,9 @@
  *    known (set here, or written down from the programme's own structure when it was added or a course was added to the SIWES courses
  *    — only where its Second Semester is the SIWES semester — standing until another is set) or that there is none yet, with what the
  *    catalogue offers now: one course found ("Use it" sets it; where the programme's Second Semester also carries required courses it
- *    asks first what that binds), several (the office sets the one), a SIWES course the programme carries where SIWES registration does
- *    not reach (a First Semester or 400 Level course: said plainly, nothing to set), or nothing; where a course is found the row says
+ *    asks first what that binds), several (the office sets the one), a SIWES course the programme carries outside that semester (a First
+ *    Semester or 400 Level course: where it stands, and that its students pay the SIWES fee when they register it on Course
+ *    Registration — nothing to set), or nothing; where a course is found the row says
  *    what the programme's Second Semester is (the SIWES semester, or one that also carries required courses); a note names the cohorts
  *    no course reaches yet, those of them who have paid or registered and so stay held to SIWES, and the same offer; the SIWES courses
  *    of the catalogue are listed, each department's under its own code and title, with the programmes each is set or written down for
@@ -21,6 +26,9 @@
  *    Excel workbook or a printed list.
  *  - Statistics: eligible, paid (and the SIWES fees received), yet to pay, registered, yet to register — in all and by faculty,
  *    department and programme.
+ *  - Unpaid courses (V777): the SIWES courses standing on a registration of the session whose student has paid no SIWES fee — those
+ *    who registered one before every SIWES course carried the fee, and are asked to pay it now — as a list, an Excel workbook or a
+ *    printed list, for the Bursary and the offices that read the desk.
  *  The SIWES registration fee is the Bursary's (Fee Setup); it is never a school fee and never counted with one. */
 import { useState } from "react";
 import type { Problem } from "@/lib/api";
@@ -35,17 +43,17 @@ import type { ScopeStructure } from "@/components/proto/ScopeBar";
 import { brandedPrint, brandedXlsx, docSerial, downloadBlob } from "@/lib/exportbrand";
 import { day } from "@/lib/format";
 import {
-  GROUP_HEAD, HISTORY_HEAD, NO_COURSE_300, NO_COURSE_FOUND, NO_COURSE_YET, PROGRAMMES_HINT, SIWES_COURSE_ADD_HINT, SIWES_COURSE_LEVEL_HINT, SIWES_SETTERS, STATUSES, STATUS_WORD,
-  STUDENT_HEAD, apiStatus, attachmentForWords, byWords, carriedByWords, configWarnings, confirmUseItWords, courseCodeTyped, courseHint, courseHintWords, courseStateWarning,
-  courseStateWord, courseWords, dateWord, emptyPeriodForm, foundInsteadWords, groupLine, historyLine, levelSemesterWords, naira, notRecognisedWords, num, onSiwesCourses,
-  otherCoursesOf, periodProblems, periodWords, programmeAddedWords, programmeCourseLines, programmeNames, reasonWords, recognisedForWords, rowState, scopeWords,
+  GROUP_HEAD, HISTORY_HEAD, NO_COURSE_FOUND, NO_COURSE_YET, ON_COURSE_REGISTRATION, PROGRAMMES_HINT, SIWES_COURSE_ADD_HINT, SIWES_COURSE_LEVEL_HINT, SIWES_SETTERS, STATUSES, STATUS_WORD,
+  STUDENT_HEAD, UNPAID_HEAD, UNPAID_WORDS, apiStatus, attachmentForWords, byWords, carriedByWords, configWarnings, confirmUseItWords, courseCodeTyped, courseHint, courseHintWords, courseStateWarning,
+  courseStateWord, courseWords, dateWord, emptyPeriodForm, foundInsteadWords, groupLine, heldToSiwesRow, historyLine, levelSemesterWords, naira, notRecognisedWords, num, onSiwesCourses,
+  otherCoursesOf, periodProblems, periodWords, programmeAddedWords, programmeCourseLines, programmeNames, reasonWords, recognisedForWords, removeProgrammeWords, rowState, scopeWords,
   secondSemesterWords, sessionNames, setForWords, shownStatus, siwesCourseAddedWords, siwesCourseKnownWords, siwesCourseOf, siwesCourseOffWords, siwesCourseSetHereWords, siwesCoursesHint,
-  siwesQuery, sourceWord, studentLine, trainingWords, unitName, unitOptions, unreachedLines,
+  siwesQuery, sourceWord, studentLine, trainingWords, unitName, unitOptions, unpaidLine, unpaidStanding, unpaidTabShown, unpaidTotals, unpaidWhere, unreachedLines,
   type MySiwes, type Opt, type PeriodForm, type SiwesCatalogueCourse, type SiwesConfig, type SiwesConfigProgramme, type SiwesCourse, type SiwesCourseLine,
-  type SiwesFilters, type SiwesGroup, type SiwesHistoryRow, type SiwesStats, type SiwesStudentPage, type SiwesStudentRow,
+  type SiwesFilters, type SiwesGroup, type SiwesHistoryRow, type SiwesStats, type SiwesStudentPage, type SiwesStudentRow, type SiwesUnpaidEntry,
 } from "@/lib/siwes";
 
-export type SiwesTab = "config" | "students" | "stats";
+export type SiwesTab = "config" | "students" | "stats" | "unpaid";
 
 type Answer = { ok: true; data: Record<string, unknown> } | { ok: false; problem: Problem };
 
@@ -157,9 +165,10 @@ function CourseModal({ programme, onClose, onDone }: { programme: SiwesConfigPro
 /** V776 · the SIWES courses of the catalogue: each department carries SIWES under its own code and title. A course whose title reads
  *  SIWES or Industrial Training is listed as the catalogue takes it; the offices that set SIWES add any other by its code (a waiting
  *  programme whose own structure carries it is given it where its Second Semester is the SIWES semester), or take one off ("Not a
- *  SIWES course": refused by the database while it is set for a programme, reaches students who have paid or registered, or makes an
- *  attachment semester students are registered in; the programmes it was only written down for wait again). A course set as a
- *  programme's SIWES course without being on the SIWES courses is listed too, and said so: there is nothing to take off */
+ *  SIWES course": refused by the database while it is set for a programme, while a student holds it on a registration that stands
+ *  on the SIWES fee, reaches students who have paid or registered, or makes an attachment semester students are registered in; the
+ *  programmes it was only written down for wait again). V777: adding a course starts charging it, taking it off stops. A course set
+ *  as a programme's SIWES course without being on the SIWES courses is listed too, and said so: there is nothing to take off */
 function SiwesCoursesPanel({ config, maySet, onDone }: { config: SiwesConfig; maySet: boolean; onDone: () => void }) {
   const courses = config.siwesCourses ?? [];
   const names = programmeNames(config);
@@ -277,7 +286,8 @@ function ConfigTab({ session, config, maySet, onDone }: { session: string; confi
     }
   }
   async function remove(x: SiwesConfigProgramme) {
-    if (!window.confirm(`Take ${x.name} (${x.code}) out of SIWES for ${session}? Its 300 Level students then register the Second Semester as before.`)) return;
+    // what it ends is said only where it is in force: while the period is a draft nobody is held yet
+    if (!window.confirm(removeProgrammeWords(x.name, x.code, session, p))) return;
     setBusy(x.code);
     try {
       const r = await call("DELETE", `/programmes?${siwesQuery({ session, programme: undefined }, { programmeCode: x.code })}`, null, `SIWES ${session}: programme ${x.code} removed`);
@@ -326,7 +336,9 @@ function ConfigTab({ session, config, maySet, onDone }: { session: string; confi
     if (!l.course) {
       const h = courseHint(l, maySet);
       if (h.kind === "NONE") return <><Pil kind="warn">{NO_COURSE_FOUND.toUpperCase()}</Pil> <span className="sub2">{h.action}</span></>;
-      if (h.kind === "ELSEWHERE") return <><Pil kind="grey">{NO_COURSE_300.toUpperCase()}</Pil> <span className="sub2">{courseHintWords(h)}.</span></>;
+      // V777: a SIWES course outside the Second Semester of 300 Level carries the fee all the same — its students pay it when they register it
+      // on Course Registration; nothing is set here (Set course is for the semester SIWES holds alone)
+      if (h.kind === "ELSEWHERE") return <><Pil kind="grey">{ON_COURSE_REGISTRATION.toUpperCase()}</Pil> <span className="sub2">{courseHintWords(h)}.</span></>;
       const st = h.found && h.found.state !== "LIVE" ? courseStateWord(h.found) : null;
       const load = secondSemesterWords(x);
       return (
@@ -356,14 +368,16 @@ function ConfigTab({ session, config, maySet, onDone }: { session: string; confi
       <Panel title={`SIWES ${session}`} right={<Pil kind={pt}>{pw.toUpperCase()}</Pil>}>
         <PBody>
           <KvGrid pairs={[
-            ["For", "300 Level · Second Semester"],
+            // V777: the period is the SIWES semester's — what the programmes listed below are held to; the fee is every SIWES course's
+            heldToSiwesRow(p),
             ["Registration", p?.registrationOpens ? `${dateWord(p.registrationOpens)} – ${dateWord(p.registrationCloses)}` : "Not dated"],
             ["Training", trainingWords(p)],
             ["SIWES registration fee", config.fee ? `${naira(config.fee.amount)} · ${String(config.fee.state ?? "").toLowerCase() || "not stated"}` : "Not stated (Fee Setup)"],
           ]} />
+          <div className="sub2 mt-1">Every SIWES course carries the fee, at every level and in either semester: students of programmes not listed below pay it too, when they register one on Course Registration.</div>
           {p?.note ? <div className="sub2 mt-1">{p.note}</div> : null}
           {!p ? <div className="sub2 mt-1">{maySet ? "Set the period below; programmes are added once it is saved." : "The Academic Office has not set SIWES for this session."}</div> : null}
-          {config.fee && config.fee.state !== "PUBLISHED" ? <div className="sub2 mt-1">The Bursary publishes the SIWES registration fee on Fee Setup; until then no student can pay it.</div> : null}
+          {config.fee && config.fee.state !== "PUBLISHED" ? <div className="sub2 mt-1">The Bursary publishes the SIWES registration fee on Fee Setup; until then no student can pay it, and no SIWES course is registered.</div> : null}
         </PBody>
       </Panel>
       {maySet ? <PeriodEditor key={`${session}|${p?.setAt ?? "new"}`} session={session} config={config} onDone={onDone} /> : null}
@@ -465,11 +479,68 @@ function StudentDetail({ row, session, d, problem, onClose }: { row: SiwesStuden
   );
 }
 
-export function SiwesDesk({ session, filters, tab, config, configProblem, students, studentsProblem, stats, statsProblem, structure, actingOffice }: {
+/** V777 · the SIWES courses standing on a registration of the session with no SIWES fee paid for them: students who registered one
+ *  before every SIWES course carried the fee, asked to pay it now. A list for the Bursary and the offices that read the desk — the list
+ *  as the API answers it (registration.siwes_entries_unpaid), the figures over it, an Excel workbook and a printed list; it changes
+ *  no registration and no payment */
+function UnpaidPanel({ session, rows, fee }: { session: string; rows: SiwesUnpaidEntry[]; fee: SiwesConfig["fee"] | undefined }) {
+  const [busy, setBusy] = useState(false);
+  const totals = unpaidTotals(rows, fee && fee.state === "PUBLISHED" ? fee.amount : null);
+  const scope = `${session} · SIWES courses held without the SIWES fee`;
+  async function exportRows(kind: "xlsx" | "pdf") {
+    setBusy(true);
+    try {
+      const body = rows.map(unpaidLine);
+      const title = "SIWES Courses Held Without the SIWES Fee";
+      if (kind === "xlsx") downloadBlob(await brandedXlsx(title, UNPAID_HEAD, body, { sheetName: "Unpaid SIWES courses", serial: docSerial("SIW"), sub: scope }), `siwes-courses-unpaid-${session.replace("/", "-")}.xlsx`);
+      else brandedPrint(title, scope, UNPAID_HEAD, body, docSerial("SIW"));
+    } catch (e) {
+      notifyProblem({ status: 500, title: "The export could not be built", detail: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <>
+      <Note kind="info" title="Registered before every SIWES course carried the fee">{UNPAID_WORDS}</Note>
+      <Tiles cls="grid--4" items={[
+        ["Courses held", num(totals.entries).toLocaleString("en-NG"), null, "on a registration of the session, no SIWES fee paid"],
+        ["Students", num(totals.students).toLocaleString("en-NG"), totals.students ? "var(--red-ink)" : null, "holding one or more of them"],
+        ["Asked to pay now", num(totals.payable).toLocaleString("en-NG"), null, "the SIWES page asks them for the fee"],
+        ["Owed", totals.owed != null ? naira(totals.owed) : "—", null, totals.owed != null ? "at the published fee, once each" : "no fee published yet"],
+      ]} />
+      <Panel title={`${num(totals.entries).toLocaleString("en-NG")} course${totals.entries === 1 ? "" : "s"} held without the fee`} right={
+        <span className="row row--inline row--tight">
+          <Btn kind="secondary" size="sm" disabled={busy || !rows.length} onClick={() => void exportRows("xlsx")}>Excel</Btn>
+          <Btn kind="ghost" size="sm" disabled={busy || !rows.length} onClick={() => void exportRows("pdf")}>Print</Btn>
+        </span>}>
+        {rows.length ? (
+          <DTable cols={["S/N|num", "Student", "Programme", "SIWES course", "Registration", "Status"]}
+            texts={rows.map((r) => [r.name, r.matricNo, r.programme, r.courseCode, r.courseTitle].filter(Boolean).join(" "))}
+            rows={rows.map((r, i) => {
+              const [w, t] = unpaidStanding(r);
+              return [
+                <span key="n" className="tnum sub2">{i + 1}</span>,
+                <span key="s"><b>{r.name}</b><div className="sub2 tnum">{r.matricNo ?? "—"}</div></span>,
+                <span key="p">{r.programme ?? "—"}{r.currentLevel != null ? <div className="sub2">{r.currentLevel} Level</div> : null}</span>,
+                <span key="c"><b className="tnum">{r.courseCode}</b> {r.courseTitle ?? ""}<div className="sub2">{unpaidWhere(r) || "—"}</div></span>,
+                <span key="r" className="sub2">{r.registrationStatus ? r.registrationStatus.charAt(0).toUpperCase() + r.registrationStatus.slice(1).toLowerCase() : "—"}</span>,
+                <Pil key="w" kind={t}>{w.toUpperCase()}</Pil>,
+              ];
+            })} />
+        ) : <PBody><Note kind="ok" title="No SIWES course is held without the fee">Every student who holds a SIWES course on a registration of {session} has paid the SIWES fee.</Note></PBody>}
+      </Panel>
+    </>
+  );
+}
+
+export function SiwesDesk({ session, filters, tab, config, configProblem, students, studentsProblem, stats, statsProblem, unpaid, unpaidProblem, structure, actingOffice }: {
   session: string | null; filters: SiwesFilters; tab: SiwesTab | null;
   config: SiwesConfig | null; configProblem: Problem | null;
   students: SiwesStudentPage | null; studentsProblem: Problem | null;
   stats: SiwesStats | null; statsProblem: Problem | null;
+  /** V777: the SIWES courses held without the SIWES fee (GET /siwes/admin/unpaid-entries), or why the API did not answer */
+  unpaid: SiwesUnpaidEntry[] | null; unpaidProblem: Problem | null;
   structure: ScopeStructure; actingOffice: string | null;
 }) {
   const go = useQueryNav();
@@ -479,6 +550,8 @@ export function SiwesDesk({ session, filters, tab, config, configProblem, studen
     ...(config ? [{ id: "config" as const, label: "Configuration", count: String(config.programmes.length) }] : []),
     ...(students ? [{ id: "students" as const, label: "Students", count: String(students.total) }] : []),
     ...(stats ? [{ id: "stats" as const, label: "Statistics" }] : []),
+    // a failed read keeps the tab (to say so) unless the office is refused it: the tab never goes without a word
+    ...(unpaidTabShown(unpaid, unpaidProblem) ? [{ id: "unpaid" as const, label: "Unpaid courses", count: unpaid ? String(unpaid.length) : undefined }] : []),
   ];
   const view: SiwesTab = tab && tabs.some((t) => t.id === tab) ? tab : (maySet && config ? "config" : tabs.find((t) => t.id === "students")?.id ?? tabs[0]?.id ?? "config");
   const [q, setQ] = useState(filters.q ?? "");
@@ -579,7 +652,7 @@ export function SiwesDesk({ session, filters, tab, config, configProblem, studen
         <ConfigTab session={session} config={config} maySet={maySet} onDone={() => go(href({}))} />
       ) : null}
 
-      {view !== "config" ? (
+      {view !== "config" && view !== "unpaid" ? (
         <Panel title="Filters" right={scope}>
           <PBody>
             <form className="row row--inline row--tight" style={{ flexWrap: "wrap" }} onSubmit={(e) => { e.preventDefault(); go(href({ q: q.trim() || undefined, page: 0 })); }}>
@@ -657,6 +730,10 @@ export function SiwesDesk({ session, filters, tab, config, configProblem, studen
             ))}
           </>
         ) : null
+      ) : null}
+
+      {view === "unpaid" ? (
+        unpaidProblem ? <ProblemNotice problem={unpaidProblem} /> : unpaid && session ? <UnpaidPanel session={session} rows={unpaid} fee={config?.fee} /> : null
       ) : null}
 
       {!session ? <Note kind="info" title="No session">The University&rsquo;s current session could not be read.</Note> : null}

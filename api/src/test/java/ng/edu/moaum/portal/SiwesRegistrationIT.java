@@ -605,9 +605,21 @@ class SiwesRegistrationIT {
 
             // a draft binds nobody: A is not yet in SIWES (K1: applies says so)
             Map<String, Object> draft = it.get(student(A), "/api/v1/me/siwes").getBody();
-            assertThat((List<String>) draft.get("reasons")).contains("NO_PERIOD");
+            assertThat((List<String>) draft.get("reasons")).isEmpty();   // V777: in reach
             assertThat(draft).containsEntry("applies", false);
-            assertThat(it.get(student(A), "/api/v1/me").getBody()).containsEntry("siwesArea", false);
+            assertThat(it.get(student(A), "/api/v1/me").getBody()).containsEntry("siwesArea", true);   // V777: in reach
+            // V777: a draft period does not free P's SIWES course. P takes part in the session and the period is still a draft (the shape
+            // of the programmes seeded before V777), so the Second Semester is no SIWES semester yet and A saves its courses on the
+            // ordinary form — where the SIWES course, like every SIWES course, waits for the fee. The Bursary has stated none yet
+            // (stated below, once the period is open), so the save is refused for that and nothing of it stays; once the fee is published
+            // and paid it is registered as any is (SiwesFeeEveryCourseIT: a configured programme whose period is a draft)
+            ResponseEntity<Map> draftSiwes = it.call(student(A), HttpMethod.PUT, "/api/v1/me/registration", Map.of("session", session, "semester", 2, "offerings", List.of(siwesOff)));
+            assertThat(status(draftSiwes)).as(String.valueOf(draftSiwes.getBody())).isEqualTo(422);
+            assertThat(code(draftSiwes)).isEqualTo("SIWES_FEE_NOT_SET");
+            assertThat(jdbc.sql("""
+                    SELECT count(*) FROM registration.entry e JOIN registration.course_registration r ON r.id = e.registration_id
+                     WHERE r.student_id = :s AND r.session = :ss
+                    """).param("s", A).param("ss", session).query(Integer.class).single()).as("nothing of the refused save stays").isZero();
             // so H registers an ordinary Second Semester course on the ordinary page, before SIWES binds P
             ResponseEntity<Map> beforeSiwes = it.call(student(H), HttpMethod.PUT, "/api/v1/me/registration", Map.of("session", session, "semester", 2, "offerings", List.of(electiveOff)));
             assertThat(status(beforeSiwes)).as(String.valueOf(beforeSiwes.getBody())).isEqualTo(200);
@@ -902,10 +914,10 @@ class SiwesRegistrationIT {
             // configured" and "no course" both, as before V776 — a programme's SIWES course is recognised at the desk's acts (as it is
             // added: Q's case, below), never read live from the catalogue, though Q's own structure carries a SIWES course (which
             // V503's attachment semester offers C here)
-            assertThat((List<String>) mineC.get("reasons")).containsExactly("NOT_CONFIGURED", "NO_COURSE");
+            assertThat((List<String>) mineC.get("reasons")).isEmpty();   // V777: in reach
             assertThat(mineC.get("course")).isNull();
             assertThat(mineC).containsEntry("applies", false);
-            assertThat(it.get(student(C), "/api/v1/me").getBody()).containsEntry("siwesArea", false);
+            assertThat(it.get(student(C), "/api/v1/me").getBody()).containsEntry("siwesArea", true);   // V777: in reach
             Map<String, Object> viewC = it.get(student(C), "/api/v1/me/registration?session=" + session + "&semester=2").getBody();
             assertThat(viewC).containsEntry("siwes", true);
             assertThat((Map<String, Object>) viewC.get("limit")).containsEntry("min_units", 6).containsEntry("max_units", 6);
@@ -1436,8 +1448,8 @@ class SiwesRegistrationIT {
             assertThat(codes((List<Map<String, Object>>) removedQ.getBody().get("programmes"), "code")).contains(P).doesNotContain(Q);
             Map<String, Object> unboundC = it.get(student(C), "/api/v1/me/siwes").getBody();
             assertThat(unboundC).containsEntry("applies", false);
-            assertThat((List<String>) unboundC.get("reasons")).containsExactly("NOT_CONFIGURED");
-            assertThat((Map<String, Object>) unboundC.get("course")).as("the course written down as Q was added, kept").containsEntry("code", v503);
+            assertThat((List<String>) unboundC.get("reasons")).isEmpty();   // V777: in reach
+            assertThat(((List<Map<String, Object>>) unboundC.get("courses")).stream().map(k -> k.get("code")).toList()).as("the course written down as Q was added, kept").contains(v503);   // V777: courses, not course
             assertThat((List<Map<String, Object>>) siwesCourse(removedQ.getBody().get("siwesCourses"), v503).get("setFor")).singleElement().satisfies(f ->
                     assertThat(f).containsEntry("code", Q).containsEntry("source", "STRUCTURE"));
             // the course written down for Q is no programme's set course and nobody of Q has paid, yet it is not taken off the SIWES courses:
@@ -1489,7 +1501,7 @@ class SiwesRegistrationIT {
             assertThat(siwesRows(M)).as("nothing is written for M as it is added").isZero();
             Map<String, Object> waitingE = it.get(student(E), "/api/v1/me/siwes").getBody();
             assertThat(waitingE).as(String.valueOf(waitingE)).containsEntry("applies", false).containsEntry("eligible", false).containsEntry("canPay", false);
-            assertThat((List<String>) waitingE.get("reasons")).containsExactly("NO_COURSE");
+            assertThat((List<String>) waitingE.get("reasons")).containsExactly("NO_COURSE", "NO_SIWES_COURSE");   // V777
             assertThat(waitingE.get("course")).isNull();
             assertThat((List<Map<String, Object>>) addedM.getBody().get("unreached")).as(String.valueOf(addedM.getBody().get("unreached"))).singleElement().satisfies(u -> {
                 assertThat(u).containsEntry("programmeCode", M).containsEntry("students", 1).containsEntry("paid", 0).doesNotContainKey("found");
@@ -1511,7 +1523,7 @@ class SiwesRegistrationIT {
             assertThat(stillWaitingM).as("still waiting").doesNotContainKeys("course", "source", "found");
             assertThat(codes((List<Map<String, Object>>) stillWaitingM.get("choices"), "code")).containsExactly(missing, industrial);
             assertThat(siwesRows(M)).as("saving the period writes nothing").isZero();
-            assertThat((List<String>) it.get(student(E), "/api/v1/me/siwes").getBody().get("reasons")).as("and binds nobody").containsExactly("NO_COURSE");
+            assertThat((List<String>) it.get(student(E), "/api/v1/me/siwes").getBody().get("reasons")).as("and binds nobody").containsExactly("NO_COURSE", "NO_SIWES_COURSE");   // V777
             // the course taken off the SIWES courses (nobody has it set: nothing goes with it): the catalogue now gives M one course,
             // the department's one SIWES course in no structure, and the desk says so (found) — it is not M's yet, for a taking off
             // and a reading write nothing: E still waits
@@ -1529,7 +1541,7 @@ class SiwesRegistrationIT {
                 assertThat(u).containsEntry("programmeCode", M).containsEntry("students", 1).containsEntry("paid", 0);
                 assertThat((Map<String, Object>) u.get("found")).containsEntry("code", industrial);
             });
-            assertThat((List<String>) it.get(student(E), "/api/v1/me/siwes").getBody().get("reasons")).as("not written by a reading").containsExactly("NO_COURSE");
+            assertThat((List<String>) it.get(student(E), "/api/v1/me/siwes").getBody().get("reasons")).as("not written by a reading").containsExactly("NO_COURSE", "NO_SIWES_COURSE");   // V777
             // the period saved again: still nothing is written and nobody is bound — M's Second Semester is no SIWES semester, so the
             // desk shows the course the catalogue gives M (found) and the Academic Office takes it
             assertThat(status(it.call(academic, HttpMethod.PUT, admin + "/period", period))).isEqualTo(200);
@@ -1537,7 +1549,7 @@ class SiwesRegistrationIT {
             assertThat(savedM).as(String.valueOf(savedM)).doesNotContainKeys("course", "source");
             assertThat((Map<String, Object>) savedM.get("found")).containsEntry("code", industrial);
             assertThat(siwesRows(M)).as("saving the period writes nothing").isZero();
-            assertThat((List<String>) it.get(student(E), "/api/v1/me/siwes").getBody().get("reasons")).as("and binds nobody").containsExactly("NO_COURSE");
+            assertThat((List<String>) it.get(student(E), "/api/v1/me/siwes").getBody().get("reasons")).as("and binds nobody").containsExactly("NO_COURSE", "NO_SIWES_COURSE");   // V777
             // SIWES registration is the 300 Level cohort's: a 400 Level course, in no structure of M's, is refused (SIWES_COURSE_LEVEL)
             Map<String, Object> mappingM = new HashMap<>();
             mappingM.put("programmeCode", M);
@@ -1588,7 +1600,7 @@ class SiwesRegistrationIT {
                     assertThat(u).containsEntry("programmeCode", M).containsEntry("students", 1).containsEntry("paid", 0).doesNotContainKeys("found", "choices"));
             Map<String, Object> waitingAgainE = it.get(student(E), "/api/v1/me/siwes").getBody();
             assertThat(waitingAgainE).as(String.valueOf(waitingAgainE)).containsEntry("applies", false).containsEntry("canPay", false);
-            assertThat((List<String>) waitingAgainE.get("reasons")).containsExactly("NO_COURSE");
+            assertThat((List<String>) waitingAgainE.get("reasons")).containsExactly("NO_COURSE", "NO_SIWES_COURSE");   // V777
             // the other course added to the SIWES courses (`siwes` left out adds): M's Second Semester is no SIWES semester, so nothing is
             // written for M at that act either — the desk offers the department's one SIWES course now (found) and E waits; one press sets
             // it for M (SET) and binds E, who pays before registering
@@ -1599,7 +1611,7 @@ class SiwesRegistrationIT {
             Map<String, Object> cfgOffered = it.get(academic, admin + "/config?session=" + session).getBody();
             assertThat(programmeRow(cfgOffered, M)).as(String.valueOf(programmeRow(cfgOffered, M))).doesNotContainKeys("course", "source");
             assertThat((Map<String, Object>) programmeRow(cfgOffered, M).get("found")).containsEntry("code", missing);
-            assertThat((List<String>) it.get(student(E), "/api/v1/me/siwes").getBody().get("reasons")).containsExactly("NO_COURSE");
+            assertThat((List<String>) it.get(student(E), "/api/v1/me/siwes").getBody().get("reasons")).containsExactly("NO_COURSE", "NO_SIWES_COURSE");   // V777
             mappingM.put("courseCode", missing);
             ResponseEntity<Map> usedMissing = it.call(academic, HttpMethod.PUT, admin + "/courses", mappingM);
             assertThat(status(usedMissing)).as(String.valueOf(usedMissing.getBody())).isEqualTo(200);

@@ -30,8 +30,8 @@ import { OverloadRequest } from "./OverloadRequest";
 import { codeVariant, courseLabel, shownCode } from "@/lib/course-code";
 import { codeTaken, onRecord, takenOff } from "@/lib/registration-corrections";
 import {
-  dropOthersWords, isSiwesRegistration, otherCoursesOf, schoolFeesOwed, siwesApplies, siwesClearing, siwesCourseOf, siwesFormRows, siwesInTheWay, siwesSemesterWords,
-  waitsWords, FEES_PAGE, SIWES_RESET_WORDS, type MySiwes,
+  dropOthersWords, isSiwesRegistration, otherCoursesOf, schoolFeesOwed, siwesApplies, siwesClearing, siwesCourseOf, siwesFormRows, siwesInTheWay, siwesLockKind, siwesLockNotes,
+  siwesPayShutWords, siwesSemesterWords, siwesUnpaidRegisteredWords, waitsWords, FEES_PAGE, SIWES_LOCK_PILL, SIWES_LOCK_TITLE, SIWES_RESET_WORDS, type MySiwes,
 } from "@/lib/siwes";
 
 /** a course the Directorate of ICT took off the registration (withdrawn), as the student reads it */
@@ -79,7 +79,12 @@ export function Register({ s, v, siwes = null }: { s: MeCore; v: RegistrationVie
   if (v.semester === 2 && siwes && siwes.session === v.session && siwesApplies(siwes)) {
     return <><SiwesSemesterNote s={s} v={v} siwes={siwes} /><RegisterForm s={s} v={v} siwesSemester={{ course: siwesCourseOf(siwes)?.code ?? null }} /></>;
   }
-  return <RegisterForm s={s} v={v} />;
+  // V777: every SIWES course carries the SIWES fee: a SIWES course among the ordinary courses is locked on the form (SIWES fee required)
+  // until the fee is paid; the amount, when the student's SIWES is read here and the Bursary has published it. A student SIWES binds,
+  // whose First or Third Semester holds a SIWES course while the SIWES window is not open, cannot pay now: the form says when, and
+  // offers no payment link that would lead to a page that takes none
+  const siwesShut = siwes && siwes.session === v.session ? siwesPayShutWords(siwes) : null;
+  return <RegisterForm s={s} v={v} siwesFee={siwes?.fee?.state === "PUBLISHED" ? siwes.fee.amount : null} siwesShut={siwesShut} />;
 }
 
 /** V752: the note that sends a 300 Level student of a programme taking SIWES this session to the SIWES page: no ordinary course, no
@@ -208,9 +213,13 @@ function RegisterClosed({ v }: { v: RegistrationView }) {
   );
 }
 
-function RegisterForm({ s, v, siwesSemester = null }: { s: MeCore; v: RegistrationView;
+function RegisterForm({ s, v, siwesSemester = null, siwesFee = null, siwesShut = null }: { s: MeCore; v: RegistrationView;
   /** V752: the Second Semester the SIWES rule binds, and the student's SIWES course (the one registered, once registered) */
-  siwesSemester?: { course: string | null } | null }) {
+  siwesSemester?: { course: string | null } | null;
+  /** V777: the SIWES fee the Bursary has published, where the student's SIWES is read here (named in the note over a locked course) */
+  siwesFee?: number | string | null;
+  /** V777: why the SIWES fee cannot be paid now (the SIWES window is not open), in words: no PAY SIWES FEE link is drawn while it is said */
+  siwesShut?: string | null }) {
   const { act, busy, problem } = useAct();
   const reg = v.registration;
   // V752: a Second Semester the SIWES rule binds (the note above it, or the server's window): nothing is added to it here — the SIWES
@@ -291,7 +300,14 @@ function RegisterForm({ s, v, siwesSemester = null }: { s: MeCore; v: Registrati
   const chosenExtras = extras.filter((e) => chosen.has(e.offeringId));
   // V512: a GST/EPS carry-over the GST fee holds is not on the registration until the fee is paid: listed, not counted
   const onReg = new Set((reg?.entries ?? []).filter(onRecord).map((e) => e.offeringId));
-  const heldCarry = (m: RegistrationView["menu"][number]) => !!m.gstLocked && !onReg.has(m.offering_id);
+  // V777: and a SIWES carry-over the unpaid SIWES fee holds (every SIWES course carries it): the draft leaves it off until the fee is paid
+  const heldCarry = (m: RegistrationView["menu"][number]) => (!!m.gstLocked || !!m.siwesLocked) && !onReg.has(m.offering_id);
+  // V777: a SIWES course (a carry-over or not) the unpaid fee locks, held off the form like a GST/EPS course; one already on the
+  // registration (registered before every SIWES course carried the fee) is not locked — it stands, and the note below asks the fee;
+  // one the Directorate of ICT took off the registration is shown removed, and no note asks the fee for a course only ICT can put back
+  const siwesHold = (m: RegistrationView["menu"][number]) => !!m.siwesLocked && !onReg.has(m.offering_id) && !removed(m);
+  const siwesOnRegistration = menu.filter((m) => !!m.siwesLocked && onReg.has(m.offering_id) && !removed(m) && siwesLockKind(m.siwesGate) === "UNPAID").map((m) => shownCode(m.course_code));
+  const siwesPage = `/student/siwes?session=${encodeURIComponent(v.session)}`;
   // a carry-over or deferred course the menu puts on counts unless the GST fee holds it or it was taken off the registration
   const carryCounts = (m: RegistrationView["menu"][number]) => !heldCarry(m) && !removed(m);
   const chosenTotal = carry.filter(carryCounts).reduce((n, m) => n + menuUnits(m), 0) + deferredCourses.filter(carryCounts).reduce((n, m) => n + menuUnits(m), 0)
@@ -456,16 +472,17 @@ function RegisterForm({ s, v, siwesSemester = null }: { s: MeCore; v: Registrati
       <div className="tnum b700" style={{ color: "var(--muted)", textDecoration: "line-through" }}>{m.units}</div>
     </div>
   ) : (
-    <button type="button" key={m.offering_id} className="pick" data-on={on ? 1 : 0} disabled={fixed || locked || !!m.gstLocked || (!!m.prerequisiteLocked && !on)}
-      style={red ? { borderColor: "var(--red-line)", background: "var(--red-bg)" } : m.gstLocked || (m.prerequisiteLocked && !on) ? { borderColor: "var(--red-line)", opacity: 0.75 } : undefined}
-      title={m.gstLocked ? "Locked until the GST fee is paid" : m.prerequisiteLocked ? `Pass ${m.prerequisitesUnmet} first` : m.prerequisitesUnmet ? `Prerequisite not yet passed: ${m.prerequisitesUnmet}` : undefined}
-      onClick={() => { if (fixed || locked || m.gstLocked) return; const n = new Set(chosen); if (n.has(m.offering_id)) n.delete(m.offering_id); else if (m.prerequisiteLocked) return; else n.add(m.offering_id); setChosen(n); }}>
+    <button type="button" key={m.offering_id} className="pick" data-on={on ? 1 : 0} disabled={fixed || locked || !!m.gstLocked || siwesHold(m) || (!!m.prerequisiteLocked && !on)}
+      style={red ? { borderColor: "var(--red-line)", background: "var(--red-bg)" } : m.gstLocked || siwesHold(m) || (m.prerequisiteLocked && !on) ? { borderColor: "var(--red-line)", opacity: 0.75 } : undefined}
+      title={m.gstLocked ? "Locked until the GST fee is paid" : siwesHold(m) ? SIWES_LOCK_TITLE[siwesLockKind(m.siwesGate)] : m.prerequisiteLocked ? `Pass ${m.prerequisitesUnmet} first` : m.prerequisitesUnmet ? `Prerequisite not yet passed: ${m.prerequisitesUnmet}` : undefined}
+      onClick={() => { if (fixed || locked || m.gstLocked || siwesHold(m)) return; const n = new Set(chosen); if (n.has(m.offering_id)) n.delete(m.offering_id); else if (m.prerequisiteLocked) return; else n.add(m.offering_id); setChosen(n); }}>
       <div className="pick__box" style={on ? { background: red ? "var(--red)" : "var(--chrome)", borderColor: red ? "var(--red)" : "var(--chrome)" } : undefined}>{on ? <Tick size={12} colour="#fff" /> : null}</div>
       <div className="grow"><div className="pick__t tnum">{courseLabel(m.course_code, m.title)}</div>
         <div className="pick__s" style={red ? { color: "var(--red-deep)" } : undefined}>{m.deferred ? `Deferred · originally ${m.deferred_from ?? ""} · status DEFERRED` : m.carryover ? `Failed ${m.failed_in} — must be repeated` : m.basis === "Borrowed" ? `Owned by ${m.owner_dept} — open to this programme at ${v.level} level` : m.basis === "GST" ? "University requirement" : m.lecturer ? `${m.lecturer}` : "No lecturer allocated yet"}</div></div>
       {m.basis === "Borrowed" ? <Pil kind="info">{m.owner_dept}</Pil> : null}
       {m.basis === "Research" || m.basis === "Deficiency" ? <Pil kind={m.basis === "Research" ? "ok" : "warn"}>{m.basis}</Pil> : null}
       {m.gstLocked ? <Pil kind="bad">GST fee required</Pil> : null}
+      {m.siwesLocked ? <Pil kind="bad">{SIWES_LOCK_PILL[siwesLockKind(m.siwesGate)]}</Pil> : null}
       {m.prerequisitesUnmet ? <Pil kind={m.prerequisiteLocked ? "bad" : "warn"}>{`Needs ${m.prerequisitesUnmet}`}</Pil> : null}
       <div className="tnum b700" style={{ color: red ? "var(--red-ink)" : on ? "var(--chrome)" : "var(--muted)" }}>{m.units}</div>
     </button>
@@ -473,7 +490,21 @@ function RegisterForm({ s, v, siwesSemester = null }: { s: MeCore; v: Registrati
 
   // V512: a carry-over or deferred course: held on the GST fee (a GST/EPS course), to register (not yet on the registration), or on it;
   // one taken off the registration by the Directorate of ICT shown removed, with nothing to register
-  const carryRow = (m: RegistrationView["menu"][number], red: boolean) => removed(m) ? pick(m, true, false) : heldCarry(m) ? (
+  const carryRow = (m: RegistrationView["menu"][number], red: boolean) => removed(m) ? pick(m, true, false) : heldCarry(m) && m.siwesLocked ? (
+    // V777: a SIWES carry-over waits for the SIWES fee — every SIWES course carries it, a carry-over included; the draft left it off
+    <div key={m.offering_id} className="pick" data-on={0} style={{ cursor: "default", borderColor: "var(--red-line)", background: "var(--red-bg)" }}>
+      <div className="pick__box" />
+      <div className="grow"><div className="pick__t tnum">{courseLabel(m.course_code, m.title)}</div>
+        <div className="pick__s" style={{ color: "var(--red-deep)" }}>{m.deferred ? `Deferred from ${m.deferred_from ?? ""}` : `Failed ${m.failed_in}`} — a SIWES course: {{
+          UNPAID: "the SIWES fee is required before it can be registered",
+          FEE_NOT_SET: "the Bursary has not published the SIWES fee yet; it is registered once the fee is published and paid",
+          NOT_IN_REACH: "not open to you: your programme carries no SIWES course at your level",
+        }[siwesLockKind(m.siwesGate)]}</div></div>
+      <Pil kind="info">SIWES</Pil>
+      {siwesLockKind(m.siwesGate) === "UNPAID" && !siwesShut ? <LinkBtn kind="urgent" size="sm" href={siwesPage}>PAY SIWES FEE</LinkBtn> : null}
+      <div className="tnum b700" style={{ color: "var(--muted)" }}>{m.units}</div>
+    </div>
+  ) : heldCarry(m) ? (
     // V512: a GST/EPS carry-over waits for the GST fee — being a carry-over does not pass it
     <div key={m.offering_id} className="pick" data-on={0} style={{ cursor: "default", borderColor: "var(--red-line)", background: "var(--red-bg)" }}>
       <div className="pick__box" />
@@ -523,6 +554,12 @@ function RegisterForm({ s, v, siwesSemester = null }: { s: MeCore; v: Registrati
         <Note kind="bad" title="GST PAYMENT REQUIRED" action={<LinkBtn kind="urgent" href={`/student/gst?session=${encodeURIComponent(v.session)}`}>PAY GST FEE</LinkBtn>}>
           {gstUnpaid.join(", ")} {gstUnpaid.length === 1 ? "is" : "are"} on your registration, but the GST fee of <b className="tnum">{naira(Number(v.gst!.fee))}</b> for {v.session} is
           not paid. Pay it on GST &amp; EPS: one payment covers GST and EPS. Your examination card and the GST &amp; EPS permit wait for it.
+        </Note>
+      ) : null}
+      {/* V777: a SIWES course on the registration with the SIWES fee unpaid (registered before every SIWES course carried it): the fee is paid for it */}
+      {siwesOnRegistration.length ? (
+        <Note kind="bad" title="SIWES fee required" action={siwesShut ? undefined : <LinkBtn kind="urgent" href={siwesPage}>PAY SIWES FEE</LinkBtn>}>
+          {siwesUnpaidRegisteredWords(siwesOnRegistration, v.session, siwesFee, siwesShut)}
         </Note>
       ) : null}
       {carryOnly ? (
@@ -624,10 +661,20 @@ function RegisterForm({ s, v, siwesSemester = null }: { s: MeCore; v: Registrati
               {addable.length ? (<>
                 <div className="eyebrow mt-3">Offered — add</div>
                 {addable.map((m) => (
-                  <div key={m.offering_id} className="row" style={{ padding: "6px 0", borderBottom: "1px solid var(--line-2)" }}>
+                  <div key={m.offering_id} className="row" style={{ padding: "6px 0", borderBottom: "1px solid var(--line-2)" }}
+                    title={m.siwesLocked ? SIWES_LOCK_TITLE[siwesLockKind(m.siwesGate)] : undefined}>
                     <span className="tnum b600" style={{ minWidth: 92 }}>{shownCode(m.course_code)}</span>
                     <span className="grow">{m.title} <span className="sub2">· {m.units}u · {m.lecturer ?? "no lecturer yet"}</span></span>
-                    <Btn kind="primary" disabled={busy !== null} onClick={() => void act(`add-${m.offering_id}`, "POST", "/me/registration/add", { session: v.session, semester: v.semester, offering: m.offering_id }, `Added ${m.course_code}`)}>{busy === `add-${m.offering_id}` ? "Adding…" : "Add"}</Btn>
+                    {m.siwesLocked ? (
+                      // V777: a SIWES course the fee holds is listed with its pill and the SIWES page that takes the fee, as on the form — never an Add
+                      // the database would refuse
+                      <>
+                        <Pil kind="bad">{SIWES_LOCK_PILL[siwesLockKind(m.siwesGate)]}</Pil>
+                        {siwesLockKind(m.siwesGate) === "UNPAID" && !siwesShut ? <LinkBtn kind="urgent" size="sm" href={siwesPage}>PAY SIWES FEE</LinkBtn> : null}
+                      </>
+                    ) : (
+                      <Btn kind="primary" disabled={busy !== null} onClick={() => void act(`add-${m.offering_id}`, "POST", "/me/registration/add", { session: v.session, semester: v.semester, offering: m.offering_id }, `Added ${m.course_code}`)}>{busy === `add-${m.offering_id}` ? "Adding…" : "Add"}</Btn>
+                    )}
                   </div>
                 ))}
               </>) : null}
@@ -712,6 +759,10 @@ function RegisterForm({ s, v, siwesSemester = null }: { s: MeCore; v: Registrati
           {v.gst.state === "PENDING" ? " A reference is open; the courses unlock when it is confirmed." : ""}
         </Note>
       ) : null}
+      {/* V777: a SIWES course locked on the form — the SIWES fee unpaid, or not yet published: what is done, and the SIWES page that takes the fee */}
+      {!locked ? siwesLockNotes(menu.filter(siwesHold).map((m) => ({ code: shownCode(m.course_code), gate: m.siwesGate })), v.session, siwesFee, siwesShut).map((x) => (
+        <Note key={x.title} kind={x.kind} title={x.title} action={x.pay ? <LinkBtn kind="primary" href={siwesPage}>PAY SIWES FEE</LinkBtn> : undefined}>{x.words}</Note>
+      )) : null}
       {!locked && menu.some((m) => m.prerequisiteLocked) ? (
         <Note kind="info" title="Prerequisites not yet passed">
           A course marked &ldquo;Needs&rdquo; is locked until a pass in the course it names is published on your record. If you passed it and the result

@@ -56,6 +56,26 @@ test("a found course's status", () => {
   assert.deepEqual(courseStatus({ on_registration: false, recommended: true, category: "CARRY_OVER", gstHeld: "GST_PAYMENT_REQUIRED: pay" }), { label: "GST/EPS payment required", ok: false });
 });
 
+test("V777: a SIWES course waits for the SIWES fee — said as Course Registration's pill says it, never with its code", () => {
+  const unpaid = "SIWES_UNPAID: the SIWES registration fee for 2025/2026 is not paid; CMP 360 is registered once it is";
+  assert.deepEqual(courseStatus({ on_registration: false, siwesHeld: unpaid }), { label: "SIWES fee required", ok: false });
+  assert.deepEqual(courseStatus({ on_registration: false, recommended: true, category: "CORE", siwesHeld: unpaid }), { label: "SIWES fee required", ok: false });
+  // a SIWES carry-over the engine would place itself waits for the fee too: the draft leaves it off until it is paid
+  assert.deepEqual(courseStatus({ on_registration: false, recommended: true, category: "CARRY_OVER", siwesHeld: unpaid }), { label: "SIWES fee required", ok: false });
+  assert.deepEqual(courseStatus({ on_registration: false, siwesHeld: "SIWES_FEE_NOT_SET: the Bursary has not published the SIWES registration fee" }), { label: "SIWES fee not published", ok: false });
+  assert.deepEqual(courseStatus({ on_registration: false, siwesHeld: "SIWES_NOT_IN_REACH: CMP 360 is a SIWES course; your programme carries none at your level" }), { label: "Not open to you", ok: false });
+  // words the screen does not know are the fee's: it is what holds a SIWES course
+  assert.deepEqual(courseStatus({ on_registration: false, siwesHeld: "SOMETHING_NEW: words" }), { label: "SIWES fee required", ok: false });
+  // nothing held: as before; one on the registration, or refused by the engine, keeps its own status
+  assert.deepEqual(courseStatus({ on_registration: false, siwesHeld: null }), { label: "Available", ok: true });
+  assert.deepEqual(courseStatus({ on_registration: false, recommended: true, category: "CORE", siwesHeld: null }), { label: "On your list", ok: true });
+  assert.deepEqual(courseStatus({ on_registration: true, siwesHeld: unpaid }), { label: "Already added", ok: false });
+  assert.equal(courseStatus({ refusal: "REG_ALREADY_PASSED: Course has already been successfully completed", on_registration: false, siwesHeld: unpaid }).label, "Already passed");
+  // the GST fee's word is kept where both are said
+  assert.deepEqual(courseStatus({ on_registration: false, gstHeld: "GST_PAYMENT_REQUIRED: pay", siwesHeld: unpaid }), { label: "GST/EPS payment required", ok: false });
+  for (const h of [unpaid, "SIWES_FEE_NOT_SET: x", "SIWES_NOT_IN_REACH: x"]) assert.doesNotMatch(courseStatus({ on_registration: false, siwesHeld: h }).label, /_/);
+});
+
 test("the search asks with the term trimmed and capped", () => {
   const q = new URLSearchParams(searchQuery({ session: "2025/2026", semester: 1, q: "  eco   301 ", level: 300, category: "CORE" }));
   assert.equal(q.get("q"), "eco 301");

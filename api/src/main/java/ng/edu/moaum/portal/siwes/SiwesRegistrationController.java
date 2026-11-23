@@ -47,6 +47,12 @@ import org.springframework.web.bind.annotation.RestController;
  * the course registered once paid (registration.siwes_register). Here they are the student's doors, the Academic Office's desk and the
  * Bursary's. The fee is paid through the existing gateways (POST /api/v1/payments/checkout); paying does not register: the student
  * registers the course. Every write carries the request's X-Reason to the audit spine, as every write does.
+ *
+ * <p>V777 (the University's word of 22 November 2026, "yes charge every siwes course"): every SIWES course — a catalogue course the
+ * Academic Office marks (catalogue.course.industrial_training) — carries the same fee, paid once a session before the student registers
+ * it, whatever the programme, level or semester. The student's SIWES page then reads in one of two modes (see {@link #mine}): the
+ * Second Semester SIWES binds, registered alone on the SIWES page as V752 made it, or any other SIWES course, paid here and registered
+ * on Course Registration. The Bursary reads the students who hold a SIWES course with no SIWES payment (unpaidEntries).
  */
 @RestController
 class SiwesRegistrationController {
@@ -70,6 +76,12 @@ class SiwesRegistrationController {
      *  and the auditors */
     private static final String PAYMENT_READERS = "hasAnyAuthority('OFFICE_bursar','OFFICE_studentaccounts','OFFICE_super','OFFICE_audit','OFFICE_deputyaudit')";
     private static final Set<String> PAYMENT_READER_OFFICES = Set.of("bursar", "studentaccounts", "super", "audit", "deputyaudit");
+    /** V777: who reads the students who hold a SIWES course with no SIWES payment — the offices that read the desk (a unit office its own
+     *  unit's students), the Bursary's among them (the Bursar, Student Accounts, the Registrar and the Deputy Registrar, the Academic
+     *  Office and the University's officers). The list is a tab of the desk, so its readers are the desk's readers: the auditors, who
+     *  have no way into the desk, do not read it */
+    private static final String UNPAID_READERS = READERS;
+    private static final Set<String> UNPAID_READER_OFFICES = READER_OFFICES;
     private static final String SESSION = "^\\d{4}/\\d{4}$";
     private static final int PAGE_MAX = 500;
 
@@ -127,7 +139,15 @@ class SiwesRegistrationController {
      *  Beside it, the student's SIWES of every session (history: the payment that settled each session's fee and the SIWES registration,
      *  as the desk's detail lists them), so a student SIWES no longer binds reaches the session it was theirs; and, while courses stand
      *  in the SIWES course's way, how they leave (clearing: the student's drop door only while add and drop is open, the reset when the
-     *  reset door allows it — as Course Registration offers them, K11) */
+     *  reset door allows it — as Course Registration offers them, K11).
+     *  V777: every SIWES course carries the fee, so the answer reaches a student SIWES does not bind too, with the database's own keys
+     *  passed through as they come: {@code mode} (SEMESTER — the Second Semester SIWES binds, the SIWES course registered alone on the SIWES
+     *  page; COURSE — the student's programme carries a SIWES course at their level, or they hold or owe one: they pay here and register it on
+     *  Course Registration beside their other courses; null — not asked), {@code bound} (SEMESTER's), {@code courses} (each SIWES course
+     *  that is theirs: code, title, units, level, semester, basis, state, why — HELD, CARRYOVER or STRUCTURE — held, passed), and
+     *  {@code registerOn} (SIWES_PAGE, COURSE_REGISTRATION or null). For COURSE the answer's level, semester, course and semesterFees are null,
+     *  otherCourses is empty (each course in {@code courses} carries its own level and semester) and canRegister is false; canPay is the
+     *  fee published and nothing paid. {@code clearing} is built for the SIWES semester alone, never for COURSE */
     @GetMapping("/api/v1/me/siwes")
     @PreAuthorize("hasAuthority('OFFICE_student')")
     @Transactional(readOnly = true)
@@ -138,13 +158,17 @@ class SiwesRegistrationController {
         // the desk's own words of who the student is: the student knows
         out.remove("matricNo");
         out.remove("name");
+        // V777: only for the SIWES semester (applies: the Second Semester SIWES binds, the SIWES course alone). A student who registers the
+        // SIWES course among their other courses (mode COURSE) has nothing in its way and no semester to clear here; the semester is the
+        // answer's own (the Second Semester, the database's constant for the bound shape), not a literal of this door
         if (Boolean.TRUE.equals(out.get("applies")) && out.get("registration") == null && out.get("otherCourses") instanceof List<?> others && !others.isEmpty()
                 && out.get("session") instanceof String s) {
+            int sem = out.get("semester") instanceof Number n ? n.intValue() : 2;
             Map<String, Object> clearing = new LinkedHashMap<>();
-            clearing.put("addDropOpen", Boolean.TRUE.equals(jdbc.sql("SELECT registration.add_drop_open(:st, :s, 2)").param("st", st).param("s", s)
-                    .query(Boolean.class).single()));
+            clearing.put("addDropOpen", Boolean.TRUE.equals(jdbc.sql("SELECT registration.add_drop_open(:st, :s, :sem)").param("st", st).param("s", s)
+                    .param("sem", sem).query(Boolean.class).single()));
             // in a SIWES-bound Second Semester the reset door asks reset_refusal alone (StudentPortalService.registrationView, K11)
-            String why = jdbc.sql("SELECT registration.reset_refusal(:st, :s, 2, 'STUDENT_PORTAL')").param("st", st).param("s", s)
+            String why = jdbc.sql("SELECT registration.reset_refusal(:st, :s, :sem, 'STUDENT_PORTAL')").param("st", st).param("s", s).param("sem", sem)
                     .query(String.class).optional().orElse(null);
             clearing.put("resetAllowed", why == null);
             clearing.put("resetWhy", why);
@@ -421,6 +445,76 @@ class SiwesRegistrationController {
         OfficeScope.Bound b = bound(READER_OFFICES, "SIWES registration", faculty, department, programme);
         return json(jdbc.sql("SELECT registration.siwes_stats(:s, :f, :d, :p)::text").param("s", sessionOr(session), Types.VARCHAR)
                 .param("f", b.fac(), Types.VARCHAR).param("d", b.dept(), Types.VARCHAR).param("p", b.prog(), Types.VARCHAR).query(String.class).single());
+    }
+
+    /** V777 (decision 2 of 22 November 2026: the students who registered a SIWES course before the rule, with no SIWES payment, are
+     *  asked to pay): the SIWES courses that stand on a registration of the session — every one not dropped or withdrawn — of a student the
+     *  fee is asked of (an undergraduate in study, not CCE) who has no SIWES payment standing for the session (registration.siwes_entries_unpaid:
+     *  the portal's or the old portal's, of either semester, settles it). A row is a student and a course; a student with two SIWES courses
+     *  is listed twice and owes the fee once. {@code payable} says the SIWES page asks them now. Read-only, a page at a time, read by the
+     *  desk's readers and held to the unit of a department or faculty office (the Head of Department and the SIWES Coordinator their
+     *  department, the Dean and the Faculty Officer their faculty) whatever is asked, as the desk's student list is; {@code students} counts the
+     *  students of the whole selection (not the page), {@code fee} is the fee in force for the session (null while none is published) */
+    @GetMapping("/api/v1/siwes/admin/unpaid-entries")
+    @PreAuthorize(UNPAID_READERS)
+    @Transactional(readOnly = true)
+    Map<String, Object> unpaidEntries(@RequestParam(required = false) String session, @RequestParam(required = false) String faculty,
+                                      @RequestParam(required = false) String department, @RequestParam(required = false) String programme,
+                                      @RequestParam(required = false) String q, @RequestParam(defaultValue = "0") int page,
+                                      @RequestParam(defaultValue = "50") int size) {
+        OfficeScope.Bound b = bound(UNPAID_READER_OFFICES, "The SIWES courses held with no SIWES payment", faculty, department, programme);
+        String s = sessionOr(session);
+        int sz = Math.max(1, Math.min(size, PAGE_MAX));
+        int pg = Math.max(0, page);
+        List<Map<String, Object>> rows = jdbc.sql("""
+                WITH x AS (
+                    SELECT u.*, d.code AS dept_code, d.name AS department, coalesce(d.faculty_code, p.faculty_code) AS faculty_code, f.name AS faculty
+                      FROM registration.siwes_entries_unpaid(CAST(:s AS text)) u
+                      LEFT JOIN ref.programme p ON p.code = u.programme_code
+                      LEFT JOIN ref.department d ON d.code = p.dept_code
+                      LEFT JOIN ref.faculty f ON f.code = coalesce(d.faculty_code, p.faculty_code)
+                     WHERE (CAST(:f AS text) IS NULL OR coalesce(d.faculty_code, p.faculty_code) = btrim(CAST(:f AS text)))
+                       AND (CAST(:d AS text) IS NULL OR d.code = btrim(CAST(:d AS text)))
+                       AND (CAST(:p AS text) IS NULL OR u.programme_code = upper(btrim(CAST(:p AS text))))
+                       AND (CAST(:q AS text) IS NULL OR u.name ILIKE '%' || btrim(CAST(:q AS text)) || '%'
+                            OR coalesce(u.matric_no, '') ILIKE '%' || btrim(CAST(:q AS text)) || '%'))
+                SELECT x.*, count(*) OVER () AS total, (SELECT count(DISTINCT y.student_id) FROM x y) AS students
+                  FROM x
+                 ORDER BY x.faculty, x.department, x.programme, x.name, x.student_id, x.semester, x.course_code
+                 LIMIT :n OFFSET :off
+                """)
+                .param("s", s, Types.VARCHAR).param("f", b.fac(), Types.VARCHAR).param("d", b.dept(), Types.VARCHAR).param("p", b.prog(), Types.VARCHAR)
+                .param("q", blank(q), Types.VARCHAR).param("n", sz).param("off", pg * sz).query().listOfRows();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("session", s);
+        out.put("total", rows.isEmpty() ? 0L : ((Number) rows.get(0).get("total")).longValue());
+        out.put("students", rows.isEmpty() ? 0L : ((Number) rows.get(0).get("students")).longValue());
+        out.put("fee", s == null ? null : jdbc.sql("SELECT finance.siwes_fee_for(CAST(:s AS text))").param("s", s, Types.VARCHAR).query(BigDecimal.class).optional().orElse(null));
+        out.put("page", pg);
+        out.put("size", sz);
+        out.put("rows", rows.stream().map(SiwesRegistrationController::unpaidRow).toList());
+        return out;
+    }
+
+    private static Map<String, Object> unpaidRow(Map<String, Object> r) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("studentId", r.get("student_id"));
+        m.put("matricNo", r.get("matric_no"));
+        m.put("name", r.get("name"));
+        m.put("programmeCode", r.get("programme_code"));
+        m.put("programme", r.get("programme"));
+        m.put("departmentCode", r.get("dept_code"));
+        m.put("department", r.get("department"));
+        m.put("facultyCode", r.get("faculty_code"));
+        m.put("faculty", r.get("faculty"));
+        m.put("currentLevel", r.get("current_level"));   // the student's level now
+        m.put("courseCode", r.get("course_code"));
+        m.put("courseTitle", r.get("course_title"));
+        m.put("level", r.get("level"));                  // the level and semester of the registration the course stands on
+        m.put("semester", r.get("semester"));
+        m.put("registrationStatus", r.get("registration_status"));
+        m.put("payable", Boolean.TRUE.equals(r.get("payable")));
+        return m;
     }
 
     /* ── the Bursary's ── */

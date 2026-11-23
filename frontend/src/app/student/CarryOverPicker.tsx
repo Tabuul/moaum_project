@@ -16,7 +16,8 @@ import { Btn, LinkBtn, Note, Pil, Tabs } from "@/components/proto/ui";
 import { Field, Modal } from "@/components/proto/blocks";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import {
-  NO_FILTER, OWED, STATUS_KIND, STATUS_WORD, filterRows, groupRows, gstHeld, levelsOf, openingView, outcomeWords, selection, semesterWord, tickable,
+  NO_FILTER, OWED, STATUS_KIND, STATUS_WORD, filterRows, groupRows, gstHeld, levelsOf, openingView, outcomeWords, selection, semesterWord, siwesHeld,
+  siwesRefused, siwesRowWords, siwesWaitNotes, tickable,
   type CarryFilter, type CarryList, type CarryResult,
 } from "@/lib/carry-over";
 import { quoteWords } from "@/lib/spillover";
@@ -64,6 +65,9 @@ export function CarryOverPicker({ session, semester, onAdded, onClose, onViewReg
   const owedCount = rows.filter((r) => OWED.includes(r.status)).length;
   // V691: the GST/EPS courses the GST fee holds, flagged before they are ticked
   const gstWait = useMemo(() => gstHeld(rows), [rows]);
+  // V777: and the SIWES courses the SIWES fee holds (every SIWES course carries it): counted, with the SIWES page that takes the fee
+  const siwesNotes = useMemo(() => siwesWaitNotes(siwesHeld(rows)), [rows]);
+  const siwesPage = `/student/siwes?session=${encodeURIComponent(session)}`;
   // V682: a spillover student sees what the semester costs as soon as a course is ticked
   const quote = spillover && list?.fee && sel.count ? quoteWords(list.fee, sel.count, addDrop) : null;
   const toggle = (id: string) => setPicked((s) => { const x = new Set(s); if (x.has(id)) x.delete(id); else x.add(id); return x; });
@@ -112,6 +116,12 @@ export function CarryOverPicker({ session, semester, onAdded, onClose, onViewReg
             One payment covers GST and EPS. Once it is confirmed, add the course again here.
           </Note>
         ) : null}
+        {/* V777: a SIWES course is added once the SIWES fee is paid (a fee paid, or a window closed, between the list and the add) */}
+        {siwesWaitNotes(siwesRefused(results)).map((x) => (
+          <Note key={x.title} kind={x.kind} title={x.title} action={x.pay ? <LinkBtn kind="primary" href={siwesPage}>PAY SIWES FEE</LinkBtn> : undefined}>
+            {x.words}
+          </Note>
+        ))}
         <div className="mt-2">
           {results.map((x) => (
             <div key={x.courseId} className="row" style={{ gap: 10, padding: "8px 0", borderBottom: "1px solid var(--line)", alignItems: "flex-start", flexWrap: "wrap" }}>
@@ -156,6 +166,11 @@ export function CarryOverPicker({ session, semester, onAdded, onClose, onViewReg
               {gstWait.count === 1 ? "A GST or EPS course below is" : `${gstWait.count} GST or EPS courses below are`} added once the GST fee is paid. One payment covers GST and EPS.
             </Note>
           ) : null}
+          {siwesNotes.map((x) => (
+            <Note key={x.title} kind={x.kind} title={x.title} action={x.pay ? <LinkBtn kind="primary" href={siwesPage}>PAY SIWES FEE</LinkBtn> : undefined}>
+              {x.words}
+            </Note>
+          ))}
           <Tabs label="Which courses" value={f.view} onChange={(v) => setF({ ...f, view: v })}
             items={[{ id: "OUTSTANDING", label: "ONLY OUTSTANDING", count: owedCount }, { id: "ALL", label: spillover ? "ALL YOUR COURSES" : "ALL PREVIOUS COURSES", count: rows.length }]} />
           <div className="row mt-2" style={{ flexWrap: "wrap", gap: "var(--s-2)", alignItems: "flex-end" }}>
@@ -199,9 +214,10 @@ export function CarryOverPicker({ session, semester, onAdded, onClose, onViewReg
                     {s.rows.map((r) => {
                       const on = picked.has(r.course_id);
                       const can = tickable(r);
+                      const siwes = siwesRowWords(r);
                       return (
                         <label key={r.course_id} className="row" style={{ gap: 10, padding: "8px 0", borderBottom: "1px solid var(--line)", alignItems: "flex-start", flexWrap: "wrap",
-                          cursor: can ? "pointer" : "default", opacity: can || r.gst_held ? 1 : 0.75 }}>
+                          cursor: can ? "pointer" : "default", opacity: can || r.gst_held || siwes ? 1 : 0.75 }}>
                           <input type="checkbox" checked={on && can} disabled={!can || busy} onChange={() => toggle(r.course_id)}
                             aria-label={`Select ${r.shown_code} ${r.title}`} style={{ marginTop: 3, width: 18, height: 18 }} />
                           <div className="grow" style={{ minWidth: 200 }}>
@@ -210,7 +226,9 @@ export function CarryOverPicker({ session, semester, onAdded, onClose, onViewReg
                               {r.origin_session ? ` · last registered ${r.origin_session}` : ""}{r.last_grade ? ` · grade ${r.last_grade}` : ""}</div>
                             {r.reason ? <div className="sub2" style={!r.selectable && OWED.includes(r.status) ? { color: "var(--red-deep)" } : undefined}>{r.reason}</div> : null}
                             {r.gst_held ? <div className="sub2 b600" style={{ color: "var(--red-deep)" }}>GST fee first{r.gst_to_pay ? ` — ${naira(Number(r.gst_to_pay))}` : ""}: pay it, then add this course.</div> : null}
+                            {siwes ? <div className="sub2 b600" style={{ color: "var(--red-deep)" }}>{siwes.line}</div> : null}
                           </div>
+                          {siwes ? <Pil kind="bad">{siwes.pill}</Pil> : null}
                           <Pil kind={STATUS_KIND[r.status]}>{STATUS_WORD[r.status]}</Pil>
                           <span className="tnum b600" style={{ minWidth: 44, textAlign: "right" }}>{r.units} CU</span>
                         </label>

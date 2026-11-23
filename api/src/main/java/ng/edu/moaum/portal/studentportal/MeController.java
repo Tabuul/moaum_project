@@ -11,6 +11,8 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
+import ng.edu.moaum.portal.shared.DeadlockRetry;
+
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -145,14 +147,18 @@ class MeController {
         return portal.registrationHistory(id(auth));
     }
 
+    /** V777: the doors that place courses on the student's registration (this one, submit, reset, add, add other course, the carry-over
+     *  picker) can take the student's SIWES lock and the registration's row, so two of them for one student at one instant can meet in
+     *  a deadlock, which PostgreSQL ends whole (LOCKS.md C2, C5): each is run again in a fresh transaction (DeadlockRetry), the service
+     *  method reached through its proxy so the transaction is its own. A refusal (SIWES_UNPAID, the unit ceiling) is never run again. */
     @PutMapping("/registration")
     Map<String, Object> choose(Authentication auth, @Valid @RequestBody Choice body) {
-        return portal.choose(id(auth), body.session(), body.semester(), body.offerings());
+        return DeadlockRetry.run(() -> portal.choose(id(auth), body.session(), body.semester(), body.offerings()));
     }
 
     @PostMapping("/registration/submit")
     Map<String, Object> submit(Authentication auth, @Valid @RequestBody Submit body) {
-        return portal.submit(id(auth), body.session(), body.semester());
+        return DeadlockRetry.run(() -> portal.submit(id(auth), body.session(), body.semester()));
     }
 
     public record ResetIn(@NotBlank String session, @Min(1) @Max(3) int semester, @jakarta.validation.constraints.Size(max = 500) String reason) {
@@ -162,7 +168,7 @@ class MeController {
      *  a number the browser sends */
     @PostMapping("/registration/reset")
     Map<String, Object> resetRegistration(Authentication auth, @Valid @RequestBody ResetIn body) {
-        return portal.reset(id(auth), body.session(), body.semester(), body.reason());
+        return DeadlockRetry.run(() -> portal.reset(id(auth), body.session(), body.semester(), body.reason()));
     }
 
     public record AddDrop(@NotBlank String session, @Min(1) @Max(3) int semester, @jakarta.validation.constraints.NotNull UUID offering) {
@@ -175,7 +181,7 @@ class MeController {
     /** add a course to a submitted/approved registration during the add/drop window */
     @PostMapping("/registration/add")
     Map<String, Object> addCourse(Authentication auth, @Valid @RequestBody AddDrop body) {
-        return portal.addCourse(id(auth), body.session(), body.semester(), body.offering());
+        return DeadlockRetry.run(() -> portal.addCourse(id(auth), body.session(), body.semester(), body.offering()));
     }
 
     /** V504: Add Other Course — the courses a search finds, each judged by the engine for the signed-in student and semester */
@@ -198,7 +204,7 @@ class MeController {
     /** V504: the student adds a course the search found; the engine judges it, and refuses with its reason */
     @PostMapping("/registration/courses")
     Map<String, Object> addOtherCourse(Authentication auth, @Valid @RequestBody AddCourse body) {
-        return portal.addOtherCourse(id(auth), body.session(), body.semester(), body.offering(), body.courseCode());
+        return DeadlockRetry.run(() -> portal.addOtherCourse(id(auth), body.session(), body.semester(), body.offering(), body.courseCode()));
     }
 
     /** V663: the carry-over picker — every earlier course of the signed-in student, with what it is now */

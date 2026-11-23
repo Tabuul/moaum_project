@@ -4,16 +4,22 @@
  *  siwes_eligibility) and nothing more: whether SIWES is theirs this session and, when it is not, why; the course, the training period
  *  and the deadline; the SIWES registration fee, paid once through the gateways every fee uses (a reference already drawn is paid, never a
  *  second one); then the SIWES course registered — approved as it is made, the only course of the Second Semester — its receipt and its
- *  printed form. The school fees of the semester are owed as ever; the SIWES fee is a payment of its own, never a school fee. */
+ *  printed form. The school fees of the semester are owed as ever; the SIWES fee is a payment of its own, never a school fee.
+ *  V777 (every SIWES course carries the fee): a student whose SIWES course is among their ordinary courses (mode COURSE) sees their
+ *  courses — each with its own level and semester — the fee, paid once a session, and a link to Course Registration of the semester
+ *  where the course is registered; a student who holds an unpaid SIWES course from before the rule is told so and asked the fee now.
+ *  The SIWES semester's page (the Second Semester of a programme SIWES binds) is as it was. */
 import { useState } from "react";
 import Link from "next/link";
 import { Btn, KvGrid, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { PayByCard, useAct, when } from "../common";
 import { notify } from "@/components/proto/Toast";
+import { shownCode } from "@/lib/course-code";
 import {
-  clearsThemselves, courseRegistrationPage, courseWords, dateWord, dropOthersWords, historyLine, naira, num, otherCoursesOf, periodWords, reasonWords, schoolFeesOwed,
-  schoolFeesWords, siwesCourseOf, siwesElsewhere, siwesNext, siwesTiles, sourceWord, unitName, FEES_PAGE, type MySiwes,
+  clearsThemselves, courseRegistrationPage, courseWhere, courseWords, coursesToRegister, dateWord, dropOthersWords, heldAs, heldCourses, heldStanding, historyLine, isCourseMode, naira, num, otherCoursesOf,
+  ownCourseLine, ownCourseList, ownCourses, periodWords, reasonWords, registerLinks, schoolFeesOwed, schoolFeesWords, siwesCourseOf, siwesElsewhere, siwesNext, siwesTiles,
+  sourceWord, submitLinks, unitName, FEES_PAGE, type HeldStanding, type MySiwes,
 } from "@/lib/siwes";
 
 /** the student's SIWES of the other sessions — the payment that settled each session's fee and the SIWES registration — each opening
@@ -66,6 +72,27 @@ function Details({ d }: { d: MySiwes }) {
   );
 }
 
+/** V777: the SIWES courses that are the student's — each with the level and semester it is taught in, since a SIWES course is any
+ *  level's and either semester's — and where they register them. The period's registration window and training dates are those of the
+ *  programmes SIWES binds, never shown as theirs */
+function CourseDetails({ d }: { d: MySiwes }) {
+  const own = ownCourses(d);
+  return (
+    <Panel title="SIWES details">
+      <PBody>
+        <KvGrid pairs={[
+          ["Session", d.session ?? "—"],
+          ["Programme", d.programme?.name ?? "—"],
+          ["Department", unitName(d.department) || "—"],
+          ["Faculty", unitName(d.faculty) || "—"],
+          [own.length === 1 ? "SIWES course" : "SIWES courses", own.length ? <span key="c">{own.map((c) => <span key={c.code} className="blk">{ownCourseLine(c)}</span>)}</span> : "—"],
+          ["Registered on", "Course Registration"],
+        ]} />
+      </PBody>
+    </Panel>
+  );
+}
+
 /** the SIWES registration fee: what the Bursary published, whether it is paid, and the one reference it is paid against */
 function Fee({ d, pay }: { d: MySiwes; pay: boolean }) {
   const { act, busy, problem } = useAct();
@@ -87,6 +114,14 @@ function Fee({ d, pay }: { d: MySiwes; pay: boolean }) {
     }
   }
   const published = d.fee?.state === "PUBLISHED";
+  // V777: where the course is registered once the payment is confirmed — Course Registration for a SIWES course among the ordinary ones
+  const byCourse = isCourseMode(d);
+  const toRegister = ownCourseList(coursesToRegister(d));
+  // a course already on the registration (registered before the rule) needs nothing more once the fee is paid
+  const afterPayment = byCourse
+    ? (toRegister || !heldCourses(d).length ? `Register ${toRegister || "your SIWES course"} on Course Registration once the payment is confirmed.`
+      : "Your SIWES course is already on your registration; nothing more is needed once the payment is confirmed.")
+    : "Register your SIWES course here once the payment is confirmed.";
   return (
     <Panel title="SIWES registration fee" right={d.paid ? <Pil kind="ok">PAID</Pil> : published ? naira(d.fee?.amount) : "Not published"}>
       <PBody>
@@ -101,7 +136,7 @@ function Fee({ d, pay }: { d: MySiwes; pay: boolean }) {
           <KvGrid pairs={[
             ["Fee", <b key="a" className="tnum">{published ? naira(d.fee?.amount) : "Not published yet"}</b>],
             ["Status", "Not paid"],
-            ["For", "SIWES registration, once for the session"],
+            ["For", byCourse ? `Every SIWES course you register in ${d.session ?? "the session"}, once for the session` : "SIWES registration, once for the session"],
             ["School fees", "Paid apart, as every semester"],
           ]} />
         )}
@@ -115,7 +150,7 @@ function Fee({ d, pay }: { d: MySiwes; pay: boolean }) {
         {pay ? (
           open ? (
             <div className="mt-2">
-              <div className="sub2 mb-2">Reference <b className="tnum">{open.reference}</b> for {naira(open.amount)}. Pay it by card or USSD, or at a bank against the reference. Register your SIWES course here once the payment is confirmed.</div>
+              <div className="sub2 mb-2">Reference <b className="tnum">{open.reference}</b> for {naira(open.amount)}. Pay it by card or USSD, or at a bank against the reference. {afterPayment}</div>
               <div className="row" style={{ flexWrap: "wrap" }}><PayByCard reference={open.reference} amount={open.amount} /></div>
             </div>
           ) : (
@@ -182,39 +217,91 @@ function Registration({ d, register, print, name, number }: { d: MySiwes; regist
   );
 }
 
+/** V777: a SIWES course among the student's ordinary courses is registered on Course Registration, the fee paid — not here. Each of
+ *  their courses is listed with where it stands, and the link goes to Course Registration of the semester it is taught in (one for
+ *  each semester). No other course is "in the way" of it, and nothing is printed from here: it prints with the rest of the registration */
+function CourseRegistration({ d }: { d: MySiwes }) {
+  const own = ownCourses(d);
+  const toRegister = coursesToRegister(d);
+  const links = registerLinks(d);
+  const submits = submitLinks(d);
+  const unsent = heldAs(d, "UNSENT");
+  const awaiting = heldAs(d, "AWAITING");
+  const allHeld = own.length > 0 && !toRegister.length;
+  // a course only on a registration that is a draft (or was returned) is not registered: it is on the registration, not submitted
+  const head = !allHeld ? <Pil kind="grey">NOT REGISTERED</Pil> : unsent.length ? <Pil kind="warn">NOT SUBMITTED</Pil>
+    : awaiting.length ? <Pil kind="info">AWAITING APPROVAL</Pil> : <Pil kind="ok">REGISTERED</Pil>;
+  const standing: Record<HeldStanding, { pill: string; kind: "ok" | "warn" | "info"; words: string | null }> = {
+    REGISTERED: { pill: "ON YOUR REGISTRATION", kind: "ok", words: null },
+    AWAITING: { pill: "AWAITING APPROVAL", kind: "info", words: "On your registration, waiting for approval" },
+    UNSENT: { pill: "NOT SUBMITTED", kind: "warn", words: "On your registration, not yet submitted" },
+  };
+  return (
+    <Panel title="SIWES course registration" right={head}>
+      <PBody>
+        {own.map((c) => {
+          const st = c.held ? standing[heldStanding(c)] : null;
+          return (
+            <div key={c.code} className="row" style={{ padding: "6px 0", borderBottom: "1px solid var(--line-2)", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+              <span className="tnum b600" style={{ minWidth: 92 }}>{shownCode(c.code)}</span>
+              <span className="grow">{c.title ?? ""}<span className="blk sub2">{courseWhere(c, " · ")}</span>{st?.words ? <span className="blk sub2">{st.words}</span> : null}</span>
+              {st ? <Pil kind={st.kind}>{st.pill}</Pil> : <Pil kind="grey">NOT REGISTERED</Pil>}
+            </div>
+          );
+        })}
+        <div className="sub2 mt-1">
+          A SIWES course is registered on Course Registration once the SIWES fee is paid: paying does not register it. It is approved with your registration.
+          {unsent.length ? " A course on a registration that is only saved, or was returned to you, is not registered until you submit the registration." : ""}
+        </div>
+        <div className="row mt-2" style={{ flexWrap: "wrap" }}>
+          {d.paid ? links.map((l) => <LinkBtn key={l.href} kind="primary" href={l.href}>Register on {l.label}</LinkBtn>) : null}
+          {d.paid ? submits.map((l) => <LinkBtn key={`submit-${l.href}`} kind="primary" href={l.href}>Submit your registration on {l.label}</LinkBtn>) : null}
+        </div>
+        {!d.paid && toRegister.length ? <div className="sub2 mt-1">Pay the SIWES registration fee above first.</div> : null}
+      </PBody>
+    </Panel>
+  );
+}
+
 export function Siwes({ d, paid = null, name, number }: { d: MySiwes; paid?: string | null; name: string; number: string }) {
   const n = siwesNext(d);
   const confirmed = !!paid && d.paid?.reference === paid;
   const confirming = !!paid && !confirmed && d.openReference?.reference === paid;
+  const byCourse = isCourseMode(d);
   // the student's SIWES is shown in full only where it is theirs: eligible now, or paid, or registered
   const theirs = d.eligible || !!d.paid || !!d.registration;
+  const toRegister = ownCourseList(coursesToRegister(d));
   return (
     <>
       {confirming ? (
         <div className="card"><div className="card__body" style={{ alignItems: "center", textAlign: "center", gap: "var(--s-4)", padding: "var(--s-6) var(--s-5)" }}>
           <div><div className="t-lg b700" style={{ letterSpacing: "-.3px" }}>Confirming your payment</div>
-            <p className="sub2" style={{ margin: "6px auto 0", maxWidth: "44ch", lineHeight: 1.55 }}>Reference {paid}. Register your SIWES course here once it is confirmed.</p></div>
+            <p className="sub2" style={{ margin: "6px auto 0", maxWidth: "44ch", lineHeight: 1.55 }}>Reference {paid}. {byCourse ? "Register your SIWES course on Course Registration once it is confirmed." : "Register your SIWES course here once it is confirmed."}</p></div>
           <Btn kind="ghost" onClick={() => window.location.reload()}>Check again</Btn>
         </div></div>
       ) : null}
       {confirmed && d.paid ? (
-        <Note kind="ok" title="SIWES registration fee confirmed">Reference {d.paid.reference} · {naira(d.paid.amount)}{d.paid.receiptNo ? ` · receipt ${d.paid.receiptNo}` : ""}. {d.registration ? "Your SIWES course is registered." : "Now register your SIWES course below."}</Note>
+        <Note kind="ok" title="SIWES registration fee confirmed">Reference {d.paid.reference} · {naira(d.paid.amount)}{d.paid.receiptNo ? ` · receipt ${d.paid.receiptNo}` : ""}. {
+          byCourse ? (toRegister ? `Now register ${toRegister} on Course Registration.` : heldCourses(d).length
+              ? (heldAs(d, "UNSENT").length ? "Your SIWES course is on your registration, not yet submitted: submit the registration on Course Registration." : "Your SIWES course is on your registration.")
+              : "Now register your SIWES course on Course Registration.")
+            : d.registration ? "Your SIWES course is registered." : "Now register your SIWES course below."}</Note>
       ) : null}
       {/* v4-2: on ELSEWHERE the student's own SIWES sessions and nothing owed here; a student SIWES does not bind owes nothing */}
       <Tiles items={siwesTiles(d, n.step).map(([label, value, sub]) => [label, value, null, sub])} />
-      {/* K10: a step taken on another page (the Second Semester school fees, on Fees & payments) links there */}
+      {/* K10: a step taken on another page (the Second Semester school fees, on Fees & payments) links there; V777: Course Registration */}
       <Note kind={n.tone} title={n.title} action={n.link ? <LinkBtn kind="urgent" href={n.link.href}>{n.link.label}</LinkBtn> : undefined}>
         {/* why not, reason by reason, when there is more than one */}
-        {n.step === "NOT_ELIGIBLE" && (d.reasons?.length ?? 0) > 1 ? (
+        {n.step === "NOT_ELIGIBLE" && reasonWords(d.reasons).length > 1 ? (
           <ul style={{ margin: 0, paddingLeft: "1.2em" }}>{reasonWords(d.reasons).map((w) => <li key={w}>{w}</li>)}</ul>
         ) : n.words}
         {n.step === "NOT_ELIGIBLE" ? <div className="mt-1 sub2">If you believe this is wrong, ask your department or the Academic Office.</div> : null}
       </Note>
       {/* the session shown is not the student's SIWES, which is in another: its sessions first, never this session's details as theirs */}
       {n.step === "ELSEWHERE" ? <OtherSessions d={d} /> : null}
-      {n.step !== "ELSEWHERE" ? <Details d={d} /> : null}
+      {n.step !== "ELSEWHERE" ? (byCourse ? <CourseDetails d={d} /> : <Details d={d} />) : null}
       {theirs ? <Fee d={d} pay={n.pay} /> : null}
-      {theirs ? <Registration d={d} register={n.register} print={n.print} name={name} number={number} /> : null}
+      {theirs ? (byCourse ? <CourseRegistration d={d} /> : <Registration d={d} register={n.register} print={n.print} name={name} number={number} />) : null}
       {n.step !== "ELSEWHERE" ? <OtherSessions d={d} /> : null}
     </>
   );

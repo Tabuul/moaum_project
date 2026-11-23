@@ -399,13 +399,19 @@ class StudentPortalRepository {
         return jdbc.sql("SELECT registration.siwes_applies(:s, :ses)").param("s", student).param("ses", session).query(Boolean.class).optional().orElse(false);
     }
 
-    /** V752: whether a class is of the student's SIWES course — the programme's (registration.siwes_course_for), or the one a SIWES
-     *  registration of the student was made on */
-    boolean siwesCourse(UUID student, UUID offering) {
+    /** V752: whether a class is the SIWES course a SIWES registration holds alone: in the Second Semester SIWES binds
+     *  (registration.siwes_applies), the programme's (registration.siwes_course_for); in any semester, the one a SIWES registration of
+     *  the student was made on (a row of registration.siwes_registration).
+     *  V777: nothing else. Every SIWES course carries the fee now, but where SIWES does not bind the semester a SIWES course is placed
+     *  on the ordinary registration beside the others, standing on the paid fee through registration.siwes_course_entry, and the
+     *  student drops it on the ordinary form like any course — which frees the payment. The programme's mapped course is therefore
+     *  kept here only in the bound semester, never because the programme maps it. */
+    boolean siwesCourse(UUID student, String session, int semester, UUID offering) {
         return jdbc.sql("""
-                SELECT EXISTS (SELECT 1 FROM catalogue.offering o WHERE o.id = :o AND o.course_code = registration.siwes_course_for(:s))
+                SELECT (:sem = 2 AND registration.siwes_applies(:s, :ses)
+                        AND EXISTS (SELECT 1 FROM catalogue.offering o WHERE o.id = :o AND o.course_code = registration.siwes_course_for(:s)))
                     OR EXISTS (SELECT 1 FROM registration.siwes_registration x WHERE x.student_id = :s AND x.offering_id = :o)
-                """).param("s", student).param("o", offering).query(Boolean.class).single();
+                """).param("s", student).param("ses", session).param("sem", semester).param("o", offering).query(Boolean.class).single();
     }
 
     /** the semesters of the session the student has actually registered (submitted or beyond) */
@@ -1292,6 +1298,24 @@ class StudentPortalRepository {
         Map<String, String> out = new java.util.HashMap<>();
         if (courses.isEmpty()) return out;
         jdbc.sql("SELECT g.course_code, g.message FROM registration.gst_gate_many(:s, :ses, CAST(:codes AS text[])) g")
+                .param("codes", courses.toArray(String[]::new), java.sql.Types.ARRAY).param("s", student).param("ses", session)
+                .query().listOfRows().forEach(r -> out.put(String.valueOf(r.get("course_code")), (String) r.get("message")));
+        return out;
+    }
+
+    /** V777: the SIWES registration fee's gate of several courses in one call (registration.siwes_fee_gate_many: each course's answer
+     *  is registration.siwes_fee_gate's, the words the entry trigger refuses with — SIWES_UNPAID, SIWES_FEE_NOT_SET or SIWES_NOT_IN_REACH —
+     *  the student's standing worked out once, not once a course). The map holds the SIWES courses among those asked (catalogue.course
+     *  industrial_training, not ended: the predicate of ix_course_siwes_marked) and no other, each with its refusal, or null where the
+     *  fee does not hold it (paid, or the student is not asked: CCE, postgraduate, not in study, not the current session) */
+    Map<String, String> siwesFeeGates(UUID student, String session, java.util.Collection<String> courses) {
+        Map<String, String> out = new java.util.HashMap<>();
+        if (courses.isEmpty()) return out;
+        jdbc.sql("""
+                SELECT g.course_code, g.message
+                  FROM registration.siwes_fee_gate_many(:s, :ses, CAST(:codes AS text[])) g
+                 WHERE EXISTS (SELECT 1 FROM catalogue.course c WHERE c.code = g.course_code AND c.industrial_training AND c.state <> 'ENDED')
+                """)
                 .param("codes", courses.toArray(String[]::new), java.sql.Types.ARRAY).param("s", student).param("ses", session)
                 .query().listOfRows().forEach(r -> out.put(String.valueOf(r.get("course_code")), (String) r.get("message")));
         return out;

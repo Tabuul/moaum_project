@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 697
+\set EXPECTED 762
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -37379,7 +37379,7 @@ BEGIN
                      || ' | round 3 OPEN/refunded/true/REFUND_SIWES_CREDIT_SETTLED | true/office dropped/false/false | REG_STATUS_SIWES/A dropped/REFUND_SIWES_PART/raised'
                      || ' | round 4 OPEN/true/0/1 | 1/1/SIWES_CREDIT_CHECK_BANK/REFUND_SIWES_CHECK_BANK/true:null/PROPOSED:true:true/true:true | APPROVED/AUTO/true/true'
                      || ' | round 5 held/true/false:true/PAY_NOT_RECEIVED_SIWES_REGISTERED/DESK_REFUND/false'
-                     || ' | round 6 NOT_RECEIVED/NOT_RECEIVED_WAITING/true/OPEN:true,OPEN:true/PAY_NOT_RECEIVED_SIWES_REFUNDED/true/false'
+                     || ' | round 6 NOT_RECEIVED/NOT_RECEIVED_WAITING/true/OPEN:true,OPEN:true/PAY_NOT_RECEIVED_SIWES_REFUNDED/true/true'
                      || ' | round 7 none/PROPOSED/true:NOT_RECEIVED/REFUND_SIWES_CHECK_BANK/true/APPLIED:SETTLES:true', false),
       msg);
 END $$;
@@ -42046,6 +42046,9 @@ BEGIN
     m_attach := m_attach || ' | on units ' || coalesce(registration.siwes_units('C97778', 300, 2)::text, '-');
     -- G1 registers it under V503 (SIWES does not bind G1: the programme is not configured)
     INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (rg, g1, S, 2, 300, 'DRAFT');
+    -- V777 (made up for this run only): a confirmed SIWES payment for the student first, as the fee is paid before the course is registered
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, confirmed_by, channel, note, receipt_no)
+    VALUES (g1, S, 'ZZM-G1-V777', 'SIWES registration fee ' || S, 4000, now(), now(), now(), nullif(current_setting('moaum.actor_id', true), '')::uuid, 'Paystack', 'check V777 variant', 'RCT-ZZM-G1-V777');
     INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (rg, catalogue.open_class('ZZM 369', S, 2, 'REGULAR'), 6, 'REGISTERED');
     BEGIN PERFORM registration.siwes_mark_course('ZZM 369', false); m_attach := m_attach || ' | G1 registered: off accepted';
     EXCEPTION WHEN check_violation THEN m_attach := m_attach || ' | G1 registered: off ' || SQLERRM; END;
@@ -42440,6 +42443,9 @@ BEGIN
 
     -- ── g · the attachment guard asks what removal changes: a 3-unit SIWES-titled elective beside the 6-unit Core SIWES course ──
     INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (rg, sg8, S, 2, 300, 'DRAFT');
+    -- V777 (made up for this run only): a confirmed SIWES payment for the student first, as the fee is paid before the course is registered
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, confirmed_by, channel, note, receipt_no)
+    VALUES (sg8, S, 'ZZP-SG8-V777', 'SIWES registration fee ' || S, 4000, now(), now(), now(), nullif(current_setting('moaum.actor_id', true), '')::uuid, 'Paystack', 'check V777 variant', 'RCT-ZZP-SG8-V777');
     INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (rg, catalogue.open_class('ZZP 341', S, 2, 'REGULAR'), 6, 'REGISTERED');
     lst := registration.siwes_course_list();
     m_g := 'units ' || coalesce(registration.siwes_units('C97788', 300, 2)::text, '-') || ' | attachmentFor '
@@ -42804,6 +42810,1497 @@ BEGIN
         format('decided %s | account %s | again %s | accounts %s', decided, acct, again, n_acct));
     PERFORM pg_temp.assert('V780: the account helper opens none for a record not made by TRANSFER, one closed or ended as a duplicate, one with an applicant''s account to carry over or an account already, nor for a number nobody holds; for a transfer student with none it opens one, once, as a first password',
         coalesce(guards = 'false:false:false:false:false:false | none 0 | have kept true | open true then false true:true', false), guards);
+END $$;
+-- ── V777, the money layer: a payment a SIWES course entry of an ORDINARY registration stands on is held by every money guard as one a
+--          SIWES registration (V752's, the SIWES semester) stands on. In 9904/9905 (planned) and 9903/9904 (closed), an unconfigured
+--          made-up programme (SIWES binds nobody: V503 stands for it), two SIWES courses (ZZW 301 First Semester, ZZW 302 Second
+--          Semester) and made-up students, each case a student of its own. A course entry stands when its row in
+--          registration.siwes_course_entry is on the payment and its entry is not dropped or withdrawn; each guard is asked while it
+--          stands and again once the entry is DROPPED (dropping the course frees the payment). The same questions are asked of a
+--          student whose registration stands on V752's registration.siwes_registration (the "_b" cases): its answers are V752's.
+--          (a) the refund desk: a refund raised on the payment (V752's refusal); a refund raised before the course was registered and
+--          approved on the desk (the desk's own refusal, under the lock) and approved bare on finance.refund (the trigger that undoes an
+--          approval); (b) the payment correction desk (REALLOC_LINKED); (c) the archive desk (PAR_LINKED); (d) the withdrawal of a record
+--          as never received (PAY_NOT_RECEIVED_SIWES_REGISTERED); (e) the old fees reset keeps such a payment and counts it kept, deletes
+--          the one whose entry was dropped; (f) finance.siwes_standing reads such a payment as registered, so finance.siwes_paid names it
+--          the one that settles the fee; (g) a payment set back to unconfirmed, or deleted, moves the standing entry to the payment
+--          that settles (and leaves a dropped entry's row where it was); (h) a record found never received at the bank's check
+--          (finance.siwes_stand_again) does the same; (i) the link's own shape. The block undoes its writes. ──
+DO $$
+DECLARE
+    S0 text := '9903/9904'; S text := '9904/9905'; who uuid := gen_random_uuid(); other uuid := gen_random_uuid(); dept text; fac text;
+    o1 uuid; o2 uuid; o1z uuid; o2z uuid; v_err text; t timestamptz;
+    st uuid; py uuid; rg uuid; rf text; k record; a1 uuid; b1 uuid; la uuid; lb uuid;
+    sg uuid; sh uuid; pay_g uuid; pay_h uuid; reg_g uuid; reg_h uuid;
+    m_prop text; m_prop_b text; m_real text; m_real_b text; m_arch text; m_arch_b text;
+    m_appr text; m_appr_b text; m_bare text; m_bare_b text; m_nr text; m_nr_b text; m_reset text;
+    m_ord text; m_ord_b text; m_pt text; m_pt_b text; m_pt_dropped text; m_del text; m_again text; m_shape text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check V777 money', true);
+    -- small makers and askers, made here and undone with the block
+    EXECUTE $f$ CREATE FUNCTION pg_temp.w_student(n int) RETURNS uuid LANGUAGE plpgsql AS $g$
+        DECLARE i uuid := gen_random_uuid();
+        BEGIN
+            INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+            VALUES (i, 'MOAUM/ADM/98/9777' || lpad(n::text, 2, '0'), 'MOAU/ZSW/98/77' || lpad(n::text, 2, '0'), 'ZZSIWES', 'W' || n, 'C97771', 'UTME', '9903/9904', 100, 300, 'ACTIVE', now());
+            RETURN i;
+        END $g$ $f$;
+    -- a registration of the student in a session with one entry placed, the registration approved
+    EXECUTE $f$ CREATE FUNCTION pg_temp.w_reg(stu uuid, sess text, sem int, off uuid, units int) RETURNS uuid LANGUAGE plpgsql AS $g$
+        DECLARE r uuid := gen_random_uuid();
+        BEGIN
+            INSERT INTO registration.course_registration (id, student_id, session, semester, level) VALUES (r, stu, sess, sem, 300);
+            INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (r, off, units, 'APPROVED');
+            UPDATE registration.course_registration SET status = 'APPROVED', approved_at = now(), approval_mode = 'HOD' WHERE id = r;
+            RETURN r;
+        END $g$ $f$;
+    -- a confirmed SIWES payment, the portal's or the old portal's, confirmed `ago` ago
+    EXECUTE $f$ CREATE FUNCTION pg_temp.w_pay(stu uuid, sess text, ref text, legacy boolean, ago interval DEFAULT '0') RETURNS uuid LANGUAGE plpgsql AS $g$
+        DECLARE p uuid; at timestamptz := now() - ago;
+        BEGIN
+            INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, confirmed_by, channel, note, receipt_no)
+            VALUES (stu, sess, ref, CASE WHEN legacy THEN 'SIWES (legacy) · semester 1' ELSE 'SIWES registration fee ' || sess END, 4000, at, at, at,
+                    nullif(current_setting('moaum.actor_id', true), '')::uuid, CASE WHEN legacy THEN 'Legacy' ELSE 'Paystack' END,
+                    CASE WHEN legacy THEN 'Imported from the old portal' ELSE 'check V777' END, 'RCT-' || ref) RETURNING id INTO p;
+            RETURN p;
+        END $g$ $f$;
+    -- the registration stands on the payment as a SIWES course entry of an ordinary registration ...
+    EXECUTE $f$ CREATE FUNCTION pg_temp.w_link(stu uuid, sess text, reg uuid, off uuid, code text, sem int, pay uuid, legacy boolean) RETURNS void LANGUAGE sql AS $g$
+        INSERT INTO registration.siwes_course_entry (student_id, session, course_registration_id, offering_id, course_code, level, semester, payment_reference_id, legacy_payment_id, registered_by, registered_office)
+        VALUES (stu, sess, reg, off, code, 300, sem, CASE WHEN NOT legacy THEN pay END, CASE WHEN legacy THEN pay END, nullif(current_setting('moaum.actor_id', true), '')::uuid, 'academic') $g$ $f$;
+    -- ... or as V752's SIWES registration (the SIWES semester: Second Semester, 300 Level)
+    EXECUTE $f$ CREATE FUNCTION pg_temp.w_sreg(stu uuid, sess text, reg uuid, off uuid, code text, pay uuid, legacy boolean) RETURNS void LANGUAGE sql AS $g$
+        INSERT INTO registration.siwes_registration (student_id, session, course_registration_id, offering_id, course_code, payment_reference_id, legacy_payment_id, registered_by, registered_office)
+        VALUES (stu, sess, reg, off, code, CASE WHEN NOT legacy THEN pay END, CASE WHEN legacy THEN pay END, nullif(current_setting('moaum.actor_id', true), '')::uuid, 'academic') $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.w_drop(reg uuid) RETURNS void LANGUAGE sql AS $g$ UPDATE registration.entry SET status = 'DROPPED' WHERE registration_id = reg $g$ $f$;
+    -- a call that may be refused: 'ok' or the refusal's message
+    EXECUTE $f$ CREATE FUNCTION pg_temp.w_try(q text) RETURNS text LANGUAGE plpgsql AS $g$
+        BEGIN EXECUTE q; RETURN 'ok'; EXCEPTION WHEN OTHERS THEN RETURN SQLERRM; END $g$ $f$;
+    -- which refusal, and from where (the refund desk's own, or the trigger that undoes an approval)
+    EXECUTE $f$ CREATE FUNCTION pg_temp.w_kind(msg text) RETURNS text LANGUAGE sql IMMUTABLE AS $g$
+        SELECT CASE WHEN msg = 'ok' THEN 'done'
+                    WHEN msg LIKE 'REFUND_SIWES_REGISTERED:%nothing is refunded on it%' THEN 'REFUND_SIWES_REGISTERED/desk'
+                    WHEN msg LIKE 'REFUND_SIWES_REGISTERED:%is not approved while%' THEN 'REFUND_SIWES_REGISTERED/trigger'
+                    ELSE left(msg, 120) END $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.w_propose(stu uuid, ref text) RETURNS text LANGUAGE sql AS $g$
+        SELECT pg_temp.w_kind(pg_temp.w_try(format('SELECT finance.propose_refund(%L, %L, %L, 4000, %L, %L, %L, %L)', stu, 'ZZSIWES', 'check V777', 'Bank', 'ZZSIWES', '1234', ref))) $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.w_approve(rf text) RETURNS text LANGUAGE sql AS $g$
+        SELECT pg_temp.w_kind(pg_temp.w_try(format('SELECT finance.approve_refund(%L)', (SELECT id FROM finance.refund WHERE reference = rf)))) $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.w_approve_bare(rf text, by uuid) RETURNS text LANGUAGE sql AS $g$
+        SELECT pg_temp.w_kind(pg_temp.w_try(format('UPDATE finance.refund SET state = ''APPROVED'', approved_by = %L, approved_at = now() WHERE reference = %L', by, rf))) $g$ $f$;
+    -- the SIWES refusals of the correction desk and the archive desk (the others they raise are not ours)
+    EXECUTE $f$ CREATE FUNCTION pg_temp.w_realloc(p uuid, sess text, sem int) RETURNS boolean LANGUAGE sql AS $g$
+        SELECT EXISTS (SELECT 1 FROM jsonb_array_elements_text(finance.payment_reallocation_check(p, 'SCHOOL_FEES', sess, sem) -> 'refusals') x
+                        WHERE x LIKE 'REALLOC_LINKED: the payment is the SIWES registration fee of a SIWES course that stands registered%') $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.w_arch(p uuid) RETURNS boolean LANGUAGE sql AS $g$
+        SELECT EXISTS (SELECT 1 FROM unnest(finance.payment_archive_refusals(p)) x
+                        WHERE x LIKE 'PAR_LINKED: the payment is the SIWES registration fee of a SIWES course that stands registered%') $g$ $f$;
+    -- the payment a registration stands on: the course entry's, or V752's SIWES registration's
+    EXECUTE $f$ CREATE FUNCTION pg_temp.w_link_on(reg uuid) RETURNS text LANGUAGE sql AS $g$
+        SELECT coalesce((SELECT r.reference FROM registration.siwes_course_entry x JOIN finance.payment_reference r ON r.id IN (x.payment_reference_id, x.legacy_payment_id)
+                          WHERE x.course_registration_id = reg), 'nowhere') $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.w_sreg_on(reg uuid) RETURNS text LANGUAGE sql AS $g$
+        SELECT coalesce((SELECT r.reference FROM registration.siwes_registration x JOIN finance.payment_reference r ON r.id IN (x.payment_reference_id, x.legacy_payment_id)
+                          WHERE x.course_registration_id = reg), 'nowhere') $g$ $f$;
+    -- the payment that settles the fee, and what each of the student's payments reads as
+    EXECUTE $f$ CREATE FUNCTION pg_temp.w_paid(stu uuid, sess text) RETURNS text LANGUAGE sql AS $g$
+        SELECT coalesce((SELECT p.reference FROM finance.siwes_paid(stu, sess) p), 'none') || ' [' ||
+               coalesce((SELECT string_agg(s.reference || ':' || s.registered, ',' ORDER BY s.reference) FROM finance.siwes_standing(stu, sess) s), '') || ']' $g$ $f$;
+
+    -- the sessions, an unconfigured programme, two SIWES courses (marked), their classes
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+        (gen_random_uuid(), S0, DATE '9903-10-01', DATE '9904-08-31', 'CLOSED'),
+        (gen_random_uuid(), S, DATE '9904-10-01', DATE '9905-08-31', 'PLANNED') ON CONFLICT (name) DO NOTHING;
+    SELECT p.dept_code, p.faculty_code INTO dept, fac FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT p.archived ORDER BY p.code LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years) VALUES
+        ('C97771', 'B.Sc. V777 Money Check', dept, fac, 'UNDER GRADUATE', 0, 400, 4);
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, industrial_training) VALUES
+        ('ZZW 301', 'Check V777 money first (a SIWES course)', 6, 1, 300, dept, 'Core', 'LIVE', true),
+        ('ZZW 302', 'Check V777 money second (a SIWES course)', 6, 2, 300, dept, 'Core', 'LIVE', true);
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('ZZW 301', 'C97771', 300, 'Core'), ('ZZW 302', 'C97771', 300, 'Core');
+    o1 := catalogue.open_class('ZZW 301', S, 1, 'REGULAR');   o2 := catalogue.open_class('ZZW 302', S, 2, 'REGULAR');
+    o1z := catalogue.open_class('ZZW 301', S0, 1, 'REGULAR'); o2z := catalogue.open_class('ZZW 302', S0, 2, 'REGULAR');
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+
+    -- (a) (b) (c) the refund desk raised, the correction desk and the archive desk. G: a course entry; H: V752's SIWES registration. Each
+    --     asked while the registration stands, then once its entry is dropped (a refund raised shows on the archive desk, so it is last)
+    sg := pg_temp.w_student(1); pay_g := pg_temp.w_pay(sg, S, 'ZZW-G', false); reg_g := pg_temp.w_reg(sg, S, 1, o1, 6);
+    PERFORM pg_temp.w_link(sg, S, reg_g, o1, 'ZZW 301', 1, pay_g, false);
+    sh := pg_temp.w_student(2); pay_h := pg_temp.w_pay(sh, S, 'ZZW-H', false); reg_h := pg_temp.w_reg(sh, S, 2, o2, 6);
+    PERFORM pg_temp.w_sreg(sh, S, reg_h, o2, 'ZZW 302', pay_h, false);
+    m_real := pg_temp.w_realloc(pay_g, S, 1)::text;           m_real_b := pg_temp.w_realloc(pay_h, S, 2)::text;
+    m_arch := pg_temp.w_arch(pay_g)::text;                    m_arch_b := pg_temp.w_arch(pay_h)::text;
+    m_prop := pg_temp.w_propose(sg, 'ZZW-G');                 m_prop_b := pg_temp.w_propose(sh, 'ZZW-H');
+    PERFORM pg_temp.w_drop(reg_g); PERFORM pg_temp.w_drop(reg_h);
+    m_real := m_real || ' | dropped ' || pg_temp.w_realloc(pay_g, S, 1);     m_real_b := m_real_b || ' | dropped ' || pg_temp.w_realloc(pay_h, S, 2);
+    m_arch := m_arch || ' | dropped ' || pg_temp.w_arch(pay_g);              m_arch_b := m_arch_b || ' | dropped ' || pg_temp.w_arch(pay_h);
+    m_prop := m_prop || ' | dropped ' || pg_temp.w_propose(sg, 'ZZW-G');     m_prop_b := m_prop_b || ' | dropped ' || pg_temp.w_propose(sh, 'ZZW-H');
+
+    -- (a2) a refund raised BEFORE the course was registered, then the course registered on the payment; approved on the desk (RA, RC:
+    --      approve_refund's own refusal) and written bare on finance.refund (RB, RD: the trigger that undoes an approval); then, the
+    --      entry dropped, approved. RA and RB: a course entry; RC and RD: V752's SIWES registration
+    FOR k IN SELECT * FROM (VALUES (3, 'ZZW-RA'), (4, 'ZZW-RB'), (5, 'ZZW-RC'), (6, 'ZZW-RD')) x(n, ref) LOOP
+        st := pg_temp.w_student(k.n); py := pg_temp.w_pay(st, S, k.ref, false);
+        rf := finance.propose_refund(st, 'ZZSIWES', 'check V777', 4000, 'Bank', 'ZZSIWES', '1234', k.ref);
+        IF k.n IN (3, 4) THEN
+            rg := pg_temp.w_reg(st, S, 1, o1, 6); PERFORM pg_temp.w_link(st, S, rg, o1, 'ZZW 301', 1, py, false);
+        ELSE
+            rg := pg_temp.w_reg(st, S, 2, o2, 6); PERFORM pg_temp.w_sreg(st, S, rg, o2, 'ZZW 302', py, false);
+        END IF;
+        PERFORM set_config('moaum.actor_id', other::text, true);   -- the approver is not the one who raised it
+        IF k.n IN (3, 5) THEN
+            IF k.n = 3 THEN m_appr := pg_temp.w_approve(rf); ELSE m_appr_b := pg_temp.w_approve(rf); END IF;
+            PERFORM pg_temp.w_drop(rg);
+            IF k.n = 3 THEN m_appr := m_appr || ' | dropped ' || pg_temp.w_approve(rf); ELSE m_appr_b := m_appr_b || ' | dropped ' || pg_temp.w_approve(rf); END IF;
+        ELSE
+            IF k.n = 4 THEN m_bare := pg_temp.w_approve_bare(rf, other); ELSE m_bare_b := pg_temp.w_approve_bare(rf, other); END IF;
+            PERFORM pg_temp.w_drop(rg);
+            IF k.n = 4 THEN m_bare := m_bare || ' | dropped ' || pg_temp.w_approve_bare(rf, other); ELSE m_bare_b := m_bare_b || ' | dropped ' || pg_temp.w_approve_bare(rf, other); END IF;
+        END IF;
+        PERFORM set_config('moaum.actor_id', who::text, true);
+    END LOOP;
+
+    -- (d) the withdrawal of a record as never received: an old-portal record, the student holding no other
+    st := pg_temp.w_student(7); py := pg_temp.w_pay(st, S, 'MOAUM-LEG-ZZW-N1', true); rg := pg_temp.w_reg(st, S, 1, o1, 6);
+    PERFORM pg_temp.w_link(st, S, rg, o1, 'ZZW 301', 1, py, true);
+    m_nr := coalesce(finance.not_received_refusal(py), 'none'); PERFORM pg_temp.w_drop(rg);
+    m_nr := m_nr || ' | dropped ' || coalesce(finance.not_received_refusal(py), 'none');
+    st := pg_temp.w_student(8); py := pg_temp.w_pay(st, S, 'MOAUM-LEG-ZZW-N2', true); rg := pg_temp.w_reg(st, S, 2, o2, 6);
+    PERFORM pg_temp.w_sreg(st, S, rg, o2, 'ZZW 302', py, true);
+    m_nr_b := coalesce(finance.not_received_refusal(py), 'none'); PERFORM pg_temp.w_drop(rg);
+    m_nr_b := m_nr_b || ' | dropped ' || coalesce(finance.not_received_refusal(py), 'none');
+
+    -- (e) the old fees reset of 9903/9904: L1 a course entry stands on, L2 one whose entry was dropped, L3 none, L4 V752's SIWES registration
+    st := pg_temp.w_student(9);  py := pg_temp.w_pay(st, S0, 'MOAUM-LEG-ZZW-L1', true); rg := pg_temp.w_reg(st, S0, 1, o1z, 6);
+    PERFORM pg_temp.w_link(st, S0, rg, o1z, 'ZZW 301', 1, py, true);
+    st := pg_temp.w_student(10); py := pg_temp.w_pay(st, S0, 'MOAUM-LEG-ZZW-L2', true); rg := pg_temp.w_reg(st, S0, 1, o1z, 6);
+    PERFORM pg_temp.w_link(st, S0, rg, o1z, 'ZZW 301', 1, py, true); PERFORM pg_temp.w_drop(rg);
+    st := pg_temp.w_student(11); py := pg_temp.w_pay(st, S0, 'MOAUM-LEG-ZZW-L3', true);
+    st := pg_temp.w_student(12); py := pg_temp.w_pay(st, S0, 'MOAUM-LEG-ZZW-L4', true); rg := pg_temp.w_reg(st, S0, 2, o2z, 6);
+    PERFORM pg_temp.w_sreg(st, S0, rg, o2z, 'ZZW 302', py, true);
+    SELECT * INTO k FROM finance.reset_legacy_payments(S0, 'RESET', 5000);
+    m_reset := 'deleted ' || k.deleted || ' kept ' || k.kept_in_use || ' left ' || k.remaining || ' | on record '
+               || coalesce((SELECT string_agg(regexp_replace(r.reference, '^MOAUM-LEG-ZZW-', ''), ',' ORDER BY r.reference)
+                              FROM finance.payment_reference r WHERE r.session = S0 AND r.reference LIKE 'MOAUM-LEG-ZZW-L%'), 'none');
+
+    -- (f) a payment a registration stands on settles the fee, though another was confirmed before it (the second is a credit)
+    st := pg_temp.w_student(13); PERFORM pg_temp.w_pay(st, S, 'ZZW-O1', false, interval '2 days'); py := pg_temp.w_pay(st, S, 'ZZW-O2', false, interval '1 day');
+    rg := pg_temp.w_reg(st, S, 1, o1, 6); PERFORM pg_temp.w_link(st, S, rg, o1, 'ZZW 301', 1, py, false);
+    m_ord := pg_temp.w_paid(st, S); PERFORM pg_temp.w_drop(rg); m_ord := m_ord || ' | dropped ' || pg_temp.w_paid(st, S);
+    st := pg_temp.w_student(14); PERFORM pg_temp.w_pay(st, S, 'ZZW-P1', false, interval '2 days'); py := pg_temp.w_pay(st, S, 'ZZW-P2', false, interval '1 day');
+    rg := pg_temp.w_reg(st, S, 2, o2, 6); PERFORM pg_temp.w_sreg(st, S, rg, o2, 'ZZW 302', py, false);
+    m_ord_b := pg_temp.w_paid(st, S); PERFORM pg_temp.w_drop(rg); m_ord_b := m_ord_b || ' | dropped ' || pg_temp.w_paid(st, S);
+
+    -- (g) the payment the entry stands on set back to unconfirmed: another payment settles, and the entry follows it (the portal's payment
+    --     to the old portal's: the columns change); a dropped entry's row is left; a payment deleted
+    st := pg_temp.w_student(15); a1 := pg_temp.w_pay(st, S, 'ZZW-PA1', false, interval '2 days'); b1 := pg_temp.w_pay(st, S, 'MOAUM-LEG-ZZW-PA2', true, interval '1 day');
+    rg := pg_temp.w_reg(st, S, 1, o1, 6); PERFORM pg_temp.w_link(st, S, rg, o1, 'ZZW 301', 1, a1, false);
+    UPDATE finance.payment_reference SET confirmed_at = NULL WHERE id = a1;
+    m_pt := 'entry on ' || pg_temp.w_link_on(rg)
+            || ' | portal ' || (SELECT (payment_reference_id IS NOT NULL) FROM registration.siwes_course_entry WHERE course_registration_id = rg)
+            || ' old ' || (SELECT (legacy_payment_id IS NOT NULL) FROM registration.siwes_course_entry WHERE course_registration_id = rg)
+            || ' | credit ' || (SELECT c.state || '/' || coalesce(c.settled_kind, '-') FROM finance.siwes_credit c WHERE c.reference_id = b1)
+            || ' | stands A ' || finance.siwes_stands_on(a1) || ' B ' || finance.siwes_stands_on(b1) || ' | paid ' || pg_temp.w_paid(st, S);
+    st := pg_temp.w_student(16); a1 := pg_temp.w_pay(st, S, 'ZZW-QA1', false, interval '2 days'); b1 := pg_temp.w_pay(st, S, 'MOAUM-LEG-ZZW-QA2', true, interval '1 day');
+    rg := pg_temp.w_reg(st, S, 2, o2, 6); PERFORM pg_temp.w_sreg(st, S, rg, o2, 'ZZW 302', a1, false);
+    UPDATE finance.payment_reference SET confirmed_at = NULL WHERE id = a1;
+    m_pt_b := 'entry on ' || pg_temp.w_sreg_on(rg)
+              || ' | credit ' || (SELECT c.state || '/' || coalesce(c.settled_kind, '-') FROM finance.siwes_credit c WHERE c.reference_id = b1)
+              || ' | stands A ' || finance.siwes_stands_on(a1) || ' B ' || finance.siwes_stands_on(b1) || ' | paid ' || pg_temp.w_paid(st, S);
+    st := pg_temp.w_student(17); a1 := pg_temp.w_pay(st, S, 'ZZW-RA1', false, interval '2 days'); b1 := pg_temp.w_pay(st, S, 'MOAUM-LEG-ZZW-RA2', true, interval '1 day');
+    rg := pg_temp.w_reg(st, S, 1, o1, 6); PERFORM pg_temp.w_link(st, S, rg, o1, 'ZZW 301', 1, a1, false); PERFORM pg_temp.w_drop(rg);
+    UPDATE finance.payment_reference SET confirmed_at = NULL WHERE id = a1;
+    m_pt_dropped := 'entry on ' || pg_temp.w_link_on(rg) || ' | paid ' || pg_temp.w_paid(st, S);
+    st := pg_temp.w_student(18); a1 := pg_temp.w_pay(st, S, 'ZZW-SA1', false, interval '2 days'); b1 := pg_temp.w_pay(st, S, 'MOAUM-LEG-ZZW-SA2', true, interval '1 day');
+    rg := pg_temp.w_reg(st, S, 1, o1, 6); PERFORM pg_temp.w_link(st, S, rg, o1, 'ZZW 301', 1, a1, false);
+    m_del := pg_temp.w_try(format('DELETE FROM finance.payment_reference WHERE id = %L', a1));
+    m_del := m_del || ' | entry on ' || pg_temp.w_link_on(rg) || ' | paid ' || pg_temp.w_paid(st, S);
+
+    -- (h) the Bursary's bank check finds the record the entry stands on never received (finance.siwes_stand_again): the other of the
+    --     day, an open credit, settles, and the entry follows it
+    t := (current_date - 25)::timestamp AT TIME ZONE 'Africa/Lagos';
+    st := pg_temp.w_student(19);
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, confirmed_by, channel, note, receipt_no)
+    VALUES (st, S, 'MOAUM-LEG-ZZW-KA', 'SIWES (legacy) · semester 1', 4000, t, t, t, who, 'Legacy', 'Imported from the old portal', 'LEG-KA') RETURNING id INTO la;
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, confirmed_by, channel, note, receipt_no)
+    VALUES (st, S, 'MOAUM-LEG-ZZW-KB', 'SIWES (legacy) · semester 1', 4000, t, t, t, who, 'Legacy', 'Imported from the old portal', 'LEG-KB') RETURNING id INTO lb;
+    INSERT INTO finance.legacy_payref (payref, reference, amount) VALUES ('PAYZZWKA', 'MOAUM-LEG-ZZW-KA', 4000), ('PAYZZWKB', 'MOAUM-LEG-ZZW-KB', 4000);
+    rg := pg_temp.w_reg(st, S, 1, o1, 6); PERFORM pg_temp.w_link(st, S, rg, o1, 'ZZW 301', 1, la, true);
+    m_again := 'before ' || pg_temp.w_paid(st, S) || ' on ' || pg_temp.w_link_on(rg);
+    PERFORM finance.check_double_charge(st, S, 'SIWES (legacy) · semester 1', (t AT TIME ZONE 'Africa/Lagos')::date, 4000, 'NOT_RECEIVED',
+                                        'check V777: the bank statement', NULL, ARRAY['MOAUM-LEG-ZZW-KA']);
+    m_again := m_again || ' | after ' || pg_temp.w_paid(st, S) || ' on ' || pg_temp.w_link_on(rg)
+               || ' | credit ' || (SELECT c.state || '/' || coalesce(c.settled_kind, '-') FROM finance.siwes_credit c WHERE c.reference_id = lb);
+
+    -- (i) the link's own shape: exactly one payment, one row for each entry, a semester of the year, no keys, audited, granted as V752's
+    m_shape := 'none ' || left(pg_temp.w_try(format('INSERT INTO registration.siwes_course_entry (student_id, session, course_registration_id, offering_id, course_code, level, semester)
+                                                     VALUES (%L, %L, %L, %L, ''ZZW 301'', 300, 1)', sg, S, gen_random_uuid(), o1)), 120)
+               || ' | both ' || left(pg_temp.w_try(format('INSERT INTO registration.siwes_course_entry (student_id, session, course_registration_id, offering_id, course_code, level, semester, payment_reference_id, legacy_payment_id)
+                                                          VALUES (%L, %L, %L, %L, ''ZZW 301'', 300, 1, %L, %L)', sg, S, gen_random_uuid(), o1, pay_g, pay_g)), 120)
+               || ' | semester ' || left(pg_temp.w_try(format('INSERT INTO registration.siwes_course_entry (student_id, session, course_registration_id, offering_id, course_code, level, semester, payment_reference_id)
+                                                              VALUES (%L, %L, %L, %L, ''ZZW 301'', 300, 4, %L)', sg, S, gen_random_uuid(), o1, pay_g)), 120)
+               || ' | twice ' || left(pg_temp.w_try(format('INSERT INTO registration.siwes_course_entry (student_id, session, course_registration_id, offering_id, course_code, level, semester, payment_reference_id)
+                                                           VALUES (%L, %L, %L, %L, ''ZZW 301'', 300, 1, %L)', sg, S, reg_g, o1, pay_g)), 120)
+               || ' | keys ' || (SELECT count(*) FROM pg_constraint WHERE conrelid = 'registration.siwes_course_entry'::regclass AND contype = 'f')
+               || ' | audited ' || EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid = 'registration.siwes_course_entry'::regclass AND NOT tgisinternal AND tgfoid = 'audit.record'::regproc)
+               || ' | granted as V752''s ' || ((SELECT relacl::text FROM pg_class WHERE oid = 'registration.siwes_course_entry'::regclass)
+                                               = (SELECT relacl::text FROM pg_class WHERE oid = 'registration.siwes_registration'::regclass))
+               || ' | none stands on ' || finance.siwes_stands_on(NULL) || '/' || finance.siwes_stands_on(gen_random_uuid())
+               || ' | marked index ' || (to_regclass('catalogue.ix_course_siwes_marked') IS NOT NULL);
+
+    RAISE EXCEPTION 'check V777 money undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'check V777 money undoes its writes' THEN RAISE; END IF;
+  END;
+
+  -- the answers (made inside the block, asserted outside it)
+  PERFORM pg_temp.assert('V777 money (a1): the refund desk refuses a refund of a payment a SIWES course entry stands on (REFUND_SIWES_REGISTERED), raises it once the course is dropped',
+      coalesce(m_prop = 'REFUND_SIWES_REGISTERED/desk | dropped done', false), m_prop);
+  PERFORM pg_temp.assert('V777 money (a1b): the same for the payment V752''s SIWES registration stands on (unchanged)',
+      coalesce(m_prop_b = 'REFUND_SIWES_REGISTERED/desk | dropped done', false), m_prop_b);
+  PERFORM pg_temp.assert('V777 money (a2): a refund raised before the course was registered is refused at its approval on the desk while a SIWES course entry stands on the payment (the desk''s own refusal), approved once it is dropped',
+      coalesce(m_appr = 'REFUND_SIWES_REGISTERED/desk | dropped done', false), m_appr);
+  PERFORM pg_temp.assert('V777 money (a2b): the same for V752''s SIWES registration (unchanged)',
+      coalesce(m_appr_b = 'REFUND_SIWES_REGISTERED/desk | dropped done', false), m_appr_b);
+  PERFORM pg_temp.assert('V777 money (a3): an approval written bare on finance.refund is undone by the trigger while a SIWES course entry stands on the payment (REFUND_SIWES_REGISTERED), accepted once it is dropped',
+      coalesce(m_bare = 'REFUND_SIWES_REGISTERED/trigger | dropped done', false), m_bare);
+  PERFORM pg_temp.assert('V777 money (a3b): the same for V752''s SIWES registration (unchanged)',
+      coalesce(m_bare_b = 'REFUND_SIWES_REGISTERED/trigger | dropped done', false), m_bare_b);
+  PERFORM pg_temp.assert('V777 money (b): the payment correction desk does not move a payment a SIWES course entry stands on (REALLOC_LINKED), moves it once the course is dropped',
+      coalesce(m_real = 'true | dropped false', false), m_real);
+  PERFORM pg_temp.assert('V777 money (b2): the same for V752''s SIWES registration (unchanged)',
+      coalesce(m_real_b = 'true | dropped false', false), m_real_b);
+  PERFORM pg_temp.assert('V777 money (c): the archive desk does not archive a payment a SIWES course entry stands on (PAR_LINKED), archives it once the course is dropped',
+      coalesce(m_arch = 'true | dropped false', false), m_arch);
+  PERFORM pg_temp.assert('V777 money (c2): the same for V752''s SIWES registration (unchanged)',
+      coalesce(m_arch_b = 'true | dropped false', false), m_arch_b);
+  PERFORM pg_temp.assert('V777 money (d): a record a SIWES course entry stands on, the student holding no other, is not withdrawn as never received (PAY_NOT_RECEIVED_SIWES_REGISTERED), is once the course is dropped',
+      coalesce(m_nr = 'PAY_NOT_RECEIVED_SIWES_REGISTERED | dropped none', false), m_nr);
+  PERFORM pg_temp.assert('V777 money (d2): the same for V752''s SIWES registration (unchanged)',
+      coalesce(m_nr_b = 'PAY_NOT_RECEIVED_SIWES_REGISTERED | dropped none', false), m_nr_b);
+  PERFORM pg_temp.assert('V777 money (e): the old fees reset keeps an old-portal payment a SIWES course entry stands on and counts it kept (as V752''s SIWES registration''s: L4), deletes the one whose entry was dropped and the one nothing points at',
+      coalesce(m_reset = 'deleted 2 kept 2 left 0 | on record L1,L4', false), m_reset);
+  PERFORM pg_temp.assert('V777 money (f): a payment a SIWES course entry stands on reads as registered and is the one that settles the fee though another was confirmed before it; the other once the course is dropped',
+      coalesce(m_ord = 'ZZW-O2 [ZZW-O1:false,ZZW-O2:true] | dropped ZZW-O1 [ZZW-O1:false,ZZW-O2:false]', false), m_ord);
+  PERFORM pg_temp.assert('V777 money (f2): the same for V752''s SIWES registration (unchanged)',
+      coalesce(m_ord_b = 'ZZW-P2 [ZZW-P1:false,ZZW-P2:true] | dropped ZZW-P1 [ZZW-P1:false,ZZW-P2:false]', false), m_ord_b);
+  PERFORM pg_temp.assert('V777 money (g): the payment a SIWES course entry stands on set back to unconfirmed: the credit settles, the entry follows it (the portal''s payment to the old portal''s)',
+      coalesce(m_pt = 'entry on MOAUM-LEG-ZZW-PA2 | portal false old true | credit APPLIED/SETTLES | stands A false B true | paid MOAUM-LEG-ZZW-PA2 [MOAUM-LEG-ZZW-PA2:true]', false), m_pt);
+  PERFORM pg_temp.assert('V777 money (g2): the same for V752''s SIWES registration (unchanged)',
+      coalesce(m_pt_b = 'entry on MOAUM-LEG-ZZW-QA2 | credit APPLIED/SETTLES | stands A false B true | paid MOAUM-LEG-ZZW-QA2 [MOAUM-LEG-ZZW-QA2:true]', false), m_pt_b);
+  PERFORM pg_temp.assert('V777 money (g3): a dropped entry''s row is left where it was when its payment is set back',
+      coalesce(m_pt_dropped = 'entry on ZZW-RA1 | paid MOAUM-LEG-ZZW-RA2 [MOAUM-LEG-ZZW-RA2:false]', false), m_pt_dropped);
+  PERFORM pg_temp.assert('V777 money (g4): a payment deleted: the entry standing on it follows the payment that settles (the link has no key to go with it)',
+      coalesce(m_del = 'ok | entry on MOAUM-LEG-ZZW-SA2 | paid MOAUM-LEG-ZZW-SA2 [MOAUM-LEG-ZZW-SA2:true]', false), m_del);
+  PERFORM pg_temp.assert('V777 money (h): a record a SIWES course entry stands on found never received at the bank''s check: the other of the day settles and the entry follows it',
+      coalesce(m_again = 'before MOAUM-LEG-ZZW-KA [MOAUM-LEG-ZZW-KA:true,MOAUM-LEG-ZZW-KB:false] on MOAUM-LEG-ZZW-KA | after MOAUM-LEG-ZZW-KB [MOAUM-LEG-ZZW-KB:true] on MOAUM-LEG-ZZW-KB | credit APPLIED/SETTLES', false), m_again);
+  PERFORM pg_temp.assert('V777 money (i): the link is exactly one payment, one row for each entry, a semester of the year, with no keys, audited, granted as V752''s siwes_registration, and a payment nothing stands on stands for none',
+      coalesce(m_shape LIKE 'none %ck_siwes_course_entry_paid% | both %ck_siwes_course_entry_paid% | semester %siwes_course_entry_semester_check% | twice %uq_siwes_course_entry% | keys 0 | audited true | granted as V752''s true | none stands on false/false | marked index true', false), m_shape);
+END $$;
+-- ── V777, the gate and the pay chain: every SIWES course (catalogue.course.industrial_training, not ended) carries the SIWES registration fee,
+--          paid once for the session and before the course is placed on a registration, whatever the programme, level or semester. In
+--          9915/9916 (current; 9914/9915 closed before it, 9916/9917 planned after it), made-up programmes: GA (a SIWES course alone in the
+--          First Semester at 300: V503's attachment), GB (one beside required courses in the Second Semester at 300), GC (at 400), GD (one in
+--          each semester of 300 Level), GE (a SIWES elective), GF (the SIWES semester V752 binds: configured, the period open), GG (none), GP
+--          (postgraduate); a student for each case. (P1) an unpaid SIWES course is refused SIWES_UNPAID in the current session, never in a
+--          closed or a planned one, a plain course never; (P2) the portal's payment accepts it and the entry stands on that payment; (P3) the
+--          old portal's payment of either semester does the same; (P4) not judged again: an approval, a class moved, a proposal that finds its
+--          entry, the old portal's override; judged: a dropped entry coming back; (P5) one payment covers both semesters, the second reference
+--          is refused, a second payment is a credit; (P6) a payment of another session settles nothing; (P7) the fee not published refuses
+--          SIWES_FEE_NOT_SET until it is; (P8) a student whose programme carries none (or whose course has been passed) cannot pay, cannot draw
+--          a reference, is refused SIWES_NOT_IN_REACH unpaid and accepted paid, and a course ended is not charged; (P9) CCE, postgraduate and
+--          not in study never judged; (P10) the draft is made without an unpaid SIWES carry-over and with a paid one, a spillover student's
+--          carry-over is judged; (P11) the gate names every unpaid SIWES course of a list; (D2) a student holding a SIWES entry from before the
+--          rule is in reach, may pay, is listed for the Bursary and is not refused when an approval touches the entry; (P15) the lock is taken
+--          before the payment is read; (P17) the menu item; the SIWES semester V752 binds is untouched: no course entry is written for it, its
+--          unpaid course is refused in V752's words, its page reads SEMESTER, and the register door is shut to a student SIWES does not bind.
+--          The block undoes its writes. ──
+DO $$
+DECLARE
+    v_s0 text := '9914/9915'; v_s text := '9915/9916'; v_s2 text := '9916/9917'; who uuid := gen_random_uuid(); dept text; fac text;
+    v_pa text := 'C97791'; v_pb text := 'C97792'; v_pc text := 'C97793'; v_pd text := 'C97794'; v_pe text := 'C97795'; v_pf text := 'C97796'; v_pg text := 'C97797'; v_pp text := 'C97798';
+    o_301 uuid; o_302 uuid; o_305 uuid; o_311 uuid; o_312 uuid; o_321 uuid; o_332 uuid; o_301z uuid; o_301n uuid; o_301c uuid; o_702p uuid;
+    v_err text; j jsonb; t text; t2 text;
+    u_unpaid uuid; u_portal uuid; u_legacy2 uuid; u_legacy1 uuid; u_held uuid; u_moved uuid; u_dropped uuid; u_override uuid; u_both uuid; u_other uuid;
+    u_nofee uuid; u_nofee_paid uuid; u_none uuid; u_ended uuid; u_passed uuid; u_cce uuid; u_pg uuid; u_out uuid; u_carry uuid; u_carry_paid uuid; u_spill uuid;
+    u_held400 uuid; u_plain400 uuid; u_list uuid; u_bound uuid; u_bound2 uuid; u_bound_paid uuid; u_area uuid; u_choose uuid;
+    r1 uuid; r2 uuid; r3 uuid; r6 uuid;
+    y1 uuid; y2 uuid; y3 uuid; y4 uuid; y5 uuid; y6 uuid;
+    a1 text; a2 text; a3 text; a4 text; a5 text; a6 text; a7 text; a8 text; a9 text; a10 text; a11 text; a12 text; a13 text; a14 text; a15 text; a16 text; a17 text; a18 text;
+    a19 text; a20 text; a21 text; a22 text; a23 text; a24 text; a25 text; a26 text; a27 text; a28 text; a29 text; a30 text; a31 text; a32 text; a33 text; a34 text; a35 text;
+    a36 text; a37 text; a38 text; a39 text; a40 text; a41 text; a42 text; a43 text; a44 text; a45 text; a46 text; a47 text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check V777 gate', true);
+    -- small makers and askers, made here and undone with the block
+    EXECUTE $f$ CREATE FUNCTION pg_temp.g_student(n int, prog text, lvl int, mode text DEFAULT 'UTME', st text DEFAULT 'ACTIVE') RETURNS uuid LANGUAGE plpgsql AS $g$
+        DECLARE i uuid := gen_random_uuid();
+        BEGIN
+            INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at, study_mode)
+            VALUES (i, 'MOAUM/ADM/97/9779' || lpad(n::text, 2, '0'), 'MOAU/ZSG/97/79' || lpad(n::text, 2, '0'), 'ZZGATE', 'G' || n, prog, mode, '9914/9915', 100, lvl, st, now(),
+                    CASE WHEN mode = 'CCE' THEN 'PART_TIME' ELSE 'FULL_TIME' END);
+            RETURN i;
+        END $g$ $f$;
+    -- a registration of the student in a session and semester
+    EXECUTE $f$ CREATE FUNCTION pg_temp.g_reg(stu uuid, sess text, sem int, lvl int) RETURNS uuid LANGUAGE plpgsql AS $g$
+        DECLARE r uuid := gen_random_uuid();
+        BEGIN
+            INSERT INTO registration.course_registration (id, student_id, session, semester, level) VALUES (r, stu, sess, sem, lvl);
+            RETURN r;
+        END $g$ $f$;
+    -- a confirmed SIWES payment, the portal's or the old portal's (semester 1 or 2)
+    EXECUTE $f$ CREATE FUNCTION pg_temp.g_pay(stu uuid, sess text, ref text, legacy int DEFAULT 0) RETURNS uuid LANGUAGE plpgsql AS $g$
+        DECLARE p uuid;
+        BEGIN
+            INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, confirmed_by, channel, note, receipt_no)
+            VALUES (stu, sess, ref, CASE WHEN legacy > 0 THEN 'SIWES (legacy) · semester ' || legacy ELSE 'SIWES registration fee ' || sess END, 4000, now(), now(), now(),
+                    nullif(current_setting('moaum.actor_id', true), '')::uuid, CASE WHEN legacy > 0 THEN 'Legacy' ELSE 'Paystack' END,
+                    CASE WHEN legacy > 0 THEN 'Imported from the old portal' ELSE 'check V777 gate' END, 'RCT-' || ref) RETURNING id INTO p;
+            RETURN p;
+        END $g$ $f$;
+    -- an entry placed on a registration: 'ok' or the refusal's code (the first word of its message); a proposal is an insert that finds its entry
+    EXECUTE $f$ CREATE FUNCTION pg_temp.g_put(reg uuid, off uuid, units int DEFAULT 3, st text DEFAULT 'REGISTERED', proposal boolean DEFAULT false) RETURNS text LANGUAGE plpgsql AS $g$
+        BEGIN
+            IF proposal THEN INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (reg, off, units, st) ON CONFLICT (registration_id, offering_id) DO NOTHING;
+            ELSE INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (reg, off, units, st); END IF;
+            RETURN 'ok';
+        EXCEPTION WHEN check_violation THEN RETURN split_part(SQLERRM, ':', 1); END $g$ $f$;
+    -- the same under the old portal's override (a loader's)
+    EXECUTE $f$ CREATE FUNCTION pg_temp.g_put_override(reg uuid, off uuid, units int DEFAULT 3, proposal boolean DEFAULT false) RETURNS text LANGUAGE plpgsql AS $g$
+        DECLARE r text;
+        BEGIN PERFORM set_config('moaum.siwes_override', 'on', true); r := pg_temp.g_put(reg, off, units, 'REGISTERED', proposal); PERFORM set_config('moaum.siwes_override', 'off', true); RETURN r; END $g$ $f$;
+    -- a statement that may be refused: 'ok' or the code of its refusal; and its message, whole
+    EXECUTE $f$ CREATE FUNCTION pg_temp.g_try(q text) RETURNS text LANGUAGE plpgsql AS $g$
+        BEGIN EXECUTE q; RETURN 'ok'; EXCEPTION WHEN OTHERS THEN RETURN split_part(SQLERRM, ':', 1); END $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.g_msg(q text) RETURNS text LANGUAGE plpgsql AS $g$
+        BEGIN EXECUTE q; RETURN 'ok'; EXCEPTION WHEN OTHERS THEN RETURN SQLERRM; END $g$ $f$;
+    -- what the entry of a registration stands on: the payment's reference, or 'nowhere'; its status; the student's course entries
+    EXECUTE $f$ CREATE FUNCTION pg_temp.g_on(reg uuid, off uuid) RETURNS text LANGUAGE sql AS $g$
+        SELECT coalesce((SELECT r.reference FROM registration.siwes_course_entry x JOIN finance.payment_reference r ON r.id IN (x.payment_reference_id, x.legacy_payment_id)
+                          WHERE x.course_registration_id = reg AND x.offering_id = off), 'nowhere') $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.g_status(reg uuid, off uuid) RETURNS text LANGUAGE sql AS $g$
+        SELECT coalesce((SELECT e.status FROM registration.entry e WHERE e.registration_id = reg AND e.offering_id = off), 'none') $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.g_links(stu uuid) RETURNS int LANGUAGE sql AS $g$ SELECT count(*)::int FROM registration.siwes_course_entry WHERE student_id = stu $g$ $f$;
+    -- the actor a student's own call, or an office's, runs as
+    EXECUTE $f$ CREATE FUNCTION pg_temp.g_as(office text, who uuid) RETURNS void LANGUAGE sql AS $g$
+        SELECT set_config('moaum.actor_office', office, true), set_config('moaum.actor_id', who::text, true) $g$ $f$;
+
+    -- the sessions: 9915/9916 current, the one before it closed, the one after it planned
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+        (gen_random_uuid(), v_s0, DATE '9914-10-01', DATE '9915-08-31', 'CLOSED'),
+        (gen_random_uuid(), v_s, DATE '9915-10-01', DATE '9916-08-31', 'PLANNED'),
+        (gen_random_uuid(), v_s2, DATE '9916-10-01', DATE '9917-08-31', 'PLANNED') ON CONFLICT (name) DO NOTHING;
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/9916/777' WHERE name = v_s;
+    SELECT p.dept_code, p.faculty_code INTO dept, fac FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT p.archived ORDER BY p.code LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years) VALUES
+        (v_pa, 'B.Sc. V777 Gate A (attachment, First Semester)', dept, fac, 'UNDER GRADUATE', 0, 400, 4),
+        (v_pb, 'B.Sc. V777 Gate B (beside required courses)', dept, fac, 'UNDER GRADUATE', 0, 400, 4),
+        (v_pc, 'B.Sc. V777 Gate C (400 Level)', dept, fac, 'UNDER GRADUATE', 0, 400, 4),
+        (v_pd, 'B.Sc. V777 Gate D (both semesters)', dept, fac, 'UNDER GRADUATE', 0, 400, 4),
+        (v_pe, 'B.Sc. V777 Gate E (elective)', dept, fac, 'UNDER GRADUATE', 0, 400, 4),
+        (v_pf, 'B.Sc. V777 Gate F (bound)', dept, fac, 'UNDER GRADUATE', 0, 400, 4),
+        (v_pg, 'B.Sc. V777 Gate G (none)', dept, fac, 'UNDER GRADUATE', 0, 400, 4),
+        (v_pp, 'M.Sc. V777 Gate P', dept, fac, 'POST GRADUATE', 0, 900, 2);
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, industrial_training) VALUES
+        ('ZZG 301', 'Gate V777 SIWES first semester (attachment)', 6, 1, 300, dept, 'Core', 'LIVE', true),
+        ('ZZG 305', 'Gate V777 plain first semester', 3, 1, 300, dept, 'Core', 'LIVE', false),
+        ('ZZG 302', 'Gate V777 SIWES second semester', 3, 2, 300, dept, 'Core', 'LIVE', true),
+        ('ZZG 303', 'Gate V777 plain second semester', 3, 2, 300, dept, 'Core', 'LIVE', false),
+        ('ZZG 304', 'Gate V777 plain first semester required', 3, 1, 300, dept, 'Core', 'LIVE', false),
+        ('ZZG 402', 'Gate V777 SIWES at 400 Level', 6, 2, 400, dept, 'Core', 'LIVE', true),
+        ('ZZG 401', 'Gate V777 plain at 400 Level', 3, 1, 400, dept, 'Core', 'LIVE', false),
+        ('ZZG 311', 'Gate V777 SIWES one', 3, 1, 300, dept, 'Core', 'LIVE', true),
+        ('ZZG 312', 'Gate V777 SIWES two', 3, 2, 300, dept, 'Core', 'LIVE', true),
+        ('ZZG 321', 'Gate V777 SIWES elective', 3, 1, 300, dept, 'Elective', 'LIVE', true),
+        ('ZZG 332', 'Gate V777 SIWES of the bound programme', 6, 2, 300, dept, 'Core', 'LIVE', true),
+        ('ZZG 351', 'Gate V777 plain of the programme with none', 3, 1, 300, dept, 'Core', 'LIVE', false),
+        ('ZZG 702', 'Gate V777 SIWES postgraduate', 3, 2, 700, dept, 'Core', 'LIVE', true);
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES
+        ('ZZG 301', v_pa, 300, 'Core'), ('ZZG 305', v_pa, 300, 'Elective'),
+        ('ZZG 302', v_pb, 300, 'Core'), ('ZZG 303', v_pb, 300, 'Core'), ('ZZG 304', v_pb, 300, 'Core'),
+        ('ZZG 402', v_pc, 400, 'Core'), ('ZZG 401', v_pc, 400, 'Core'),
+        ('ZZG 311', v_pd, 300, 'Core'), ('ZZG 312', v_pd, 300, 'Core'),
+        ('ZZG 321', v_pe, 300, 'Elective'), ('ZZG 305', v_pe, 300, 'Core'),
+        ('ZZG 332', v_pf, 300, 'Core'),
+        ('ZZG 351', v_pg, 300, 'Core'),
+        ('ZZG 702', v_pp, 700, 'Core');
+    o_301 := catalogue.open_class('ZZG 301', v_s, 1, 'REGULAR');  o_305 := catalogue.open_class('ZZG 305', v_s, 1, 'REGULAR');
+    o_302 := catalogue.open_class('ZZG 302', v_s, 2, 'REGULAR');
+    o_311 := catalogue.open_class('ZZG 311', v_s, 1, 'REGULAR');  o_312 := catalogue.open_class('ZZG 312', v_s, 2, 'REGULAR');
+    o_321 := catalogue.open_class('ZZG 321', v_s, 1, 'REGULAR');  o_332 := catalogue.open_class('ZZG 332', v_s, 2, 'REGULAR');
+    o_301z := catalogue.open_class('ZZG 301', v_s0, 1, 'REGULAR'); o_301n := catalogue.open_class('ZZG 301', v_s2, 1, 'REGULAR');
+    o_301c := catalogue.open_class('ZZG 301', v_s, 1, 'CCE');      o_702p := catalogue.open_class('ZZG 702', v_s, 2, 'PG');
+    PERFORM catalogue.open_class('ZZG 303', v_s, 2, 'REGULAR');
+    -- the fee: ₦4,000, published (the Bursar); GF takes part in the period, which opens: V752 binds GF's 300 Level students
+    PERFORM pg_temp.g_as('bursar', who);
+    INSERT INTO finance.siwes_fee (session, amount, state, note, stated_by, stated_office, published_by, published_office, published_at)
+    VALUES (v_s, 4000, 'PUBLISHED', 'check V777 gate', who, 'bursar', who, 'bursar', now());
+    PERFORM pg_temp.g_as('academic', who);
+    PERFORM registration.siwes_add_programme(v_s, v_pf);
+    BEGIN PERFORM registration.siwes_set_course(v_pf, NULL, 'ZZG 332'); EXCEPTION WHEN check_violation THEN NULL; END;
+    PERFORM registration.siwes_set_period(v_s, 'OPEN', current_date - 1, current_date + 10, current_date + 30, current_date + 210, 6, 'check V777 gate');
+
+    -- ═══ (P1) an unpaid SIWES course of the current session is refused; a plain one never; a closed or planned session's is not judged ═══
+    u_unpaid := pg_temp.g_student(1, v_pa, 300);  r1 := pg_temp.g_reg(u_unpaid, v_s, 1, 300);
+    a1 := pg_temp.g_put(r1, o_305);
+    a2 := pg_temp.g_put(r1, o_301, 6);
+    t := pg_temp.g_status(r1, o_301);
+    a1 := a1 || '/' || a2 || '/' || t;
+    a2 := pg_temp.g_msg(format('INSERT INTO registration.entry (registration_id, offering_id, units) VALUES (%L, %L, 6)', r1, o_301));
+    r2 := pg_temp.g_reg(u_unpaid, v_s0, 1, 300);  r3 := pg_temp.g_reg(u_unpaid, v_s2, 1, 300);
+    a3 := pg_temp.g_put(r2, o_301z, 6) || '/' || pg_temp.g_put(r3, o_301n, 6) || '/' || pg_temp.g_links(u_unpaid);
+
+    -- ═══ (P2) the portal's payment: accepted, and the entry stands on it ═══
+    u_portal := pg_temp.g_student(2, v_pa, 300);  r1 := pg_temp.g_reg(u_portal, v_s, 1, 300);  y1 := pg_temp.g_pay(u_portal, v_s, 'ZZG-P2');
+    a4 := pg_temp.g_put(r1, o_301, 6);
+    a5 := pg_temp.g_on(r1, o_301) || '/' || finance.siwes_stands_on(y1) || '/' || (SELECT p.reference FROM finance.siwes_paid(u_portal, v_s) p)
+          || '/' || (SELECT count(*) FROM registration.siwes_registration WHERE student_id = u_portal);
+
+    -- ═══ (P3) the old portal's payment, of either semester: a Second Semester payment opens a First Semester course, and the other way round ═══
+    u_legacy2 := pg_temp.g_student(3, v_pa, 300);  r1 := pg_temp.g_reg(u_legacy2, v_s, 1, 300);  y2 := pg_temp.g_pay(u_legacy2, v_s, 'MOAUM-LEG-ZZG3-9915-9916-S2-SIWES', 2);
+    u_legacy1 := pg_temp.g_student(4, v_pb, 300);  r2 := pg_temp.g_reg(u_legacy1, v_s, 2, 300);  y3 := pg_temp.g_pay(u_legacy1, v_s, 'MOAUM-LEG-ZZG4-9915-9916-S1-SIWES', 1);
+    a6 := pg_temp.g_put(r1, o_301, 6) || '/' || pg_temp.g_put(r2, o_302);
+    a7 := pg_temp.g_on(r1, o_301) || '/' || (SELECT (x.legacy_payment_id = y2 AND x.payment_reference_id IS NULL) FROM registration.siwes_course_entry x WHERE x.course_registration_id = r1)
+          || ' | ' || pg_temp.g_on(r2, o_302) || '/' || (SELECT (x.legacy_payment_id = y3 AND x.payment_reference_id IS NULL) FROM registration.siwes_course_entry x WHERE x.course_registration_id = r2);
+
+    -- ═══ (P4, D2) not judged again: a student who held a SIWES course from before (the old portal's override) has an approval touch it ═══
+    u_held := pg_temp.g_student(5, v_pb, 300);  r1 := pg_temp.g_reg(u_held, v_s, 2, 300);
+    a8 := pg_temp.g_put_override(r1, o_302);
+    a9 := pg_temp.g_try(format('UPDATE registration.entry SET status = ''APPROVED'' WHERE registration_id = %L AND offering_id = %L', r1, o_302));
+    a9 := a9 || '/' || pg_temp.g_status(r1, o_302) || '/' || pg_temp.g_links(u_held);
+    a10 := pg_temp.g_put(r1, o_302, 3, 'REGISTERED', true) || '/' || pg_temp.g_status(r1, o_302);
+    -- a student who paid has the class of the entry moved to another SIWES course: the link follows it and nothing is refused
+    u_moved := pg_temp.g_student(6, v_pd, 300);  r1 := pg_temp.g_reg(u_moved, v_s, 1, 300);  y4 := pg_temp.g_pay(u_moved, v_s, 'ZZG-P4M');
+    a11 := pg_temp.g_put(r1, o_311);
+    a11 := a11 || '/' || pg_temp.g_on(r1, o_311) || ' > ' || pg_temp.g_try(format('UPDATE registration.entry SET offering_id = %L WHERE registration_id = %L AND offering_id = %L', o_321, r1, o_311));
+    a11 := a11 || '/' || pg_temp.g_on(r1, o_321) || '/' || pg_temp.g_on(r1, o_311) || '/' || pg_temp.g_links(u_moved);
+    -- the entry that stood and was dropped comes back with nothing paid: judged; paid: accepted, and stands on the payment
+    u_dropped := pg_temp.g_student(7, v_pa, 300);  r1 := pg_temp.g_reg(u_dropped, v_s, 1, 300);
+    a12 := pg_temp.g_put_override(r1, o_301, 6);
+    UPDATE registration.entry SET status = 'DROPPED' WHERE registration_id = r1 AND offering_id = o_301;
+    a12 := a12 || '/' || pg_temp.g_try(format('UPDATE registration.entry SET status = ''REGISTERED'' WHERE registration_id = %L AND offering_id = %L', r1, o_301)) || '/' || pg_temp.g_status(r1, o_301);
+    y5 := pg_temp.g_pay(u_dropped, v_s, 'ZZG-P4J');
+    t := pg_temp.g_try(format('UPDATE registration.entry SET status = ''REGISTERED'' WHERE registration_id = %L AND offering_id = %L', r1, o_301));
+    a13 := t || '/' || pg_temp.g_status(r1, o_301) || '/' || pg_temp.g_on(r1, o_301);
+    -- the override alone: a loader places the course of a student who paid nothing, nothing is linked; a proposal that finds it is not judged
+    u_override := pg_temp.g_student(8, v_pa, 300);  r1 := pg_temp.g_reg(u_override, v_s, 1, 300);
+    a14 := pg_temp.g_put_override(r1, o_301, 6);
+    a14 := a14 || '/' || pg_temp.g_links(u_override) || '/' || pg_temp.g_put(r1, o_301, 6, 'REGISTERED', true) || '/' || pg_temp.g_status(r1, o_301);
+
+    -- ═══ (P5) one payment covers both semesters; a second reference is refused; a second payment is a credit ═══
+    u_both := pg_temp.g_student(9, v_pd, 300);  r1 := pg_temp.g_reg(u_both, v_s, 1, 300);  r2 := pg_temp.g_reg(u_both, v_s, 2, 300);
+    a15 := pg_temp.g_put(r1, o_311) || '/' || pg_temp.g_put(r2, o_312);
+    y6 := pg_temp.g_pay(u_both, v_s, 'ZZG-P5');
+    a16 := pg_temp.g_put(r1, o_311) || '/' || pg_temp.g_put(r2, o_312);
+    a16 := a16 || '/' || pg_temp.g_on(r1, o_311) || '/' || pg_temp.g_on(r2, o_312) || '/' || pg_temp.g_links(u_both);
+    PERFORM pg_temp.g_as('student', u_both);
+    a17 := pg_temp.g_try(format('SELECT finance.siwes_reference(%L)', u_both));
+    PERFORM pg_temp.g_as('bursar', who);
+    PERFORM pg_temp.g_pay(u_both, v_s, 'ZZG-P5-2');
+    a18 := (SELECT count(*) || ':' || coalesce(min(state), '-') FROM finance.siwes_credit WHERE student_id = u_both AND session = v_s) || '/' || (SELECT p.reference FROM finance.siwes_paid(u_both, v_s) p);
+    PERFORM pg_temp.g_as('academic', who);
+
+    -- ═══ (P6) a payment of another session settles nothing ═══
+    u_other := pg_temp.g_student(10, v_pa, 300);  r1 := pg_temp.g_reg(u_other, v_s, 1, 300);  PERFORM pg_temp.g_pay(u_other, v_s0, 'ZZG-P6');
+    a19 := pg_temp.g_put(r1, o_301, 6);
+    a19 := a19 || '/' || (SELECT count(*) FROM finance.siwes_paid(u_other, v_s));
+
+    -- ═══ (P7) the fee not published: SIWES_FEE_NOT_SET; published: SIWES_UNPAID; a paid student is not asked either way ═══
+    u_nofee := pg_temp.g_student(11, v_pa, 300);  r1 := pg_temp.g_reg(u_nofee, v_s, 1, 300);
+    u_nofee_paid := pg_temp.g_student(12, v_pa, 300);  r2 := pg_temp.g_reg(u_nofee_paid, v_s, 1, 300);
+    PERFORM pg_temp.g_pay(u_nofee_paid, v_s, 'ZZG-P7');
+    UPDATE finance.siwes_fee SET state = 'DRAFT', published_by = NULL, published_office = NULL, published_at = NULL WHERE session = v_s;
+    a20 := pg_temp.g_put(r1, o_301, 6) || '/' || pg_temp.g_put(r2, o_301, 6);
+    a20 := a20 || '/' || (registration.siwes_fee_gate(u_nofee, v_s, 'ZZG 301') LIKE 'SIWES_FEE_NOT_SET%') || '/' || (registration.siwes_eligibility(u_nofee, v_s) ->> 'canPay');
+    PERFORM pg_temp.g_as('student', u_nofee);
+    a21 := pg_temp.g_try(format('SELECT finance.siwes_reference(%L)', u_nofee));
+    PERFORM pg_temp.g_as('academic', who);
+    UPDATE finance.siwes_fee SET state = 'PUBLISHED', published_by = who, published_office = 'bursar', published_at = now() WHERE session = v_s;
+    a21 := a21 || '/' || pg_temp.g_put(r1, o_301, 6) || '/' || (registration.siwes_eligibility(u_nofee, v_s) ->> 'canPay');
+
+    -- ═══ (P8) a student whose programme carries no SIWES course (GG) cannot pay, draw a reference or register one unpaid; an old-portal payer can ═══
+    u_none := pg_temp.g_student(13, v_pg, 300);  r1 := pg_temp.g_reg(u_none, v_s, 1, 300);
+    PERFORM pg_temp.g_as('student', u_none);
+    t := pg_temp.g_msg(format('SELECT finance.siwes_reference(%L)', u_none));
+    PERFORM pg_temp.g_as('bursar', who);
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at)
+    VALUES (u_none, v_s, 'ZZG-P8-REF', 'SIWES registration fee ' || v_s, 4000, now(), now() + interval '2 days');
+    PERFORM pg_temp.g_as('academic', who);
+    a22 := registration.siwes_may_pay(u_none, v_s) || '/' || registration.siwes_in_reach(u_none, v_s) || '/' || finance.siwes_reference_payable('ZZG-P8-REF')
+           || '/' || split_part(t, ':', 1) || '/' || (t LIKE '%carries no SIWES course at the student''s level%') || '/' || (registration.siwes_eligibility(u_none, v_s) ->> 'eligible')
+           || '/' || (registration.siwes_eligibility(u_none, v_s) -> 'reasons')::text || '/' || coalesce(registration.siwes_eligibility(u_none, v_s) ->> 'mode', '-');
+    a23 := pg_temp.g_put(r1, o_301, 6) || '/' || (registration.siwes_fee_gate(u_none, v_s, 'ZZG 301') LIKE 'SIWES_NOT_IN_REACH%');
+    PERFORM pg_temp.g_pay(u_none, v_s, 'MOAUM-LEG-ZZG13-9915-9916-S1-SIWES', 1);   -- an old-portal payer: the same entry is accepted
+    a24 := pg_temp.g_put(r1, o_301, 6);
+    a24 := a24 || '/' || pg_temp.g_on(r1, o_301) || '/' || (SELECT count(*) FROM registration.siwes_course_entry WHERE student_id = u_none);
+    -- a course ended is not a SIWES course any longer: not charged
+    u_ended := pg_temp.g_student(14, v_pa, 300);  r1 := pg_temp.g_reg(u_ended, v_s, 1, 300);
+    UPDATE catalogue.course SET state = 'ENDED', ended_on = current_date WHERE code = 'ZZG 301';
+    a25 := pg_temp.g_put(r1, o_301, 6);
+    a25 := a25 || '/' || registration.siwes_in_reach(u_ended, v_s) || '/' || coalesce(registration.siwes_fee_gate(u_ended, v_s, 'ZZG 301'), 'none');
+    UPDATE catalogue.course SET state = 'LIVE', ended_on = NULL WHERE code = 'ZZG 301';
+    -- a student who passed the SIWES course of the structure (the closed session): out of reach, refused SIWES_NOT_IN_REACH unpaid
+    u_passed := pg_temp.g_student(15, v_pb, 300);
+    PERFORM pg_temp.g_as('ict', who);
+    PERFORM assessment.import_legacy_semester(v_s0, 2, jsonb_build_array(jsonb_build_object('matric', 'MOAU/ZSG/97/7915', 'course', 'ZZG 302', 'total', '70', 'level', '300')), true);
+    PERFORM pg_temp.g_as('academic', who);
+    r1 := pg_temp.g_reg(u_passed, v_s, 2, 300);
+    t := pg_temp.g_put(r1, o_302);
+    a26 := registration.siwes_in_reach(u_passed, v_s) || '/' || registration.siwes_may_pay(u_passed, v_s) || '/' || t || '/'
+           || coalesce((SELECT string_agg(x.course_code || ':' || x.passed, ',') FROM registration.siwes_reach(u_passed, v_s) x), '-')
+           || '/' || (registration.siwes_eligibility(u_passed, v_s) -> 'reasons')::text;
+
+    -- ═══ (P9) never judged: CCE (the Centre's class), postgraduate, not in study ═══
+    u_cce := pg_temp.g_student(16, v_pa, 300, 'CCE');  r1 := pg_temp.g_reg(u_cce, v_s, 1, 300);
+    u_pg := pg_temp.g_student(17, v_pp, 700, 'POSTGRADUATE');  r2 := pg_temp.g_reg(u_pg, v_s, 2, 700);
+    u_out := pg_temp.g_student(18, v_pa, 300, 'UTME', 'WITHDRAWN');  r3 := pg_temp.g_reg(u_out, v_s, 1, 300);
+    a27 := pg_temp.g_put(r1, o_301c, 6) || '/' || pg_temp.g_put(r2, o_702p) || '/' || pg_temp.g_put(r3, o_301, 6);
+    a27 := a27 || '/' || pg_temp.g_links(u_cce) || pg_temp.g_links(u_pg) || pg_temp.g_links(u_out);
+    a28 := (SELECT string_agg(x.k || ':' || registration.siwes_fee_subject(x.id) || registration.siwes_in_reach(x.id, v_s) || registration.siwes_may_pay(x.id, v_s)
+                              || coalesce(registration.siwes_fee_gate(x.id, v_s, 'ZZG 301'), '-') || (registration.siwes_eligibility(x.id, v_s) ->> 'eligible') || coalesce(registration.siwes_eligibility(x.id, v_s) ->> 'mode', '-'), ',' ORDER BY x.k)
+              FROM (VALUES ('cce', u_cce), ('out', u_out), ('pg', u_pg)) x(k, id));
+
+    -- ═══ (P10) the draft with an unpaid SIWES carry-over is made without it, with a paid one with it; a spillover student's is judged ═══
+    u_carry := pg_temp.g_student(19, v_pb, 400);  u_carry_paid := pg_temp.g_student(20, v_pb, 400);  u_spill := pg_temp.g_student(21, v_pb, 500);  u_choose := pg_temp.g_student(29, v_pb, 400);
+    PERFORM pg_temp.g_as('ict', who);
+    PERFORM assessment.import_legacy_semester(v_s0, 2, jsonb_build_array(
+        jsonb_build_object('matric', 'MOAU/ZSG/97/7919', 'course', 'ZZG 302', 'total', '20', 'level', '300'),
+        jsonb_build_object('matric', 'MOAU/ZSG/97/7920', 'course', 'ZZG 302', 'total', '20', 'level', '300'),
+        jsonb_build_object('matric', 'MOAU/ZSG/97/7921', 'course', 'ZZG 302', 'total', '20', 'level', '300'),
+        jsonb_build_object('matric', 'MOAU/ZSG/97/7929', 'course', 'ZZG 302', 'total', '20', 'level', '300')), true);
+    PERFORM pg_temp.g_as('academic', who);
+    a29 := (SELECT string_agg(x.k || ':' || coalesce((SELECT string_agg(y.course_code || '/' || y.why || '/' || y.passed, ',') FROM registration.siwes_reach(x.id, v_s) y), '-'), ' ' ORDER BY x.k)
+              FROM (VALUES ('a', u_carry), ('b', u_carry_paid), ('c', u_spill)) x(k, id));
+    PERFORM pg_temp.g_pay(u_carry_paid, v_s, 'ZZG-P10');
+    r1 := registration.student_draft(u_carry, v_s, 2);   r2 := registration.student_draft(u_carry_paid, v_s, 2);
+    a30 := (SELECT count(*) FROM registration.entry WHERE registration_id = r1) || '/' || (SELECT count(*) FROM registration.entry WHERE registration_id = r2)
+           || '/' || pg_temp.g_links(u_carry) || '/' || pg_temp.g_links(u_carry_paid) || '/' || pg_temp.g_on(r2, o_302);
+    -- the unpaid one adds it once paid (the picker's writer is a plain insert)
+    t := pg_temp.g_put(r1, o_302);
+    PERFORM pg_temp.g_pay(u_carry, v_s, 'ZZG-P10B');
+    a31 := t || '/' || pg_temp.g_put(r1, o_302) || '/' || pg_temp.g_on(r1, o_302);
+    -- a spillover student's draft places nothing; the carry-over added by the picker is judged
+    r3 := registration.student_draft(u_spill, v_s, 2);
+    t := pg_temp.g_try(format('INSERT INTO registration.entry (registration_id, offering_id, units, entry_type) VALUES (%L, %L, 3, ''CARRYOVER'')', r3, o_302));
+    a32 := registration.spillover_registration(u_spill, v_s) || '/' || (SELECT count(*) FROM registration.entry WHERE registration_id = r3 AND status <> 'DROPPED') || '/' || t;
+    PERFORM pg_temp.g_pay(u_spill, v_s, 'ZZG-P10C');
+    t := pg_temp.g_try(format('INSERT INTO registration.entry (registration_id, offering_id, units, entry_type) VALUES (%L, %L, 3, ''CARRYOVER'')', r3, o_302));
+    a32 := a32 || '/' || t || '/' || pg_temp.g_on(r3, o_302);
+    -- the registration form's save (student_choose) adds the carry-overs that have become due to a draft: an unpaid SIWES carry-over is not added (the form is saved, nothing else is
+    -- refused); once paid the same save adds it, the entry standing on the payment
+    r6 := registration.student_draft(u_choose, v_s, 2);
+    a47 := pg_temp.g_try(format('SELECT registration.student_choose(%L, ARRAY[]::uuid[])', r6));
+    a47 := a47 || '/' || (SELECT count(*) FROM registration.entry WHERE registration_id = r6 AND status <> 'DROPPED');   -- a statement of its own: a count read in the statement that made the row does not see it
+    PERFORM pg_temp.g_pay(u_choose, v_s, 'ZZG-P10D');
+    a47 := a47 || ' | ' || pg_temp.g_try(format('SELECT registration.student_choose(%L, ARRAY[]::uuid[])', r6));
+    a47 := a47 || '/' || (SELECT count(*) FROM registration.entry WHERE registration_id = r6 AND status <> 'DROPPED') || '/' || pg_temp.g_on(r6, o_302);
+
+    -- ═══ (P11) the gate names every unpaid SIWES course of a list, none once paid ═══
+    u_list := pg_temp.g_student(22, v_pd, 300);
+    a33 := (SELECT string_agg(g.course_code || '=' || coalesce(split_part(g.message, ':', 1), '-'), ',' ORDER BY g.course_code)
+              FROM registration.siwes_fee_gate_many(u_list, v_s, ARRAY['ZZG 311', 'ZZG 312', 'ZZG 305', 'NOPE 000', NULL, 'ZZG 311']) g);
+    a33 := a33 || '/' || coalesce(split_part(registration.siwes_fee_gate(u_list, v_s, 'ZZG 311'), ':', 1), '-') || '/' || coalesce(registration.siwes_fee_gate(u_list, v_s, 'ZZG 305'), '-');
+    PERFORM pg_temp.g_pay(u_list, v_s, 'ZZG-P11');
+    a34 := (SELECT string_agg(g.course_code || '=' || coalesce(split_part(g.message, ':', 1), '-'), ',' ORDER BY g.course_code)
+              FROM registration.siwes_fee_gate_many(u_list, v_s, ARRAY['ZZG 311', 'ZZG 312', 'ZZG 305']) g);
+
+    -- ═══ (D2) a student holding a SIWES course from before, level 400 of a programme that carries none there: in reach, may pay, listed, asked ═══
+    u_held400 := pg_temp.g_student(23, v_pb, 400);  u_plain400 := pg_temp.g_student(24, v_pb, 400);
+    r1 := pg_temp.g_reg(u_held400, v_s, 2, 400);
+    t := pg_temp.g_put_override(r1, o_302);
+    a35 := registration.siwes_in_reach(u_held400, v_s) || '/' || registration.siwes_may_pay(u_held400, v_s) || '/' || registration.siwes_in_reach(u_plain400, v_s)
+           || '/' || coalesce((SELECT string_agg(x.course_code || ':' || x.why || ':' || x.held || ':' || x.level || ':' || x.semester, ',') FROM registration.siwes_reach(u_held400, v_s) x), '-');
+    j := registration.siwes_eligibility(u_held400, v_s);
+    a36 := (j ->> 'eligible') || '/' || (j ->> 'bound') || '/' || (j ->> 'mode') || '/' || (j ->> 'registerOn') || '/' || (j ->> 'canPay') || '/' || (j ->> 'canRegister') || '/' || (j -> 'reasons')::text
+           || '/' || coalesce(j ->> 'level', 'null') || '/' || coalesce(j ->> 'semester', 'null') || '/' || coalesce(j ->> 'course', 'null') || '/' || (j -> 'otherCourses')::text
+           || '/' || coalesce(j ->> 'semesterFees', 'null') || '/' || (j -> 'courses' -> 0 ->> 'code') || ':' || (j -> 'courses' -> 0 ->> 'why') || '/' || (j ->> 'registrationOpen');
+    a37 := (SELECT string_agg(x.matric_no || ' ' || x.programme_code || ' ' || x.course_code || ' ' || x.level || '/' || x.semester || ' ' || x.registration_status || ' ' || x.payable, '; ' ORDER BY x.matric_no)
+              FROM registration.siwes_entries_unpaid(v_s) x WHERE x.student_id IN (u_held, u_held400, u_override, u_portal));
+    -- it draws a reference, pays it: off the list, the fee paid
+    PERFORM pg_temp.g_as('student', u_held400);
+    BEGIN t := finance.siwes_reference(u_held400) ->> 'reference'; EXCEPTION WHEN check_violation THEN t := 'refused'; END;
+    PERFORM pg_temp.g_as('bursar', who);
+    IF t <> 'refused' THEN PERFORM finance.confirm_payment(t, 'Bank transfer', 'check V777 gate'); END IF;
+    a38 := (SELECT count(*) FROM registration.siwes_entries_unpaid(v_s) x WHERE x.student_id = u_held400) || '/' || (SELECT p.reference = t FROM finance.siwes_paid(u_held400, v_s) p);
+    PERFORM pg_temp.g_as('academic', who);
+
+    -- ═══ (P17) the menu item: a programme that carries SIWES at the student's level, one that holds one, one that has paid; not a stranger ═══
+    u_area := pg_temp.g_student(25, v_pg, 300);   -- nothing: no SIWES course at 300 in GG
+    a39 := registration.siwes_area(u_unpaid) || '/' || registration.siwes_area(u_none) || '/' || registration.siwes_area(u_area) || '/' || registration.siwes_area(u_plain400)
+           || '/' || registration.siwes_area(u_held) || '/' || registration.siwes_area(u_cce) || '/' || registration.siwes_area(u_pg);
+    PERFORM pg_temp.g_as('bursar', who);
+    PERFORM pg_temp.g_pay(u_area, v_s, 'ZZG-P17');
+    PERFORM pg_temp.g_as('academic', who);
+    a39 := a39 || '/' || registration.siwes_area(u_area);
+
+    -- ═══ the SIWES semester V752 binds (GF): V752's text, no course entry written, V752's words, SEMESTER, the register door ═══
+    u_bound := pg_temp.g_student(26, v_pf, 300);  u_bound2 := pg_temp.g_student(27, v_pf, 300);  u_bound_paid := pg_temp.g_student(28, v_pf, 300);
+    r1 := pg_temp.g_reg(u_bound, v_s, 2, 300);  r2 := pg_temp.g_reg(u_bound_paid, v_s, 2, 300);
+    PERFORM pg_temp.g_pay(u_bound_paid, v_s, 'MOAUM-LEG-ZZG28-9915-9916-S2-SIWES', 2);
+    t := pg_temp.g_msg(format('INSERT INTO registration.entry (registration_id, offering_id, units) VALUES (%L, %L, 6)', r1, o_332));
+    a40 := (t = registration.siwes_fee_gate(u_bound, v_s, 'ZZG 332'))::text;
+    t2 := pg_temp.g_put(r2, o_332, 6);
+    a40 := a40 || '/' || t2 || '/' || pg_temp.g_status(r2, o_332) || '/' || pg_temp.g_links(u_bound_paid) || '/' || registration.siwes_applies(u_bound, v_s);
+    j := registration.siwes_eligibility(u_bound, v_s);
+    a40 := a40 || ' | ' || (j ->> 'eligible') || '/' || (j ->> 'bound') || '/' || (j ->> 'mode') || '/' || (j ->> 'registerOn') || '/' || (j ->> 'level') || '/' || (j ->> 'semester')
+           || '/' || (j -> 'course' ->> 'code') || '/' || (j -> 'reasons')::text || '/' || (j ->> 'canPay') || '/' || (j ->> 'registrationOpen');
+    -- a student SIWES binds adds a First Semester SIWES course of the catalogue: judged by the one fee as any other
+    r3 := pg_temp.g_reg(u_bound_paid, v_s, 1, 300);
+    t := pg_temp.g_put(r3, o_311);
+    a40 := a40 || ' | ' || t || '/' || pg_temp.g_on(r3, o_311);
+    r3 := pg_temp.g_reg(u_bound, v_s, 1, 300);
+    a40 := a40 || '/' || pg_temp.g_put(r3, o_311);
+
+
+    -- ═══ the SIWES page's doors for a student SIWES does not bind: the register door is the SIWES semester's alone; the reference is drawn once the fee is published ═══
+    PERFORM pg_temp.g_as('student', u_nofee);
+    a41 := pg_temp.g_try(format('SELECT registration.siwes_register(%L)', u_nofee));
+    PERFORM pg_temp.g_as('student', u_plain400);
+    a41 := a41 || '/' || pg_temp.g_try(format('SELECT registration.siwes_register(%L)', u_plain400));
+    PERFORM pg_temp.g_as('student', u_nofee);
+    t := finance.siwes_reference(u_nofee) ->> 'reference';
+    a42 := (t IS NOT NULL) || '/' || finance.siwes_reference_payable(t) || '/' || ((finance.siwes_reference(u_nofee) ->> 'reference') = t)
+           || '/' || (registration.siwes_eligibility(u_nofee, v_s) -> 'openReference' ->> 'reference' = t);
+    PERFORM pg_temp.g_as('bursar', who);
+    PERFORM finance.confirm_payment(t, 'Bank transfer', 'check V777 gate');
+    PERFORM pg_temp.g_as('academic', who);
+    SELECT cr.id INTO r1 FROM registration.course_registration cr WHERE cr.student_id = u_nofee AND cr.session = v_s AND cr.semester = 1;
+    t2 := pg_temp.g_put(r1, o_301, 6);
+    a43 := t2 || '/' || (pg_temp.g_on(r1, o_301) = t) || '/' || coalesce((registration.siwes_eligibility(u_nofee, v_s) -> 'paid' ->> 'reference') = t, false);
+    -- the lock is taken before the payment is read: in the entry trigger the SIWES lock comes once, and before the last read of the payment
+    SELECT (length(p.prosrc) - length(replace(p.prosrc, 'finance.siwes_lock(', ''))) / length('finance.siwes_lock(') || '/'
+           || (strpos(p.prosrc, 'finance.siwes_lock(') < length(p.prosrc) - strpos(reverse(p.prosrc), reverse('finance.siwes_paid(')) - length('finance.siwes_paid(') + 2) INTO a44
+      FROM pg_proc p WHERE p.oid = 'registration.entry_siwes_only()'::regprocedure;
+    -- and the registration's row (FOR KEY SHARE, the lock the foreign key check of the same insert takes at the end of the statement) is taken before the SIWES lock: a door that holds the row FOR UPDATE
+    -- (student_add_other, student_reset, summer_materialize) and one that does not (student_add, student_choose, support_add) never wait for each other in a circle (a deadlock proved on two real sessions)
+    SELECT (strpos(p.prosrc, 'PERFORM 1 FROM registration.course_registration WHERE id = NEW.registration_id FOR KEY SHARE;') > 0
+            AND strpos(p.prosrc, 'PERFORM 1 FROM registration.course_registration WHERE id = NEW.registration_id FOR KEY SHARE;') < strpos(p.prosrc, 'PERFORM finance.siwes_lock(')) || '/'
+           || (length(p.prosrc) - length(replace(p.prosrc, 'PERFORM 1 FROM registration.course_registration WHERE id = NEW.registration_id FOR KEY SHARE;', '')))
+              / length('PERFORM 1 FROM registration.course_registration WHERE id = NEW.registration_id FOR KEY SHARE;') INTO a46
+      FROM pg_proc p WHERE p.oid = 'registration.entry_siwes_only()'::regprocedure;
+
+    -- ═══ the money guards read the link the gate wrote: the payment the entry of u_portal stands on is held from the archive desk and the refund desk, and freed once the entry is dropped ═══
+    PERFORM pg_temp.g_as('bursar', who);
+    SELECT cr.id INTO r1 FROM registration.course_registration cr WHERE cr.student_id = u_portal AND cr.session = v_s AND cr.semester = 1;
+    a45 := (SELECT coalesce(bool_or(x LIKE 'PAR_LINKED:%'), false) FROM unnest(finance.payment_archive_refusals(y1)) x)::text
+           || '/' || pg_temp.g_try(format('SELECT finance.propose_refund(%L, ''ZZGATE'', ''check V777 gate'', 4000, ''Bank'', ''ZZGATE'', ''1234'', ''ZZG-P2'')', u_portal));
+    UPDATE registration.entry SET status = 'DROPPED' WHERE registration_id = r1 AND offering_id = o_301;
+    a45 := a45 || ' | dropped ' || (SELECT coalesce(bool_or(x LIKE 'PAR_LINKED:%'), false) FROM unnest(finance.payment_archive_refusals(y1)) x)::text
+           || '/' || pg_temp.g_try(format('SELECT finance.propose_refund(%L, ''ZZGATE'', ''check V777 gate'', 4000, ''Bank'', ''ZZGATE'', ''1234'', ''ZZG-P2'')', u_portal));
+    PERFORM pg_temp.g_as('academic', who);
+
+    RAISE EXCEPTION 'the V777 gate check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V777 gate check undoes its writes' THEN RAISE; END IF;
+  END;
+  -- (P1)
+  PERFORM pg_temp.assert('V777 P1: an unpaid SIWES course of the current session is refused SIWES_UNPAID in V752''s words; a plain course never; a closed or planned session''s is not judged',
+      coalesce(a1 = 'ok/SIWES_UNPAID/none' AND a2 = 'SIWES_UNPAID: the SIWES registration fee for 9915/9916 is not paid; ZZG 301 is registered once it is' AND a3 = 'ok/ok/0', false),
+      a1 || ' | ' || a2 || ' | ' || a3);
+  -- (P2) (P3)
+  PERFORM pg_temp.assert('V777 P2: the portal''s payment accepts a SIWES course, the entry stands on that payment (a course entry, not a SIWES registration)',
+      coalesce(a4 = 'ok' AND a5 = 'ZZG-P2/true/ZZG-P2/0', false), a4 || ' | ' || a5);
+  PERFORM pg_temp.assert('V777 P3: an old-portal payment of either semester accepts a SIWES course of either semester, the entry standing on it',
+      coalesce(a6 = 'ok/ok' AND a7 = 'MOAUM-LEG-ZZG3-9915-9916-S2-SIWES/true | MOAUM-LEG-ZZG4-9915-9916-S1-SIWES/true', false), a6 || ' | ' || a7);
+  -- (P4)
+  PERFORM pg_temp.assert('V777 P4: not judged again — an entry from before the fee is approved (alone and with its registration), a proposal that finds it, its class moved (the link follows it)',
+      coalesce(a8 = 'ok' AND a9 = 'ok/APPROVED/0' AND a10 = 'ok/APPROVED' AND a11 = 'ok/ZZG-P4M > ok/ZZG-P4M/nowhere/1', false), a8 || ' | ' || a9 || ' | ' || a10 || ' | ' || a11);
+  PERFORM pg_temp.assert('V777 P4: judged — a dropped entry coming back is refused unpaid and accepted paid (standing on the payment); the old portal''s override places an unpaid entry unlinked',
+      coalesce(a12 = 'ok/SIWES_UNPAID/DROPPED' AND a13 = 'ok/REGISTERED/ZZG-P4J' AND a14 = 'ok/0/ok/REGISTERED', false), a12 || ' | ' || a13 || ' | ' || a14);
+  -- (P5)
+  PERFORM pg_temp.assert('V777 P5: one payment covers both semesters of a student (two entries on it), a second reference is refused SIWES_PAID, a second payment is a credit',
+      coalesce(a15 = 'SIWES_UNPAID/SIWES_UNPAID' AND a16 = 'ok/ok/ZZG-P5/ZZG-P5/2' AND a17 = 'SIWES_PAID' AND a18 = '1:OPEN/ZZG-P5', false),
+      a15 || ' | ' || a16 || ' | ' || a17 || ' | ' || a18);
+  -- (P6) (P7)
+  PERFORM pg_temp.assert('V777 P6: a payment of another session settles nothing in the current one', coalesce(a19 = 'SIWES_UNPAID/0', false), a19);
+  PERFORM pg_temp.assert('V777 P7: the fee not published refuses SIWES_FEE_NOT_SET (reference and entry) and the page cannot pay; published, SIWES_UNPAID and the page can pay; a paid student is not asked either way',
+      coalesce(a20 = 'SIWES_FEE_NOT_SET/ok/true/false' AND a21 = 'SIWES_FEE_NOT_SET/SIWES_UNPAID/true', false), a20 || ' | ' || a21);
+  -- (P8)
+  PERFORM pg_temp.assert('V777 P8: a student whose programme carries none cannot pay, draw a reference (SIWES_NOT_ELIGIBLE with NO_SIWES_COURSE), is not payable, never eligible',
+      coalesce(a22 = 'false/false/false/SIWES_NOT_ELIGIBLE/true/false/["NOT_CONFIGURED", "NO_COURSE", "NO_SIWES_COURSE"]/-', false), a22);
+  PERFORM pg_temp.assert('V777 P8: a SIWES course placed on that student is refused SIWES_NOT_IN_REACH unpaid, accepted on an old-portal payment; a course ended is not charged; a course passed is out of reach (ALREADY_PASSED only)',
+      coalesce(a23 = 'SIWES_NOT_IN_REACH/true' AND a24 = 'ok/MOAUM-LEG-ZZG13-9915-9916-S1-SIWES/1' AND a25 = 'ok/false/none'
+               AND a26 = 'false/false/SIWES_NOT_IN_REACH/ZZG 302:true/["NOT_CONFIGURED", "NO_COURSE", "ALREADY_PASSED"]', false),
+      a23 || ' | ' || a24 || ' | ' || a25 || ' | ' || a26);
+  -- (P9)
+  PERFORM pg_temp.assert('V777 P9: CCE, postgraduate and a student not in study are never judged (entries accepted unpaid, no link), never in reach, never asked',
+      coalesce(a27 = 'ok/ok/ok/000' AND a28 = 'cce:falsefalsefalse-false-,out:falsefalsefalse-false-,pg:falsefalsefalse-false-', false), a27 || ' | ' || a28);
+  -- (P10)
+  PERFORM pg_temp.assert('V777 P10: the draft of a student owing a SIWES carry-over is made without it unpaid and with it paid (the entry stands on the payment); added once paid; a spillover student''s is judged',
+      coalesce(a29 = 'a:ZZG 302/CARRYOVER/false b:ZZG 302/CARRYOVER/false c:ZZG 302/CARRYOVER/false' AND a30 = '0/1/0/1/ZZG-P10' AND a31 = 'SIWES_UNPAID/ok/ZZG-P10B'
+               AND a32 = 'true/0/SIWES_UNPAID/ok/ZZG-P10C', false), a29 || ' | ' || a30 || ' | ' || a31 || ' | ' || a32);
+  PERFORM pg_temp.assert('V777 P10: the registration form''s save (student_choose) adds the carry-overs that have become due, but not an unpaid SIWES one (the form is saved, nothing is refused); once the fee is paid the same save adds it, standing on the payment',
+      coalesce(a47 = 'ok/0 | ok/1/ZZG-P10D', false), a47);
+  -- (P11)
+  PERFORM pg_temp.assert('V777 P11: the gate names every unpaid SIWES course of a list (one row for each distinct course), none once paid',
+      coalesce(a33 = 'NOPE 000=-,ZZG 305=-,ZZG 311=SIWES_UNPAID,ZZG 312=SIWES_UNPAID/SIWES_UNPAID/-' AND a34 = 'ZZG 305=-,ZZG 311=-,ZZG 312=-', false), a33 || ' | ' || a34);
+  -- (D2)
+  PERFORM pg_temp.assert('V777 D2: a student holding a SIWES course from before the rule is in reach (HELD), may pay, reads COURSE on the page (canPay, not canRegister, no semester) and is told nothing else',
+      coalesce(a35 = 'true/true/false/ZZG 302:HELD:true:400:2'
+               AND a36 = 'true/false/COURSE/COURSE_REGISTRATION/true/false/[]/null/null/null/[]/null/ZZG 302:HELD/true', false), a35 || ' | ' || a36);
+  PERFORM pg_temp.assert('V777 D2: the Bursary''s list names those holding a SIWES course with no payment (programme, course, level and semester), a paid one is not on it, the student who pays leaves it',
+      coalesce(a37 = 'MOAU/ZSG/97/7905 C97792 ZZG 302 300/2 DRAFT true; MOAU/ZSG/97/7908 C97791 ZZG 301 300/1 DRAFT true; MOAU/ZSG/97/7923 C97792 ZZG 302 400/2 DRAFT true'
+               AND a38 = '0/true', false), a37 || ' | ' || a38);
+  -- (P17)
+  PERFORM pg_temp.assert('V777 P17: the SIWES menu item is the student''s whose programme carries a SIWES course at their level, who holds one, who has paid; not a stranger''s, a CCE student''s or a postgraduate''s',
+      coalesce(a39 = 'true/true/false/false/true/false/false/true', false), a39);
+  -- the SIWES semester V752 binds
+  PERFORM pg_temp.assert('V777: the SIWES semester V752 binds is V752''s — refused in the gate''s own words unpaid, accepted paid with no course entry written, SEMESTER on its page (level 300, semester 2, its course); a SIWES course of another semester is judged by the one fee',
+      coalesce(a40 = 'true/ok/REGISTERED/0/true | true/true/SEMESTER/SIWES_PAGE/300/2/ZZG 332/[]/true/true | ok/MOAUM-LEG-ZZG28-9915-9916-S2-SIWES/SIWES_UNPAID', false), a40);
+  -- the doors of a student SIWES does not bind
+  PERFORM pg_temp.assert('V777: the register door is the SIWES semester''s alone — a student in reach is told SIWES_NOT_BOUND, one not in reach keeps SIWES_NOT_ELIGIBLE; a reference is drawn once and again the same, payable, and registers the course on Course Registration once paid',
+      coalesce(a41 = 'SIWES_NOT_BOUND/SIWES_NOT_ELIGIBLE' AND a42 = 'true/true/true/true' AND a43 = 'ok/true/true', false), a41 || ' | ' || a42 || ' | ' || a43);
+  PERFORM pg_temp.assert('V777: the money guards read the link the gate wrote — the payment an accepted SIWES course stands on is held from the archive desk and the refund desk (REFUND_SIWES_REGISTERED), freed once the entry is dropped',
+      coalesce(a45 = 'true/REFUND_SIWES_REGISTERED | dropped false/ok', false), a45);
+  -- (P15)
+  PERFORM pg_temp.assert('V777 P15: the entry trigger takes the SIWES lock once, before it reads the payment last (V762''s order)', coalesce(a44 = '1/true', false), a44);
+  PERFORM pg_temp.assert('V777 P15: the entry trigger takes the registration''s row (FOR KEY SHARE) once, before the SIWES lock and the payment — every door takes the registration, then the student, then the advisory lock', coalesce(a46 = 'true/1', false), a46);
+END $$;
+-- ── V777, the marker as the switch (P16), the SIWES courses taken off (item 9), and the menu item's cost (P17): the courses charged are the courses
+--          the catalogue marks (catalogue.course.industrial_training, not ended). In 9923/9924 (current; 9922/9923 closed before it), made-up programme
+--          K (courses ZZK 301-304 plain, a pair of twin codes BSU-/MOAU-ZZK 311 titled SIWES) and X (three plain courses, no SIWES): (M1) a plain
+--          course is placed free; the Academic Office marks it (registration.siwes_mark_course) and the next student's entry is refused SIWES_UNPAID,
+--          the student who held it already is not judged again (approved, listed for the Bursary) and is in reach, and the student who pays
+--          registers it, standing on the payment; (M2) taking it off the SIWES courses is refused SIWES_COURSE_IN_USE while that entry stands on the
+--          payment (V776's two refusals first, where they apply) and accepted once the entry is dropped, after which it is free again; (M3) a title
+--          that reads SIWES (V776's title trigger) does the same as the mark; (M4) a code correction that moves entries
+--          (catalogue.move_entry_to_own_code) is refused for neither a student who paid (the entry's link follows it: one row, the same payment, the
+--          payment still held from the refund desk) nor one who held the course unpaid; (M5) the cheap test the SIWES menu item reads (registration.siwes_at_level) for a student of a programme that
+--          carries none (registration.siwes_area) reads the catalogue by index probes only (pg_stat_xact: no sequential scan of catalogue.course or
+--          catalogue.course_offer, with sequential scans switched off for the statement; V752's registration.siwes_applies, read before it, reads catalogue.course on its own and is not V777's). The block undoes its writes. ──
+DO $$
+DECLARE
+    v_s0 text := '9922/9923'; v_s text := '9923/9924'; who uuid := gen_random_uuid(); dept text; fac text;
+    v_pk text := 'C97631'; v_px text := 'C97632';
+    o_301 uuid; o_302 uuid; o_303 uuid; o_304 uuid; o_bsu uuid; o_moau uuid;
+    u1 uuid; u2 uuid; u3 uuid; u4 uuid; u5 uuid; pu uuid; hu uuid; ux uuid;
+    r1 uuid; r2 uuid; r3 uuid; r4 uuid; r5 uuid; rp uuid; rh uuid; rx uuid;
+    y2 uuid; ypu uuid; v_saved text;
+    t text; v_err text;
+    m1 text; m2 text; m2b text; m3 text; m4 text; m4b text; m5 text;
+    cs0 bigint; os0 bigint; oi0 bigint; cs1 bigint; os1 bigint; oi1 bigint; ci0 bigint; ci1 bigint; area boolean;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check V777 marker', true);
+    EXECUTE $f$ CREATE FUNCTION pg_temp.k_student(n int, prog text, lvl int) RETURNS uuid LANGUAGE plpgsql AS $g$
+        DECLARE i uuid := gen_random_uuid();
+        BEGIN
+            INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at, study_mode)
+            VALUES (i, 'MOAUM/ADM/97/9763' || lpad(n::text, 2, '0'), 'MOAU/ZSK/97/76' || lpad(n::text, 2, '0'), 'ZZMARK', 'K' || n, prog, 'UTME', '9922/9923', 100, lvl, 'ACTIVE', now(), 'FULL_TIME');
+            RETURN i;
+        END $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.k_reg(stu uuid, sess text, sem int, lvl int) RETURNS uuid LANGUAGE plpgsql AS $g$
+        DECLARE r uuid := gen_random_uuid();
+        BEGIN INSERT INTO registration.course_registration (id, student_id, session, semester, level) VALUES (r, stu, sess, sem, lvl); RETURN r; END $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.k_pay(stu uuid, sess text, ref text) RETURNS uuid LANGUAGE plpgsql AS $g$
+        DECLARE p uuid;
+        BEGIN
+            INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, confirmed_by, channel, note, receipt_no)
+            VALUES (stu, sess, ref, 'SIWES registration fee ' || sess, 4000, now(), now(), now(), nullif(current_setting('moaum.actor_id', true), '')::uuid, 'Paystack', 'check V777 marker', 'RCT-' || ref)
+            RETURNING id INTO p;
+            RETURN p;
+        END $g$ $f$;
+    -- an entry placed on a registration: 'ok' or the first word of its refusal; the same under the old portal's override (a loader's)
+    EXECUTE $f$ CREATE FUNCTION pg_temp.k_put(reg uuid, off uuid, units int DEFAULT 3, override boolean DEFAULT false) RETURNS text LANGUAGE plpgsql AS $g$
+        BEGIN
+            IF override THEN PERFORM set_config('moaum.siwes_override', 'on', true); END IF;
+            INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (reg, off, units, 'REGISTERED');
+            IF override THEN PERFORM set_config('moaum.siwes_override', 'off', true); END IF;
+            RETURN 'ok';
+        EXCEPTION WHEN check_violation THEN
+            IF override THEN PERFORM set_config('moaum.siwes_override', 'off', true); END IF;
+            RETURN split_part(SQLERRM, ':', 1);
+        WHEN unique_violation THEN
+            IF override THEN PERFORM set_config('moaum.siwes_override', 'off', true); END IF;
+            RETURN 'DUPLICATE'; END $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.k_try(q text) RETURNS text LANGUAGE plpgsql AS $g$
+        BEGIN EXECUTE q; RETURN 'ok'; EXCEPTION WHEN OTHERS THEN RETURN split_part(SQLERRM, ':', 1); END $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.k_msg(q text) RETURNS text LANGUAGE plpgsql AS $g$
+        BEGIN EXECUTE q; RETURN 'ok'; EXCEPTION WHEN OTHERS THEN RETURN SQLERRM; END $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.k_on(reg uuid, off uuid) RETURNS text LANGUAGE sql AS $g$
+        SELECT coalesce((SELECT r.reference FROM registration.siwes_course_entry x JOIN finance.payment_reference r ON r.id IN (x.payment_reference_id, x.legacy_payment_id)
+                          WHERE x.course_registration_id = reg AND x.offering_id = off), 'nowhere') $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.k_status(reg uuid, off uuid) RETURNS text LANGUAGE sql AS $g$
+        SELECT coalesce((SELECT e.status FROM registration.entry e WHERE e.registration_id = reg AND e.offering_id = off), 'none') $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.k_links(stu uuid) RETURNS int LANGUAGE sql AS $g$ SELECT count(*)::int FROM registration.siwes_course_entry WHERE student_id = stu $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.k_as(office text, who uuid) RETURNS void LANGUAGE sql AS $g$
+        SELECT set_config('moaum.actor_office', office, true), set_config('moaum.actor_id', who::text, true) $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.k_stat(tbl text, OUT seq bigint, OUT idx bigint) LANGUAGE sql AS $g$
+        SELECT coalesce(max(seq_scan), 0), coalesce(max(idx_scan), 0) FROM pg_stat_xact_user_tables WHERE schemaname || '.' || relname = tbl $g$ $f$;
+
+    -- the sessions, the programmes, the courses, the fee
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+        (gen_random_uuid(), v_s0, DATE '9922-10-01', DATE '9923-08-31', 'CLOSED'),
+        (gen_random_uuid(), v_s, DATE '9923-10-01', DATE '9924-08-31', 'PLANNED') ON CONFLICT (name) DO NOTHING;
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/9924/777' WHERE name = v_s;
+    SELECT p.dept_code, p.faculty_code INTO dept, fac FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT p.archived ORDER BY p.code LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years) VALUES
+        (v_pk, 'B.Sc. V777 Marker K', dept, fac, 'UNDER GRADUATE', 0, 400, 4),
+        (v_px, 'B.Sc. V777 Marker X (none)', dept, fac, 'UNDER GRADUATE', 0, 400, 4);
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('ZZK 301', 'Marker V777 plain core', 3, 1, 300, dept, 'Core', 'LIVE'),
+        ('ZZK 302', 'Marker V777 field practicum', 3, 1, 300, dept, 'Core', 'LIVE'),
+        ('ZZK 303', 'Marker V777 plain practical', 3, 2, 300, dept, 'Core', 'LIVE'),
+        ('ZZK 304', 'Marker V777 plain second semester core', 3, 2, 300, dept, 'Core', 'LIVE'),
+        ('BSU-ZZK 311', 'Marker V777 twin SIWES', 3, 1, 300, dept, 'Core', 'LIVE'),
+        ('MOAU-ZZK 311', 'Marker V777 twin SIWES', 3, 1, 300, dept, 'Core', 'LIVE'),
+        ('ZZK 401', 'Marker V777 other one', 3, 1, 300, dept, 'Core', 'LIVE'),
+        ('ZZK 402', 'Marker V777 other two', 3, 1, 300, dept, 'Core', 'LIVE'),
+        ('ZZK 403', 'Marker V777 other three', 3, 2, 300, dept, 'Core', 'LIVE');
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES
+        ('ZZK 301', v_pk, 300, 'Core'), ('ZZK 302', v_pk, 300, 'Core'), ('ZZK 303', v_pk, 300, 'Core'), ('ZZK 304', v_pk, 300, 'Core'),
+        ('BSU-ZZK 311', v_pk, 300, 'Core'), ('MOAU-ZZK 311', v_pk, 300, 'Core'),
+        ('ZZK 401', v_px, 300, 'Core'), ('ZZK 402', v_px, 300, 'Core'), ('ZZK 403', v_px, 300, 'Core');
+    o_301 := catalogue.open_class('ZZK 301', v_s, 1, 'REGULAR'); o_302 := catalogue.open_class('ZZK 302', v_s, 1, 'REGULAR');
+    o_303 := catalogue.open_class('ZZK 303', v_s, 2, 'REGULAR'); o_304 := catalogue.open_class('ZZK 304', v_s, 2, 'REGULAR');
+    o_bsu := catalogue.open_class('BSU-ZZK 311', v_s, 1, 'REGULAR'); o_moau := catalogue.open_class('MOAU-ZZK 311', v_s, 1, 'REGULAR');
+    PERFORM pg_temp.k_as('bursar', who);
+    INSERT INTO finance.siwes_fee (session, amount, state, note, stated_by, stated_office, published_by, published_office, published_at)
+    VALUES (v_s, 4000, 'PUBLISHED', 'check V777 marker', who, 'bursar', who, 'bursar', now());
+    PERFORM pg_temp.k_as('academic', who);
+
+    -- ═══ (M1) marking a plain course starts charging it ═══
+    u1 := pg_temp.k_student(1, v_pk, 300);  u2 := pg_temp.k_student(2, v_pk, 300);  u3 := pg_temp.k_student(3, v_pk, 300);
+    r1 := pg_temp.k_reg(u1, v_s, 1, 300);  r2 := pg_temp.k_reg(u2, v_s, 1, 300);  r3 := pg_temp.k_reg(u3, v_s, 1, 300);
+    m1 := pg_temp.k_put(r1, o_302) || '/' || (SELECT c.industrial_training FROM catalogue.course c WHERE c.code = 'ZZK 302');   -- plain: placed free
+    PERFORM registration.siwes_mark_course('ZZK 302', true);
+    m1 := m1 || ' | marked ' || (SELECT c.industrial_training FROM catalogue.course c WHERE c.code = 'ZZK 302') || ' | next ' || pg_temp.k_put(r2, o_302)
+          || ' | held ' || pg_temp.k_try(format('UPDATE registration.entry SET status = ''APPROVED'' WHERE registration_id = %L AND offering_id = %L', r1, o_302)) || '/' || pg_temp.k_status(r1, o_302)
+          || '/' || pg_temp.k_links(u1);
+    m1 := m1 || ' | in reach ' || registration.siwes_in_reach(u1, v_s) || '/' || registration.siwes_in_reach(u2, v_s)
+          || ' | listed ' || coalesce((SELECT string_agg(x.matric_no || ' ' || x.course_code || ' ' || x.payable, '; ' ORDER BY x.matric_no) FROM registration.siwes_entries_unpaid(v_s) x WHERE x.student_id IN (u1, u2, u3)), '-')
+          || ' | gate ' || coalesce(split_part(registration.siwes_fee_gate(u2, v_s, 'ZZK 302'), ':', 1), '-');
+    y2 := pg_temp.k_pay(u2, v_s, 'ZZK-PAY2');
+    m1 := m1 || ' | paid ' || pg_temp.k_put(r2, o_302);
+    m1 := m1 || '/' || pg_temp.k_on(r2, o_302) || '/' || finance.siwes_stands_on(y2);   -- a statement of its own: a stable function does not see a row a volatile one wrote in the same statement
+
+    -- ═══ (M2) taking it off the SIWES courses (item 9): refused while the entry stands on the payment, accepted once it is dropped ═══
+    m2 := pg_temp.k_msg('SELECT registration.siwes_mark_course(''ZZK 302'', false)');
+    m2 := (m2 LIKE 'SIWES_COURSE_IN_USE: 1 student(s) hold ZZK 302 in a session still to come or running on a registration that stands on the SIWES registration fee%')::text
+          || '/' || (SELECT c.industrial_training FROM catalogue.course c WHERE c.code = 'ZZK 302');
+    UPDATE registration.entry SET status = 'DROPPED' WHERE registration_id = r2 AND offering_id = o_302;
+    m2b := pg_temp.k_try('SELECT registration.siwes_mark_course(''ZZK 302'', false)');
+    m2b := m2b || '/' || (SELECT c.industrial_training FROM catalogue.course c WHERE c.code = 'ZZK 302')
+           || ' | free again ' || pg_temp.k_put(r3, o_302) || '/' || pg_temp.k_links(u3) || ' | held kept ' || pg_temp.k_status(r1, o_302);
+
+    -- ═══ (M3) a title that reads SIWES marks the course (V776's trigger): the charge follows ═══
+    u4 := pg_temp.k_student(4, v_pk, 300);  u5 := pg_temp.k_student(5, v_pk, 300);
+    r4 := pg_temp.k_reg(u4, v_s, 2, 300);  r5 := pg_temp.k_reg(u5, v_s, 2, 300);
+    m3 := pg_temp.k_put(r4, o_303) || '/' || (SELECT c.industrial_training FROM catalogue.course c WHERE c.code = 'ZZK 303');
+    UPDATE catalogue.course SET title = 'Marker V777 practical training (SIWES)' WHERE code = 'ZZK 303';
+    m3 := m3 || ' | retitled ' || (SELECT c.industrial_training FROM catalogue.course c WHERE c.code = 'ZZK 303') || ' | next ' || pg_temp.k_put(r5, o_303)
+          || ' | held ' || pg_temp.k_try(format('UPDATE registration.entry SET status = ''APPROVED'' WHERE registration_id = %L AND offering_id = %L', r4, o_303)) || '/' || pg_temp.k_status(r4, o_303)
+          || ' | plain beside ' || pg_temp.k_put(r5, o_304);
+
+    -- ═══ (M4) a code correction that moves entries: not refused for a student who paid (the link follows) nor one who held the course unpaid ═══
+    SELECT moau_from_entry_session INTO v_saved FROM catalogue.code_family_setting WHERE id = 1;
+    UPDATE catalogue.code_family_setting SET moau_from_entry_session = v_s WHERE id = 1;   -- the cohort entering in 9922/9923 registers BSU- codes
+    pu := pg_temp.k_student(6, v_pk, 300);  hu := pg_temp.k_student(7, v_pk, 300);
+    rp := pg_temp.k_reg(pu, v_s, 1, 300);  rh := pg_temp.k_reg(hu, v_s, 1, 300);
+    ypu := pg_temp.k_pay(pu, v_s, 'ZZK-PAYU');
+    m4 := pg_temp.k_put(rp, o_moau) || '/' || pg_temp.k_on(rp, o_moau) || ' | ' || pg_temp.k_put(rh, o_moau, 3, true) || '/' || pg_temp.k_on(rh, o_moau);
+    m4 := m4 || ' | moved ' || coalesce(pg_temp.k_try(format('SELECT catalogue.move_entry_to_own_code(%L, %L, ''check V777'')', rp, o_moau)), '-')
+                 || '/' || pg_temp.k_try(format('SELECT catalogue.move_entry_to_own_code(%L, %L, ''check V777'')', rh, o_moau));
+    m4 := m4 || ' | paid on ' || pg_temp.k_status(rp, o_bsu) || '/' || pg_temp.k_status(rp, o_moau) || '/' || pg_temp.k_on(rp, o_bsu) || '/' || pg_temp.k_on(rp, o_moau) || '/' || pg_temp.k_links(pu)
+                 || ' | held on ' || pg_temp.k_status(rh, o_bsu) || '/' || pg_temp.k_status(rh, o_moau) || '/' || pg_temp.k_links(hu);
+    PERFORM pg_temp.k_as('bursar', who);
+    m4b := finance.siwes_stands_on(ypu) || '/' || pg_temp.k_try(format('SELECT finance.propose_refund(%L, ''ZZMARK'', ''check V777 marker'', 4000, ''Bank'', ''ZZMARK'', ''1234'', ''ZZK-PAYU'')', pu));
+    PERFORM pg_temp.k_as('academic', who);
+    UPDATE catalogue.code_family_setting SET moau_from_entry_session = v_saved WHERE id = 1;
+
+    -- ═══ (M5) the menu item of a student of a programme that carries no SIWES course reads the catalogue by index probes: no scan of course or course_offer ═══
+    ux := pg_temp.k_student(8, v_px, 300);  rx := pg_temp.k_reg(ux, v_s, 1, 300);
+    SELECT s.seq, s.idx INTO cs0, ci0 FROM pg_temp.k_stat('catalogue.course') s;
+    SELECT s.seq, s.idx INTO os0, oi0 FROM pg_temp.k_stat('catalogue.course_offer') s;
+    PERFORM set_config('enable_seqscan', 'off', true);
+    -- PostgreSQL 18 keeps the plans of a SQL function's queries for the session: an earlier call (the blocks before this one in a full run) planned them with the tables small and
+    -- scans allowed; planned again, the probe sees what the statement CAN do with the indexes
+    EXECUTE 'DISCARD PLANS';
+    area := registration.siwes_at_level(ux);   -- V777's own addition to registration.siwes_area (V752's registration.siwes_applies, ahead of it, is not V777's)
+    PERFORM set_config('enable_seqscan', 'on', true);
+    SELECT s.seq, s.idx INTO cs1, ci1 FROM pg_temp.k_stat('catalogue.course') s;
+    SELECT s.seq, s.idx INTO os1, oi1 FROM pg_temp.k_stat('catalogue.course_offer') s;
+    m5 := area::text || ' | course seq ' || (cs1 - cs0) || ' idx ' || (ci1 - ci0) || ' | course_offer seq ' || (os1 - os0) || ' idx ' || (oi1 - oi0);
+
+    RAISE EXCEPTION 'the V777 marker check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V777 marker check undoes its writes' THEN RAISE; END IF;
+  END;
+  -- (M1)
+  PERFORM pg_temp.assert('V777 P16 (M1): a plain course is placed free; once the Academic Office marks it the next student''s entry is refused SIWES_UNPAID, the student who held it is not judged again (approved, no link) but is in reach and listed for the Bursary, and the student who pays registers it standing on the payment',
+      coalesce(m1 = 'ok/false | marked true | next SIWES_UNPAID | held ok/APPROVED/0 | in reach true/true | listed MOAU/ZSK/97/7601 ZZK 302 true | gate SIWES_UNPAID | paid ok/ZZK-PAY2/true', false), m1);
+  -- (M2) item 9
+  PERFORM pg_temp.assert('V777 item 9: a course is not taken off the SIWES courses while a student''s entry for it stands on the SIWES payment (SIWES_COURSE_IN_USE, still a SIWES course); accepted once the entry is dropped, after which the course is free again and the other student''s held entry stays',
+      coalesce(m2 = 'true/true' AND m2b = 'ok/false | free again ok/0 | held kept APPROVED', false), m2 || ' | ' || m2b);
+  -- (M3)
+  PERFORM pg_temp.assert('V777 P16 (M3): a retitle into SIWES marks the course (V776''s title trigger) and the charge follows: the next entry is refused SIWES_UNPAID, the entry that stood is not judged again, a plain course beside it is free',
+      coalesce(m3 = 'ok/false | retitled true | next SIWES_UNPAID | held ok/APPROVED | plain beside ok', false), m3);
+  -- (M4)
+  PERFORM pg_temp.assert('V777 P16 (M4): a code correction that moves entries to the cohort''s code is refused for neither a student who paid (the link follows the entry, one row, the same payment, still held from the refund desk) nor one who held the course unpaid (moved, no link)',
+      coalesce(m4 = 'ok/ZZK-PAYU | ok/nowhere | moved ok/ok | paid on REGISTERED/none/ZZK-PAYU/nowhere/1 | held on REGISTERED/none/0'
+               AND m4b = 'true/REFUND_SIWES_REGISTERED', false), m4 || ' | ' || m4b);
+  -- (M5)
+  PERFORM pg_temp.assert('V777 P17: what V777 adds to the SIWES menu item of a student of a programme that carries no SIWES course (registration.siwes_at_level, read last in registration.siwes_area) reads the catalogue by index probes only: no sequential scan of catalogue.course or catalogue.course_offer, one probe of course_offer',
+      coalesce(m5 ~ '^false \| course seq 0 idx [0-3] \| course_offer seq 0 idx 1$', false), m5);
+END $$;
+-- ── V777, the link backfill: the entries that stand when V777 is deployed are linked to the SIWES payment they stand on, so that the money guards see it.
+--          In 9925/9926 (current; 9924/9925 closed before it, 9926/9927 planned after it), a made-up programme with two SIWES courses (ZZB 301 First Semester,
+--          ZZB 302 Second Semester), a plain course, a SIWES course that is ended and a postgraduate SIWES course, and a student for each case. The entries and
+--          the payments are made as they stand BEFORE V777: each entry placed under the old portal's override (the gate asks nothing, writes no link), as the
+--          entries standing when V777 is deployed. Then the statement of the migration (the DO block between the markers of V777.sql, spliced in here by
+--          mk_check_backfill.py: the same text) is run by hand, twice. (B1) a standing entry of a SIWES course of a student judged with a SIWES payment standing gets exactly
+--          one link row, none else does: not an unpaid holder, a dropped or withdrawn entry, a session closed or planned, a CCE, postgraduate or not-in-study student,
+--          a plain or ended course, a payment of another session, an entry V752's registration holds; one student with two entries, two rows on one payment;
+--          (B2) on the right payment, the portal's or the old portal's, either semester's purpose, the registration's level and semester; (B3) the row is the one the
+--          gate writes (the same shape for a student whose entry is placed through the gate), the migration as the actor, registered at the time the entry records;
+--          (B4) a link the gate wrote is not touched, and run twice nothing changes; (B5) the money guards see the payment: the old fees reset keeps it, the refund
+--          desk and the archive desk refuse it, and the payments of the students not linked are still deleted by the reset; (B6) the lock is taken before the payment is
+--          read. The block undoes its writes. ──
+DO $$
+DECLARE
+    v_s0 text := '9924/9925'; v_s text := '9925/9926'; v_s2 text := '9926/9927'; who uuid := gen_random_uuid(); dept text; fac text;
+    v_pa text := 'C97821'; v_pp text := 'C97822';
+    o_301 uuid; o_302 uuid; o_305 uuid; o_399 uuid; o_301z uuid; o_301n uuid; o_301c uuid; o_702p uuid;
+    u_portal uuid; u_leg2 uuid; u_leg1 uuid; u_two uuid; u_unpaid uuid; u_dropped uuid; u_withdrawn uuid; u_closed uuid; u_planned uuid; u_cce uuid; u_pg uuid; u_out uuid;
+    u_plain uuid; u_ended uuid; u_sreg uuid; u_gate uuid; u_q1 uuid; u_q2 uuid; u_other uuid;
+    r_portal uuid; r_leg2 uuid; r_leg1 uuid; r_two1 uuid; r_two2 uuid; r_gate uuid; r_q1 uuid; r_q2 uuid; r_sreg uuid; r uuid;
+    y_portal uuid; y_leg2 uuid; y_leg1 uuid; y_two uuid; y_sreg uuid;
+    u_c1 uuid; u_c2 uuid; u_c3 uuid; u_c4 uuid; u_c5 uuid; u_c6 uuid; u_c7 uuid; u_c8 uuid; r_c1 uuid; r_c2 uuid; r_c3a uuid; r_c3b uuid; y_c2 uuid; y_c3 uuid;
+    ovr_before text; c_before text; c_after text; c_on text; c_guards text; c_who text; c_rows3 text; c_rows3b text;
+    t text; v_do text; v_lh text; v_added timestamptz := timestamptz '2026-11-01 10:00:00+01';
+    links_before text; links_after text; links_again text;
+    on_before text; on_after text; guards_before text; guards_after text; shape text; row_gate_before text; row_gate_after text; snap1 text; snap2 text; total0 int; total1 int; total2 int;
+    stmt text; lockpos text; v_err text; cast_yes_before text; cast_yes_after text; cast_yes_again text; cast_no_before text; cast_no_after text; q_same text; on_sreg text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check V777 backfill', true);
+    -- small makers and askers, made here and undone with the block
+    EXECUTE $f$ CREATE FUNCTION pg_temp.bf_student(n int, prog text, lvl int, mode text DEFAULT 'UTME', st text DEFAULT 'ACTIVE') RETURNS uuid LANGUAGE plpgsql AS $g$
+        DECLARE i uuid := gen_random_uuid();
+        BEGIN
+            INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at, study_mode)
+            VALUES (i, 'MOAUM/ADM/97/9782' || lpad(n::text, 2, '0'), 'MOAU/ZSB/97/82' || lpad(n::text, 2, '0'), 'ZZBACKFILL', 'B' || n, prog, mode, '9924/9925', 100, lvl, st, now(),
+                    CASE WHEN mode = 'CCE' THEN 'PART_TIME' ELSE 'FULL_TIME' END);
+            RETURN i;
+        END $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.bf_reg(stu uuid, sess text, sem int, lvl int) RETURNS uuid LANGUAGE plpgsql AS $g$
+        DECLARE r uuid := gen_random_uuid();
+        BEGIN
+            INSERT INTO registration.course_registration (id, student_id, session, semester, level) VALUES (r, stu, sess, sem, lvl);
+            RETURN r;
+        END $g$ $f$;
+    -- a confirmed SIWES payment, the portal's or the old portal's (legacy = the semester of its purpose)
+    EXECUTE $f$ CREATE FUNCTION pg_temp.bf_pay(stu uuid, sess text, ref text, legacy int DEFAULT 0) RETURNS uuid LANGUAGE plpgsql AS $g$
+        DECLARE p uuid;
+        BEGIN
+            INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, confirmed_by, channel, note, receipt_no)
+            VALUES (stu, sess, ref, CASE WHEN legacy > 0 THEN 'SIWES (legacy) · semester ' || legacy ELSE 'SIWES registration fee ' || sess END, 4000, now(), now(), now(),
+                    nullif(current_setting('moaum.actor_id', true), '')::uuid, CASE WHEN legacy > 0 THEN 'Legacy' ELSE 'Paystack' END,
+                    CASE WHEN legacy > 0 THEN 'Imported from the old portal' ELSE 'check V777 backfill' END, 'RCT-' || ref) RETURNING id INTO p;
+            RETURN p;
+        END $g$ $f$;
+    -- an entry as it stands BEFORE V777: placed under the old portal's override (nothing asked, no link written); a dropped or withdrawn one is placed, then set so
+    EXECUTE $f$ CREATE FUNCTION pg_temp.bf_put(reg uuid, off uuid, units int DEFAULT 3, st text DEFAULT 'APPROVED', added timestamptz DEFAULT NULL) RETURNS void LANGUAGE plpgsql AS $g$
+        BEGIN
+            PERFORM set_config('moaum.siwes_override', 'on', true);
+            INSERT INTO registration.entry (registration_id, offering_id, units, status, student_added_at)
+            VALUES (reg, off, units, CASE WHEN st IN ('DROPPED', 'WITHDRAWN') THEN 'REGISTERED' ELSE st END, added);
+            IF st IN ('DROPPED', 'WITHDRAWN') THEN UPDATE registration.entry SET status = st WHERE registration_id = reg AND offering_id = off; END IF;
+            PERFORM set_config('moaum.siwes_override', 'off', true);
+        END $g$ $f$;
+    -- an entry placed through the gate (no override): the payment must be there
+    EXECUTE $f$ CREATE FUNCTION pg_temp.bf_put_gate(reg uuid, off uuid, units int DEFAULT 3) RETURNS text LANGUAGE plpgsql AS $g$
+        BEGIN
+            INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (reg, off, units, 'REGISTERED');
+            RETURN 'ok';
+        EXCEPTION WHEN check_violation THEN RETURN split_part(SQLERRM, ':', 1); END $g$ $f$;
+    -- the link of an entry: the payment it stands on, which column, the level and the semester; or 'nowhere'
+    EXECUTE $f$ CREATE FUNCTION pg_temp.bf_on(reg uuid, off uuid) RETURNS text LANGUAGE sql AS $g$
+        SELECT coalesce((SELECT coalesce(r.reference, '?') || '/' || CASE WHEN x.payment_reference_id IS NOT NULL THEN 'portal' ELSE 'old' END || '/' || x.level || '/' || x.semester
+                           FROM registration.siwes_course_entry x LEFT JOIN finance.payment_reference r ON r.id IN (x.payment_reference_id, x.legacy_payment_id)
+                          WHERE x.course_registration_id = reg AND x.offering_id = off), 'nowhere') $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.bf_links(stu uuid) RETURNS int LANGUAGE sql AS $g$ SELECT count(*)::int FROM registration.siwes_course_entry WHERE student_id = stu $g$ $f$;
+    -- every link row, whole: the md5 of all rows (what a second run must leave exactly as it is)
+    EXECUTE $f$ CREATE FUNCTION pg_temp.bf_snap() RETURNS text LANGUAGE sql AS $g$
+        SELECT count(*) || ':' || coalesce(md5(string_agg(concat_ws('|', x.id, x.student_id, x.session, x.course_registration_id, x.offering_id, x.course_code, x.level, x.semester,
+                                                                       x.payment_reference_id, x.legacy_payment_id, x.registered_at, x.registered_by, x.registered_office), ';' ORDER BY x.id)), '-')
+          FROM registration.siwes_course_entry x $g$ $f$;
+    -- the links of the whole cast, one string
+    EXECUTE $f$ CREATE FUNCTION pg_temp.bf_cast(VARIADIC ids uuid[]) RETURNS text LANGUAGE sql AS $g$
+        SELECT string_agg(pg_temp.bf_links(x.id)::text, ',' ORDER BY x.n) FROM unnest(ids) WITH ORDINALITY x(id, n) $g$ $f$;
+    -- the old fees reset of a session, read and undone: what it deleted, kept, and which of the made-up old-portal records are left
+    EXECUTE $f$ CREATE FUNCTION pg_temp.bf_reset(sess text) RETURNS text LANGUAGE plpgsql AS $g$
+        DECLARE k record; refs text;
+        BEGIN
+            SELECT * INTO k FROM finance.reset_legacy_payments(sess, 'RESET', 5000);
+            refs := coalesce((SELECT string_agg(regexp_replace(p.reference, '^MOAUM-LEG-ZZB', ''), ',' ORDER BY p.reference) FROM finance.payment_reference p
+                               WHERE p.session = sess AND p.reference LIKE 'MOAUM-LEG-ZZB%'), 'none');
+            RAISE EXCEPTION 'BF_UNDO:%', 'deleted ' || k.deleted || ' kept ' || k.kept_in_use || ' | left ' || refs;
+        EXCEPTION WHEN OTHERS THEN
+            IF SQLERRM LIKE 'BF_UNDO:%' THEN RETURN substr(SQLERRM, 9); END IF;
+            RETURN 'ERR ' || left(SQLERRM, 100);
+        END $g$ $f$;
+    -- a refund raised on a payment: 'ok' or the refusal's code; undone either way
+    EXECUTE $f$ CREATE FUNCTION pg_temp.bf_refund(stu uuid, ref text) RETURNS text LANGUAGE plpgsql AS $g$
+        BEGIN
+            PERFORM finance.propose_refund(stu, 'ZZBACKFILL', 'check V777 backfill', 4000, 'Bank', 'ZZBACKFILL', '1234', ref);
+            RAISE EXCEPTION 'BF_UNDO';
+        EXCEPTION WHEN OTHERS THEN
+            IF SQLERRM = 'BF_UNDO' THEN RETURN 'ok'; END IF;
+            RETURN split_part(SQLERRM, ':', 1);
+        END $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.bf_par(p uuid) RETURNS boolean LANGUAGE sql AS $g$
+        SELECT coalesce(bool_or(x LIKE 'PAR_LINKED:%'), false) FROM unnest(finance.payment_archive_refusals(p)) x $g$ $f$;
+
+    -- the sessions: 9925/9926 current, the one before it closed, the one after it planned
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+        (gen_random_uuid(), v_s0, DATE '9924-10-01', DATE '9925-08-31', 'CLOSED'),
+        (gen_random_uuid(), v_s, DATE '9925-10-01', DATE '9926-08-31', 'PLANNED'),
+        (gen_random_uuid(), v_s2, DATE '9926-10-01', DATE '9927-08-31', 'PLANNED') ON CONFLICT (name) DO NOTHING;
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/9926/777' WHERE name = v_s;
+    SELECT p.dept_code, p.faculty_code INTO dept, fac FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT p.archived ORDER BY p.code LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years) VALUES
+        (v_pa, 'B.Sc. V777 Backfill', dept, fac, 'UNDER GRADUATE', 0, 400, 4),
+        (v_pp, 'M.Sc. V777 Backfill', dept, fac, 'POST GRADUATE', 0, 900, 2);
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, industrial_training) VALUES
+        ('ZZB 301', 'Backfill V777 SIWES first semester', 6, 1, 300, dept, 'Core', 'LIVE', true),
+        ('ZZB 302', 'Backfill V777 SIWES second semester', 6, 2, 300, dept, 'Core', 'LIVE', true),
+        ('ZZB 305', 'Backfill V777 plain first semester', 3, 1, 300, dept, 'Core', 'LIVE', false),
+        ('ZZB 399', 'Backfill V777 SIWES, ended', 3, 1, 300, dept, 'Core', 'LIVE', true),
+        ('ZZB 702', 'Backfill V777 SIWES postgraduate', 3, 2, 700, dept, 'Core', 'LIVE', true);
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES
+        ('ZZB 301', v_pa, 300, 'Core'), ('ZZB 302', v_pa, 300, 'Core'), ('ZZB 305', v_pa, 300, 'Core'), ('ZZB 399', v_pa, 300, 'Core'), ('ZZB 702', v_pp, 700, 'Core');
+    o_301 := catalogue.open_class('ZZB 301', v_s, 1, 'REGULAR');  o_302 := catalogue.open_class('ZZB 302', v_s, 2, 'REGULAR');
+    o_305 := catalogue.open_class('ZZB 305', v_s, 1, 'REGULAR');  o_399 := catalogue.open_class('ZZB 399', v_s, 1, 'REGULAR');
+    o_301z := catalogue.open_class('ZZB 301', v_s0, 1, 'REGULAR'); o_301n := catalogue.open_class('ZZB 301', v_s2, 1, 'REGULAR');
+    o_301c := catalogue.open_class('ZZB 301', v_s, 1, 'CCE');      o_702p := catalogue.open_class('ZZB 702', v_s, 2, 'PG');
+
+    -- ═══ the cast, each as it stands before V777: a payment (or none), an entry placed under the override ═══
+    -- 1 the portal's payment, a First Semester entry the student added (the entry records when)
+    u_portal := pg_temp.bf_student(1, v_pa, 300);  r_portal := pg_temp.bf_reg(u_portal, v_s, 1, 300);  y_portal := pg_temp.bf_pay(u_portal, v_s, 'ZZB-P1');
+    PERFORM pg_temp.bf_put(r_portal, o_301, 6, 'APPROVED', v_added);
+    -- 2 an old-portal payment of the SECOND semester, a First Semester entry;  3 an old-portal payment of the FIRST semester, a Second Semester entry
+    u_leg2 := pg_temp.bf_student(2, v_pa, 300);  r_leg2 := pg_temp.bf_reg(u_leg2, v_s, 1, 300);  y_leg2 := pg_temp.bf_pay(u_leg2, v_s, 'MOAUM-LEG-ZZB2', 2);
+    PERFORM pg_temp.bf_put(r_leg2, o_301, 6);
+    u_leg1 := pg_temp.bf_student(3, v_pa, 300);  r_leg1 := pg_temp.bf_reg(u_leg1, v_s, 2, 300);  y_leg1 := pg_temp.bf_pay(u_leg1, v_s, 'MOAUM-LEG-ZZB3', 1);
+    PERFORM pg_temp.bf_put(r_leg1, o_302, 6);
+    -- 4 one payment, a SIWES course in each semester: two entries, two links, one payment
+    u_two := pg_temp.bf_student(4, v_pa, 300);  r_two1 := pg_temp.bf_reg(u_two, v_s, 1, 300);  r_two2 := pg_temp.bf_reg(u_two, v_s, 2, 300);  y_two := pg_temp.bf_pay(u_two, v_s, 'ZZB-P4');
+    PERFORM pg_temp.bf_put(r_two1, o_301, 6);  PERFORM pg_temp.bf_put(r_two2, o_302, 6);
+    -- 5 nothing paid: an unpaid holder
+    u_unpaid := pg_temp.bf_student(5, v_pa, 300);  r := pg_temp.bf_reg(u_unpaid, v_s, 1, 300);  PERFORM pg_temp.bf_put(r, o_301, 6);
+    -- 6, 7 paid, the entry dropped; paid, the entry withdrawn
+    u_dropped := pg_temp.bf_student(6, v_pa, 300);  r := pg_temp.bf_reg(u_dropped, v_s, 1, 300);  PERFORM pg_temp.bf_pay(u_dropped, v_s, 'MOAUM-LEG-ZZB6', 1);  PERFORM pg_temp.bf_put(r, o_301, 6, 'DROPPED');
+    u_withdrawn := pg_temp.bf_student(7, v_pa, 300);  r := pg_temp.bf_reg(u_withdrawn, v_s, 1, 300);  PERFORM pg_temp.bf_pay(u_withdrawn, v_s, 'MOAUM-LEG-ZZB6W', 1);  PERFORM pg_temp.bf_put(r, o_301, 6, 'WITHDRAWN');
+    -- 8 paid in the closed session, the entry in the closed session's registration (a session already closed is never judged)
+    u_closed := pg_temp.bf_student(8, v_pa, 300);  r := pg_temp.bf_reg(u_closed, v_s0, 1, 300);  PERFORM pg_temp.bf_pay(u_closed, v_s0, 'MOAUM-LEG-ZZB8', 1);  PERFORM pg_temp.bf_put(r, o_301z, 6);
+    -- 9 paid for the planned session, the entry in the planned session's registration (not the student's current one)
+    u_planned := pg_temp.bf_student(9, v_pa, 300);  r := pg_temp.bf_reg(u_planned, v_s2, 1, 300);  PERFORM pg_temp.bf_pay(u_planned, v_s2, 'ZZB-P9');  PERFORM pg_temp.bf_put(r, o_301n, 6);
+    -- 10, 11, 12 CCE, postgraduate, not in study: each paid, each holding a SIWES entry
+    u_cce := pg_temp.bf_student(10, v_pa, 300, 'CCE');  r := pg_temp.bf_reg(u_cce, v_s, 1, 300);  PERFORM pg_temp.bf_pay(u_cce, v_s, 'MOAUM-LEG-ZZB10', 1);  PERFORM pg_temp.bf_put(r, o_301c, 6);
+    u_pg := pg_temp.bf_student(11, v_pp, 700, 'POSTGRADUATE');  r := pg_temp.bf_reg(u_pg, v_s, 2, 700);  PERFORM pg_temp.bf_pay(u_pg, v_s, 'ZZB-P11');  PERFORM pg_temp.bf_put(r, o_702p);
+    u_out := pg_temp.bf_student(12, v_pa, 300, 'UTME', 'WITHDRAWN');  r := pg_temp.bf_reg(u_out, v_s, 1, 300);  PERFORM pg_temp.bf_pay(u_out, v_s, 'MOAUM-LEG-ZZB12', 1);  PERFORM pg_temp.bf_put(r, o_301, 6);
+    -- 13, 14 paid, holding a plain course; paid, holding a SIWES course that has been ended since
+    u_plain := pg_temp.bf_student(13, v_pa, 300);  r := pg_temp.bf_reg(u_plain, v_s, 1, 300);  PERFORM pg_temp.bf_pay(u_plain, v_s, 'MOAUM-LEG-ZZB13', 1);  PERFORM pg_temp.bf_put(r, o_305);
+    u_ended := pg_temp.bf_student(14, v_pa, 300);  r := pg_temp.bf_reg(u_ended, v_s, 1, 300);  PERFORM pg_temp.bf_pay(u_ended, v_s, 'MOAUM-LEG-ZZB14E', 1);  PERFORM pg_temp.bf_put(r, o_399);
+    UPDATE catalogue.course SET state = 'ENDED', ended_on = current_date WHERE code = 'ZZB 399';
+    -- 15 V752's own registration (the SIWES semester) stands on the old-portal payment: it has its link already, the backfill adds none beside it
+    u_sreg := pg_temp.bf_student(15, v_pa, 300);  r_sreg := pg_temp.bf_reg(u_sreg, v_s, 2, 300);  y_sreg := pg_temp.bf_pay(u_sreg, v_s, 'MOAUM-LEG-ZZB15', 2);
+    PERFORM pg_temp.bf_put(r_sreg, o_302, 6);
+    INSERT INTO registration.siwes_registration (student_id, session, course_registration_id, offering_id, course_code, legacy_payment_id, registered_by, registered_office)
+    VALUES (u_sreg, v_s, r_sreg, o_302, 'ZZB 302', y_sreg, who, 'academic');
+    -- 16 an entry PLACED THROUGH THE GATE after V777 (paid first): the gate writes its link; the backfill must not touch it
+    u_gate := pg_temp.bf_student(16, v_pa, 300);  r_gate := pg_temp.bf_reg(u_gate, v_s, 1, 300);  PERFORM pg_temp.bf_pay(u_gate, v_s, 'ZZB-P16');
+    t := pg_temp.bf_put_gate(r_gate, o_301, 6);
+    -- 17, 18 two payments each (the portal's, then an old-portal one: a credit); the entry of 17 as it stands before V777 (backfilled), of 18 placed through the gate: the same row
+    u_q1 := pg_temp.bf_student(17, v_pa, 300);  r_q1 := pg_temp.bf_reg(u_q1, v_s, 1, 300);  PERFORM pg_temp.bf_pay(u_q1, v_s, 'ZZB-P17A');  PERFORM pg_temp.bf_pay(u_q1, v_s, 'MOAUM-LEG-ZZB17B', 2);
+    PERFORM pg_temp.bf_put(r_q1, o_301, 6);
+    u_q2 := pg_temp.bf_student(18, v_pa, 300);  r_q2 := pg_temp.bf_reg(u_q2, v_s, 1, 300);  PERFORM pg_temp.bf_pay(u_q2, v_s, 'ZZB-P18A');  PERFORM pg_temp.bf_pay(u_q2, v_s, 'MOAUM-LEG-ZZB18B', 2);
+    PERFORM pg_temp.bf_put_gate(r_q2, o_301, 6);
+    -- 19 a portal payment of the closed session only, an entry in the current one: nothing standing for the session
+    u_other := pg_temp.bf_student(19, v_pa, 300);  r := pg_temp.bf_reg(u_other, v_s, 1, 300);  PERFORM pg_temp.bf_pay(u_other, v_s0, 'ZZB-P19');  PERFORM pg_temp.bf_put(r, o_301, 6);
+
+    -- ═══ the students who hold an entry and pay AFTER V777 (the migration's statement finds them unpaid and leaves them): each paid by a real payment event below ═══
+    -- C1 the portal's reference, confirmed (the gateway path); C2 an old-portal record loaded confirmed, of the other semester's purpose; C3 two entries, one payment, then a second payment
+    u_c1 := pg_temp.bf_student(20, v_pa, 300);  r_c1 := pg_temp.bf_reg(u_c1, v_s, 1, 300);  PERFORM pg_temp.bf_put(r_c1, o_301, 6);
+    u_c2 := pg_temp.bf_student(21, v_pa, 300);  r_c2 := pg_temp.bf_reg(u_c2, v_s, 2, 300);  PERFORM pg_temp.bf_put(r_c2, o_302, 6);
+    u_c3 := pg_temp.bf_student(22, v_pa, 300);  r_c3a := pg_temp.bf_reg(u_c3, v_s, 1, 300);  r_c3b := pg_temp.bf_reg(u_c3, v_s, 2, 300);  PERFORM pg_temp.bf_put(r_c3a, o_301, 6);  PERFORM pg_temp.bf_put(r_c3b, o_302, 6);
+    -- C4 the entry dropped; C5 a CCE student; C6 pays for the closed session only; C7 holds a plain course; C8 never pays
+    u_c4 := pg_temp.bf_student(23, v_pa, 300);  r := pg_temp.bf_reg(u_c4, v_s, 1, 300);  PERFORM pg_temp.bf_put(r, o_301, 6, 'DROPPED');
+    u_c5 := pg_temp.bf_student(24, v_pa, 300, 'CCE');  r := pg_temp.bf_reg(u_c5, v_s, 1, 300);  PERFORM pg_temp.bf_put(r, o_301c, 6);
+    u_c6 := pg_temp.bf_student(25, v_pa, 300);  r := pg_temp.bf_reg(u_c6, v_s, 1, 300);  PERFORM pg_temp.bf_put(r, o_301, 6);
+    u_c7 := pg_temp.bf_student(26, v_pa, 300);  r := pg_temp.bf_reg(u_c7, v_s, 1, 300);  PERFORM pg_temp.bf_put(r, o_305);
+    u_c8 := pg_temp.bf_student(27, v_pa, 300);  r := pg_temp.bf_reg(u_c8, v_s, 1, 300);  PERFORM pg_temp.bf_put(r, o_301, 6);
+
+    -- the entries as they stood BEFORE V777: placed under the old portal's override, where the student had paid already the entry is now linked as it is placed (the gate links it);
+    -- that is a property of its own below (O1), and the link is taken off again here so the statement of the migration has the entries it was written for
+    ovr_before := pg_temp.bf_cast(u_portal, u_leg2, u_leg1, u_two, u_unpaid, u_dropped, u_withdrawn);
+    DELETE FROM registration.siwes_course_entry WHERE student_id NOT IN (u_gate, u_q2);
+    -- ═══ before the statement: only what the gate wrote is linked (16, 18); what the guards see ═══
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    total0 := (SELECT count(*) FROM registration.siwes_course_entry);
+    cast_yes_before := pg_temp.bf_cast(u_portal, u_leg2, u_leg1, u_two, u_gate, u_q1, u_q2);
+    cast_no_before := pg_temp.bf_cast(u_unpaid, u_dropped, u_withdrawn, u_closed, u_planned, u_cce, u_pg, u_out, u_plain, u_ended, u_sreg, u_other);
+    row_gate_before := (SELECT md5(x::text) FROM registration.siwes_course_entry x WHERE x.course_registration_id = r_gate);
+    guards_before := 'stands ' || finance.siwes_stands_on(y_leg2) || '/' || finance.siwes_stands_on(y_leg1) || '/' || finance.siwes_stands_on(y_portal)
+                     || ' | ' || pg_temp.bf_reset(v_s) || ' | par ' || pg_temp.bf_par(y_portal) || ' | refund ' || pg_temp.bf_refund(u_portal, 'ZZB-P1');
+
+    -- ═══ the statement of the migration, by hand: the same text, then again ═══
+    v_do := $bf$
+DO $v777$
+DECLARE s record; n int := 0; k int; v_students int := 0; v_unpaid int := 0;
+BEGIN
+    FOR s IN
+        WITH held AS MATERIALIZED (
+            SELECT DISTINCT cr.student_id, cr.session
+              FROM registration.entry e
+              JOIN registration.course_registration cr ON cr.id = e.registration_id
+              JOIN catalogue.offering o ON o.id = e.offering_id
+              JOIN catalogue.course c ON c.code = o.course_code AND c.industrial_training AND c.state <> 'ENDED'
+             WHERE e.status NOT IN ('DROPPED', 'WITHDRAWN')
+               AND NOT EXISTS (SELECT 1 FROM registration.siwes_course_entry x WHERE x.course_registration_id = e.registration_id AND x.offering_id = e.offering_id)
+               AND NOT EXISTS (SELECT 1 FROM registration.siwes_registration x WHERE x.course_registration_id = e.registration_id AND x.offering_id = e.offering_id))
+        SELECT h.student_id, h.session, EXISTS (SELECT 1 FROM finance.siwes_paid(h.student_id, h.session)) AS paid
+          FROM held h
+         WHERE registration.siwes_fee_judged(h.student_id, h.session)
+         ORDER BY h.student_id, h.session
+    LOOP
+        IF NOT s.paid THEN v_unpaid := v_unpaid + 1; CONTINUE; END IF;
+        PERFORM finance.siwes_lock(s.student_id, s.session);
+        k := registration.siwes_link_held(s.student_id, s.session);
+        n := n + k;
+        IF k > 0 THEN v_students := v_students + 1; END IF;
+    END LOOP;
+    RAISE NOTICE 'V777: % SIWES course entr(y/ies) of % student(s) that stood before the fee was asked linked to the SIWES payment they stand on; % student(s) hold one with no SIWES payment (registration.siwes_entries_unpaid) and are not linked until they pay', n, v_students, v_unpaid;
+END $v777$;
+$bf$;
+    -- (a mutant of the check redefines the function first, inside this undone block; the real run leaves the deployed one)
+    v_lh := $lh$  $lh$;
+    IF length(btrim(v_lh)) > 0 THEN EXECUTE v_lh; END IF;
+    -- the migration is the actor, as its header sets it
+    PERFORM set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true);
+    EXECUTE v_do;
+    cast_yes_after := pg_temp.bf_cast(u_portal, u_leg2, u_leg1, u_two, u_gate, u_q1, u_q2);
+    cast_no_after := pg_temp.bf_cast(u_unpaid, u_dropped, u_withdrawn, u_closed, u_planned, u_cce, u_pg, u_out, u_plain, u_ended, u_sreg, u_other);
+    total1 := (SELECT count(*) FROM registration.siwes_course_entry);
+    row_gate_after := (SELECT md5(x::text) FROM registration.siwes_course_entry x WHERE x.course_registration_id = r_gate);
+    snap1 := pg_temp.bf_snap();
+    EXECUTE v_do;
+    snap2 := pg_temp.bf_snap();
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    cast_yes_again := pg_temp.bf_cast(u_portal, u_leg2, u_leg1, u_two, u_gate, u_q1, u_q2);
+    total2 := (SELECT count(*) FROM registration.siwes_course_entry);
+
+    -- ═══ after: the payment each link stands on, the row's shape, the guards ═══
+    on_after := pg_temp.bf_on(r_portal, o_301) || ' ' || pg_temp.bf_on(r_leg2, o_301) || ' ' || pg_temp.bf_on(r_leg1, o_302) || ' ' || pg_temp.bf_on(r_two1, o_301) || ' ' || pg_temp.bf_on(r_two2, o_302);
+    shape := (SELECT (x.registered_by = '00000000-0000-0000-0000-000000000000'::uuid) || '/' || x.registered_office || '/' || (x.registered_at = v_added)
+                FROM registration.siwes_course_entry x WHERE x.course_registration_id = r_portal)
+             || ' | ' || (SELECT (x.registered_by = '00000000-0000-0000-0000-000000000000'::uuid) || '/' || x.registered_office || '/' || (x.registered_at = now())
+                FROM registration.siwes_course_entry x WHERE x.course_registration_id = r_leg2)
+             || ' | ' || (SELECT (x.registered_by = who) || '/' || x.registered_office FROM registration.siwes_course_entry x WHERE x.course_registration_id = r_gate);
+    q_same := pg_temp.bf_on(r_q1, o_301) || ' ' || pg_temp.bf_on(r_q2, o_301);
+    on_sreg := (SELECT count(*) FROM registration.siwes_course_entry WHERE student_id = u_sreg) || '/' || finance.siwes_stands_on(y_sreg);
+    guards_after := 'stands ' || finance.siwes_stands_on(y_leg2) || '/' || finance.siwes_stands_on(y_leg1) || '/' || finance.siwes_stands_on(y_portal)
+                    || ' | ' || pg_temp.bf_reset(v_s) || ' | par ' || pg_temp.bf_par(y_portal) || ' | refund ' || pg_temp.bf_refund(u_portal, 'ZZB-P1');
+    -- the lock is taken before the payment is read, once, in the statement
+    lockpos := (strpos(v_do, 'PERFORM finance.siwes_lock(s.student_id, s.session)') > 0
+                AND strpos(v_do, 'PERFORM finance.siwes_lock(s.student_id, s.session)') < strpos(v_do, 'registration.siwes_link_held('))::text
+               || '/' || ((length(v_do) - length(replace(v_do, 'finance.siwes_lock(', ''))) / length('finance.siwes_lock('));
+
+    -- ═══ C: the payment comes to stand AFTER V777, under the entries the student already holds (finance.siwes_settling_follows_payment -> registration.siwes_link_held) ═══
+    c_before := pg_temp.bf_cast(u_c1, u_c2, u_c3, u_c4, u_c5, u_c6, u_c7, u_c8, u_sreg);
+    -- C1 the gateway path: the reference drawn unconfirmed, then confirmed (an UPDATE of confirmed_at under the trigger)
+    INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at)
+    VALUES (u_c1, v_s, 'ZZB-PC1', 'SIWES registration fee ' || v_s, 4000, now(), now() + interval '1 day');
+    PERFORM finance.confirm_payment('ZZB-PC1', 'Bank transfer', 'check V777 backfill');
+    -- C2 an old-portal record loaded confirmed (an INSERT), the First Semester's purpose, for a Second Semester entry
+    y_c2 := pg_temp.bf_pay(u_c2, v_s, 'MOAUM-LEG-ZZBC2', 1);
+    -- C3 one portal payment (inserted confirmed) under two entries of two semesters, then a second payment: a credit that moves nothing
+    y_c3 := pg_temp.bf_pay(u_c3, v_s, 'ZZB-PC3');
+    -- (the rows dated long ago, so that a rewrite by the second payment would show: now() is one instant inside this block)
+    UPDATE registration.siwes_course_entry SET registered_at = v_added WHERE student_id = u_c3;
+    c_rows3 := (SELECT md5(string_agg(x::text, ';' ORDER BY x.offering_id)) FROM registration.siwes_course_entry x WHERE x.student_id = u_c3);
+    PERFORM pg_temp.bf_pay(u_c3, v_s, 'MOAUM-LEG-ZZBC3B', 2);
+    c_rows3b := (SELECT md5(string_agg(x::text, ';' ORDER BY x.offering_id)) FROM registration.siwes_course_entry x WHERE x.student_id = u_c3);
+    -- C9 V752's own SIWES registration stands on the student's payment; a second payment arrives: the course is not counted twice (no link beside V752's row)
+    PERFORM pg_temp.bf_pay(u_sreg, v_s, 'MOAUM-LEG-ZZB15B', 1);
+    -- C4 the entry dropped, C5 a CCE student, C6 a payment of the closed session, C7 a plain course, C8 nothing paid: each paid (or not) and still unlinked
+    PERFORM pg_temp.bf_pay(u_c4, v_s, 'MOAUM-LEG-ZZBC4', 1);
+    PERFORM pg_temp.bf_pay(u_c5, v_s, 'MOAUM-LEG-ZZBC5', 1);
+    PERFORM pg_temp.bf_pay(u_c6, v_s0, 'MOAUM-LEG-ZZBC6', 1);
+    PERFORM pg_temp.bf_pay(u_c7, v_s, 'MOAUM-LEG-ZZBC7', 1);
+    c_after := pg_temp.bf_cast(u_c1, u_c2, u_c3, u_c4, u_c5, u_c6, u_c7, u_c8, u_sreg) || ' | ' || pg_temp.bf_refund(u_c1, 'ZZB-PC1');
+    c_on := pg_temp.bf_on(r_c1, o_301) || ' ' || pg_temp.bf_on(r_c2, o_302) || ' ' || pg_temp.bf_on(r_c3a, o_301) || ' ' || pg_temp.bf_on(r_c3b, o_302);
+    c_guards := 'stands ' || finance.siwes_stands_on(y_c2) || '/' || finance.siwes_stands_on(y_c3) || ' | ' || pg_temp.bf_reset(v_s) || ' | par ' || pg_temp.bf_par(y_c3);
+    c_who := (SELECT (x.registered_by = who) || '/' || (x.registered_at > v_added) FROM registration.siwes_course_entry x WHERE x.course_registration_id = r_c1);
+
+    RAISE EXCEPTION 'the V777 backfill check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V777 backfill check undoes its writes' THEN RAISE; END IF;
+  END;
+  -- (O1) the old portal's loaders (the override): an entry placed for a student who has paid is linked as it is placed; one for a student who has not is placed, unlinked
+  PERFORM pg_temp.assert('V777 backfill O1: an entry the old portal''s loader places under the override is linked as it is placed where the student has paid already (a portal payer, an old-portal payer of either semester, two entries on one payment), and placed unlinked, never refused, where nothing is paid (an unpaid holder); an entry placed and dropped or withdrawn afterwards keeps the link it was placed with (the guards read the entry''s status)',
+      coalesce(ovr_before = '1,1,1,2,0,1,1', false), coalesce(ovr_before, '-'));
+  -- (B1) who is linked: exactly one row for each standing SIWES entry of a student judged with a SIWES payment standing, none for any other
+  PERFORM pg_temp.assert('V777 backfill B1: each standing SIWES entry of a student judged with a SIWES payment gets exactly one link row (the portal''s payer, the old portal''s of either semester, two entries of one student, the entries that were not linked yet), and only the gate''s row stood before',
+      coalesce(cast_yes_before = '0,0,0,0,1,0,1' AND cast_yes_after = '1,1,1,2,1,1,1' AND total1 - total0 = 6, false),
+      'portal,leg2,leg1,two,gate,q1,q2: before ' || coalesce(cast_yes_before, '-') || ' after ' || coalesce(cast_yes_after, '-') || ' new rows ' || coalesce((total1 - total0)::text, '-'));
+  PERFORM pg_temp.assert('V777 backfill B1: no link row for an unpaid holder, a dropped or a withdrawn entry, a closed or a planned session, a CCE, a postgraduate or a student not in study, a plain or an ended course, a payment of another session, an entry V752''s registration holds',
+      coalesce(cast_no_before = '0,0,0,0,0,0,0,0,0,0,0,0' AND cast_no_after = '0,0,0,0,0,0,0,0,0,0,0,0' AND on_sreg = '0/true', false),
+      'unpaid,dropped,withdrawn,closed,planned,cce,pg,out,plain,ended,sreg,other: before ' || coalesce(cast_no_before, '-') || ' after ' || coalesce(cast_no_after, '-') || ' | sreg ' || coalesce(on_sreg, '-'));
+  -- (B2) the right payment, the right column, the registration's level and semester
+  PERFORM pg_temp.assert('V777 backfill B2: each link stands on the payment that settles the fee — the portal''s in its column, the old portal''s (either semester''s purpose, either semester''s course) in its own — with the registration''s level and semester',
+      coalesce(on_after = 'ZZB-P1/portal/300/1 MOAUM-LEG-ZZB2/old/300/1 MOAUM-LEG-ZZB3/old/300/2 ZZB-P4/portal/300/1 ZZB-P4/portal/300/2', false), on_after);
+  -- (B3) the row is the gate's: the migration as the actor, registered when the entry says, else now; the same shape for an entry placed through the gate
+  PERFORM pg_temp.assert('V777 backfill B3: the row is the one the gate writes — the migration as the actor (nobody''s name), registered at the time the entry was added where it records it, else now; the same payment and shape for a student whose entry went through the gate',
+      coalesce(shape = 'true/bursar/true | true/bursar/true | true/academic' AND q_same = 'ZZB-P17A/portal/300/1 ZZB-P18A/portal/300/1' AND t = 'ok', false), shape || ' | ' || coalesce(q_same, '-') || ' | gate ' || coalesce(t, '-'));
+  -- (B4) the gate's own row is never touched; run again nothing changes
+  PERFORM pg_temp.assert('V777 backfill B4: a link the gate wrote is not touched, and the statement run a second time changes nothing (every row, whole, the same)',
+      coalesce(row_gate_before IS NOT NULL AND row_gate_before = row_gate_after AND snap1 = snap2 AND cast_yes_again = cast_yes_after AND total2 = total1, false),
+      'gate row ' || coalesce(row_gate_before, '-') || ' / ' || coalesce(row_gate_after, '-') || ' | ' || coalesce(snap1, '-') || ' / ' || coalesce(snap2, '-') || ' | ' || coalesce(total1::text, '-') || ' / ' || coalesce(total2::text, '-'));
+  -- (B5) the money guards see the payment: the old fees reset keeps it (and still deletes the payments of the students not linked), the refund desk and the archive desk refuse it
+  PERFORM pg_temp.assert('V777 backfill B5: before the statement the guards are blind (the old fees reset would delete the old-portal payments of the students who hold a course, a refund and the archive pass); after it they see the payments: the reset keeps them, still deleting the payments of the students not linked, the refund is refused REFUND_SIWES_REGISTERED and the archive PAR_LINKED',
+      coalesce(guards_before = 'stands false/false/false | deleted 10 kept 1 | left 15 | par false | refund ok'
+               AND guards_after = 'stands true/true/true | deleted 8 kept 3 | left 15,2,3 | par true | refund REFUND_SIWES_REGISTERED', false),
+      guards_before || ' >>> ' || guards_after);
+  -- (B6) the lock is taken once, before the payment is read
+  PERFORM pg_temp.assert('V777 backfill B6: the statement takes the student''s SIWES lock once, before it writes and before it reads the payment',
+      coalesce(lockpos = 'true/1', false), lockpos);
+  -- (C1) a student who holds an entry and pays after V777: the payment that comes to stand — the gateway's confirmation, an old-portal record loaded — carries the link
+  PERFORM pg_temp.assert('V777 backfill C1: a student who holds a SIWES course unpaid and pays afterwards — the portal''s reference confirmed, an old-portal record loaded (either semester''s purpose), one payment under two entries — has each held entry linked to the payment that comes to stand, in the payment trigger, with the registration''s level and semester; none was linked before',
+      coalesce(c_before = '0,0,0,0,0,0,0,0,0'
+               AND c_on = 'ZZB-PC1/portal/300/1 MOAUM-LEG-ZZBC2/old/300/2 ZZB-PC3/portal/300/1 ZZB-PC3/portal/300/2', false),
+      coalesce(c_before, '-') || ' >>> ' || coalesce(c_on, '-'));
+  -- (C2) not linked: a dropped entry, a CCE student, a payment of another session, a plain course, nobody who paid nothing; a second payment (a credit) moves nothing
+  PERFORM pg_temp.assert('V777 backfill C2: nothing is linked for a dropped entry, a CCE student, a payment of another session, a plain course, or a student who has paid nothing, or a course V752''s SIWES registration holds (a second payment of its student); and a second payment (a credit) writes no second row and moves none',
+      coalesce(c_after = '1,1,2,0,0,0,0,0,0 | REFUND_SIWES_REGISTERED' AND c_rows3 IS NOT NULL AND c_rows3 = c_rows3b, false),
+      coalesce(c_after, '-') || ' | rows ' || coalesce(c_rows3, '-') || ' / ' || coalesce(c_rows3b, '-'));
+  -- (C3) the money guards see the payments the entries stand on once the payment has come to stand
+  PERFORM pg_temp.assert('V777 backfill C3: once the payment has come to stand the money guards see it — the refund desk refuses it REFUND_SIWES_REGISTERED (C1), the old fees reset keeps the old-portal record (C2: left in the list), the archive desk refuses PAR_LINKED (C3); the link is written by the payment''s own transaction (registered by whoever confirmed it)',
+      coalesce(c_guards LIKE 'stands true/true | deleted % kept % | left %C2%' AND c_guards LIKE '% | par true' AND c_who = 'true/true', false),
+      coalesce(c_guards, '-') || ' | ' || coalesce(c_who, '-'));
+END $$;
+-- ── V777, what the review of the application layer found (V777 review block): (R1) the preview of an add by ICT Support or a record editor tells the SIWES fee as the entry trigger will;
+--          (R2) a course that comes to be charged — the Academic Office's Mark, a retitle V776 reads as SIWES — links the entries the paid students already hold, and the refund desk then holds the
+--          payment; taking a course off the SIWES courses is refused only for the entries of a session still to come or running, never for a closed session's, whose link stays; (R3) the
+--          SIWES page tells the status of the registration that holds a course (a draft is not "registered"); (R4) the words of a student whose programme carries no SIWES course: the Academic
+--          Office adds the course to the programme, never "registers it for you"; (R5) a programme configured for a period that is still a DRAFT (the shape of the seven seeded programmes)
+--          is charged and its student can pay — the fee asked as V777 asks every student, whatever V752's window says.
+--          Made up: 9945/9946 current, 9944/9945 closed; ZZV courses; students ZZREVIEW. The block undoes its writes. ──
+DO $$
+DECLARE
+    v_c text := '9944/9945'; v_s text := '9945/9946'; who uuid := gen_random_uuid(); dept text; fac text;
+    v_pa text := 'C97831'; v_pg text := 'C97832'; v_pd text := 'C97833';
+    o_301 uuid; o_305 uuid; o_311 uuid; o_321 uuid; o_331 uuid; o_331c uuid; o_332 uuid;
+    u1 uuid; u2 uuid; u3 uuid; u4 uuid; u5 uuid; u6 uuid; u7 uuid; u8 uuid; u9 uuid; ud uuid;
+    r1 uuid; r3 uuid; r4 uuid; r5 uuid; r6 uuid; r7 uuid; r8 uuid; rd uuid; r9 uuid;
+    y2 uuid; y3 uuid; y5 uuid; y6 uuid;
+    v_err text; hint text; j jsonb; t text; m text;
+    q1 text; q2 text; q3 text; q4 text; q5 text; q6 text; q7 text; q8 text;
+    k1 text; k2 text; k3 text; k4 text; k5 text; k6 text; k7 text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check V777 review', true);
+    EXECUTE $f$ CREATE FUNCTION pg_temp.v_student(n int, prog text, lvl int) RETURNS uuid LANGUAGE plpgsql AS $g$
+        DECLARE i uuid := gen_random_uuid();
+        BEGIN
+            INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at, study_mode)
+            VALUES (i, 'MOAUM/ADM/97/9783' || lpad(n::text, 2, '0'), 'MOAU/ZSV/97/83' || lpad(n::text, 2, '0'), 'ZZREVIEW', 'V' || n, prog, 'UTME', '9944/9945', 100, lvl, 'ACTIVE', now(), 'FULL_TIME');
+            RETURN i;
+        END $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.v_reg(stu uuid, sess text, sem int, lvl int) RETURNS uuid LANGUAGE plpgsql AS $g$
+        DECLARE r uuid := gen_random_uuid();
+        BEGIN
+            INSERT INTO registration.course_registration (id, student_id, session, semester, level) VALUES (r, stu, sess, sem, lvl);
+            RETURN r;
+        END $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.v_pay(stu uuid, sess text, ref text) RETURNS uuid LANGUAGE plpgsql AS $g$
+        DECLARE p uuid;
+        BEGIN
+            INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, generated_at, expires_at, confirmed_at, confirmed_by, channel, note, receipt_no)
+            VALUES (stu, sess, ref, 'SIWES registration fee ' || sess, 4000, now(), now(), now(), nullif(current_setting('moaum.actor_id', true), '')::uuid, 'Paystack', 'check V777 review', 'RCT-' || ref)
+            RETURNING id INTO p;
+            RETURN p;
+        END $g$ $f$;
+    -- an entry placed: 'ok' or the first word of the refusal
+    EXECUTE $f$ CREATE FUNCTION pg_temp.v_put(reg uuid, off uuid, units int DEFAULT 3) RETURNS text LANGUAGE plpgsql AS $g$
+        BEGIN
+            INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (reg, off, units, 'REGISTERED');
+            RETURN 'ok';
+        EXCEPTION WHEN check_violation THEN RETURN split_part(SQLERRM, ':', 1); END $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.v_msg(q text) RETURNS text LANGUAGE plpgsql AS $g$
+        BEGIN EXECUTE q; RETURN 'ok'; EXCEPTION WHEN OTHERS THEN RETURN SQLERRM; END $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.v_links(stu uuid) RETURNS int LANGUAGE sql AS $g$ SELECT count(*)::int FROM registration.siwes_course_entry WHERE student_id = stu $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.v_on(reg uuid, off uuid) RETURNS text LANGUAGE sql AS $g$
+        SELECT coalesce((SELECT r.reference FROM registration.siwes_course_entry x JOIN finance.payment_reference r ON r.id IN (x.payment_reference_id, x.legacy_payment_id)
+                          WHERE x.course_registration_id = reg AND x.offering_id = off), 'nowhere') $g$ $f$;
+    EXECUTE $f$ CREATE FUNCTION pg_temp.v_as(office text, who uuid) RETURNS void LANGUAGE sql AS $g$
+        SELECT set_config('moaum.actor_office', office, true), set_config('moaum.actor_id', who::text, true) $g$ $f$;
+    -- the preview rows of an add: the SIWES fee rule, as 'ord/passed/first word of the message', or '-' when the preview has none
+    EXECUTE $f$ CREATE FUNCTION pg_temp.v_rule(stu uuid, sess text, sem int, off uuid) RETURNS text LANGUAGE sql AS $g$
+        SELECT coalesce((SELECT x.ord || '/' || x.passed || '/' || x.overridable || '/' || split_part(x.message, ':', 1) FROM registration.support_add_checks(stu, sess, sem, off) x WHERE x.rule = 'SIWES_FEE'), '-') $g$ $f$;
+    -- a refund raised on a payment: 'ok' or the refusal's code; undone either way
+    EXECUTE $f$ CREATE FUNCTION pg_temp.v_refund(stu uuid, ref text) RETURNS text LANGUAGE plpgsql AS $g$
+        BEGIN
+            PERFORM finance.propose_refund(stu, 'ZZREVIEW', 'check V777 review', 4000, 'Bank', 'ZZREVIEW', '1234', ref);
+            RAISE EXCEPTION 'V_UNDO';
+        EXCEPTION WHEN OTHERS THEN
+            IF SQLERRM = 'V_UNDO' THEN RETURN 'ok'; END IF;
+            RETURN split_part(SQLERRM, ':', 1);
+        END $g$ $f$;
+
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+        (gen_random_uuid(), v_c, DATE '9944-10-01', DATE '9945-08-31', 'CLOSED'),
+        (gen_random_uuid(), v_s, DATE '9945-10-01', DATE '9946-08-31', 'PLANNED') ON CONFLICT (name) DO NOTHING;
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/9946/777' WHERE name = v_s;
+    SELECT p.dept_code, p.faculty_code INTO dept, fac FROM ref.programme p WHERE p.category = 'UNDER GRADUATE' AND NOT p.archived ORDER BY p.code LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years) VALUES
+        (v_pa, 'B.Sc. V777 Review A', dept, fac, 'UNDER GRADUATE', 0, 400, 4),
+        (v_pg, 'B.Sc. V777 Review G (no SIWES course)', dept, fac, 'UNDER GRADUATE', 0, 400, 4),
+        (v_pd, 'B.Sc. V777 Review D (configured, period a draft)', dept, fac, 'UNDER GRADUATE', 0, 400, 4);
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, industrial_training) VALUES
+        ('ZZV 301', 'Review V777 SIWES first semester', 6, 1, 300, dept, 'Core', 'LIVE', true),
+        ('ZZV 305', 'Review V777 plain first semester', 3, 1, 300, dept, 'Core', 'LIVE', false),
+        ('ZZV 311', 'Review V777 field work', 3, 1, 300, dept, 'Core', 'LIVE', false),
+        ('ZZV 321', 'Review V777 field study', 3, 1, 300, dept, 'Core', 'LIVE', false),
+        ('ZZV 331', 'Review V777 SIWES, marked', 3, 1, 300, dept, 'Core', 'LIVE', true),
+        ('ZZV 332', 'Review V777 SIWES of the programme in a draft period', 6, 2, 300, dept, 'Core', 'LIVE', true);
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES
+        ('ZZV 301', v_pa, 300, 'Core'), ('ZZV 305', v_pa, 300, 'Core'), ('ZZV 311', v_pa, 300, 'Core'), ('ZZV 321', v_pa, 300, 'Core'), ('ZZV 331', v_pa, 300, 'Core'),
+        ('ZZV 305', v_pg, 300, 'Core'), ('ZZV 332', v_pd, 300, 'Core');
+    o_301 := catalogue.open_class('ZZV 301', v_s, 1, 'REGULAR'); o_305 := catalogue.open_class('ZZV 305', v_s, 1, 'REGULAR');
+    o_311 := catalogue.open_class('ZZV 311', v_s, 1, 'REGULAR'); o_321 := catalogue.open_class('ZZV 321', v_s, 1, 'REGULAR');
+    o_331 := catalogue.open_class('ZZV 331', v_s, 1, 'REGULAR'); o_331c := catalogue.open_class('ZZV 331', v_c, 1, 'REGULAR');
+    o_332 := catalogue.open_class('ZZV 332', v_s, 2, 'REGULAR');
+    PERFORM pg_temp.v_as('bursar', who);
+    INSERT INTO finance.siwes_fee (session, amount, state, note, stated_by, stated_office, published_by, published_office, published_at)
+    VALUES (v_s, 4000, 'PUBLISHED', 'check V777 review', who, 'bursar', who, 'bursar', now());
+    PERFORM pg_temp.v_as('academic', who);
+
+    -- ═══ (R1) the preview of an add (ICT Support's, a record editor's) tells the SIWES fee ═══
+    u1 := pg_temp.v_student(1, v_pa, 300);  u2 := pg_temp.v_student(2, v_pa, 300);  y2 := pg_temp.v_pay(u2, v_s, 'ZZV-P2');
+    r1 := pg_temp.v_reg(u1, v_s, 1, 300);
+    q1 := pg_temp.v_rule(u1, v_s, 1, o_301) || ' | ' || pg_temp.v_rule(u2, v_s, 1, o_301) || ' | plain ' || pg_temp.v_rule(u1, v_s, 1, o_305)
+          || ' | rows ' || (SELECT count(*) FROM registration.support_add_checks(u1, v_s, 1, o_301)) || '/' || (SELECT count(*) FROM registration.support_add_checks(u1, v_s, 1, o_305));
+    -- the act itself is refused as the preview says
+    q2 := split_part(pg_temp.v_msg(format('SELECT registration.support_add(%L::uuid, %L, 1, %L::uuid, false, %L::uuid, ''check V777 review'')', u1, v_s, o_301, who)), ':', 1);
+
+    -- ═══ (R2) a course that comes to be charged links the entries the paid students already hold ═══
+    u3 := pg_temp.v_student(3, v_pa, 300);  y3 := pg_temp.v_pay(u3, v_s, 'ZZV-P3');  r3 := pg_temp.v_reg(u3, v_s, 1, 300);
+    u4 := pg_temp.v_student(4, v_pa, 300);  r4 := pg_temp.v_reg(u4, v_s, 1, 300);
+    u5 := pg_temp.v_student(5, v_pa, 300);  y5 := pg_temp.v_pay(u5, v_s, 'ZZV-P5');  r5 := pg_temp.v_reg(u5, v_s, 1, 300);
+    q3 := pg_temp.v_put(r3, o_311, 3) || '/' || pg_temp.v_put(r4, o_311, 3) || '/' || pg_temp.v_put(r5, o_321, 3) || ' | free ' || pg_temp.v_links(u3) || pg_temp.v_links(u4) || pg_temp.v_links(u5)
+          || ' | refund ' || pg_temp.v_refund(u3, 'ZZV-P3');
+    PERFORM registration.siwes_mark_course('ZZV 311', true);
+    UPDATE catalogue.course SET title = 'Review V777 industrial training (field study)' WHERE code = 'ZZV 321';
+    q4 := 'marked ' || (SELECT c.industrial_training FROM catalogue.course c WHERE c.code = 'ZZV 311') || '/' || (SELECT c.industrial_training FROM catalogue.course c WHERE c.code = 'ZZV 321')
+          || ' | links paid ' || pg_temp.v_links(u3) || ' unpaid ' || pg_temp.v_links(u4) || ' retitled ' || pg_temp.v_links(u5)
+          || ' | on ' || pg_temp.v_on(r3, o_311) || ' ' || pg_temp.v_on(r4, o_311) || ' ' || pg_temp.v_on(r5, o_321)
+          || ' | refund ' || pg_temp.v_refund(u3, 'ZZV-P3') || '/' || pg_temp.v_refund(u5, 'ZZV-P5');
+    -- again: nothing changes
+    PERFORM registration.siwes_mark_course('ZZV 311', true);
+    q4 := q4 || ' | again ' || pg_temp.v_links(u3) || pg_temp.v_links(u4) || pg_temp.v_links(u5);
+    -- the unpaid holder pays: the payment trigger links the entry now
+    PERFORM pg_temp.v_pay(u4, v_s, 'ZZV-P4');
+    q4 := q4 || ' | unpaid pays ' || pg_temp.v_on(r4, o_311);
+
+    -- ═══ (R2b) taking a course off the SIWES courses: refused for a session still to come or running, not for a closed one ═══
+    u6 := pg_temp.v_student(6, v_pa, 300);  r6 := pg_temp.v_reg(u6, v_c, 1, 300);  PERFORM pg_temp.v_pay(u6, v_c, 'ZZV-P6');
+    u7 := pg_temp.v_student(7, v_pa, 300);  r7 := pg_temp.v_reg(u7, v_s, 1, 300);  PERFORM pg_temp.v_pay(u7, v_s, 'ZZV-P7');
+    -- u6 held ZZV 331 in the session that has closed (its link is written as the entry was accepted while the session was current: made so here), u7 holds it now
+    PERFORM set_config('moaum.siwes_override', 'on', true);
+    INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (r6, o_331c, 3, 'APPROVED');
+    PERFORM set_config('moaum.siwes_override', 'off', true);
+    INSERT INTO registration.siwes_course_entry (student_id, session, course_registration_id, offering_id, course_code, level, semester, payment_reference_id, registered_by, registered_office)
+    SELECT u6, v_c, r6, o_331c, 'ZZV 331', 300, 1, p.id, who, 'academic' FROM finance.payment_reference p WHERE p.reference = 'ZZV-P6';
+    q5 := pg_temp.v_put(r7, o_331, 3);
+    m := pg_temp.v_msg('SELECT registration.siwes_mark_course(''ZZV 331'', false)');
+    q5 := q5 || ' | now ' || (m LIKE 'SIWES_COURSE_IN_USE: 1 student(s) hold ZZV 331 in a session still to come or running on a registration that stands on the SIWES registration fee%')::text
+          || '/' || (SELECT c.industrial_training FROM catalogue.course c WHERE c.code = 'ZZV 331');
+    UPDATE registration.entry SET status = 'DROPPED' WHERE registration_id = r7 AND offering_id = o_331;
+    m := pg_temp.v_msg('SELECT registration.siwes_mark_course(''ZZV 331'', false)');
+    q5 := q5 || ' | dropped ' || m || '/' || (SELECT c.industrial_training FROM catalogue.course c WHERE c.code = 'ZZV 331')
+          || ' | closed one stays linked ' || pg_temp.v_links(u6) || ' refund ' || pg_temp.v_refund(u6, 'ZZV-P6');
+
+    -- ═══ (R3) the SIWES page says on which registration the course is held, and its status ═══
+    u8 := pg_temp.v_student(8, v_pa, 300);  PERFORM pg_temp.v_pay(u8, v_s, 'ZZV-P8');  r8 := pg_temp.v_reg(u8, v_s, 1, 300);
+    q6 := pg_temp.v_put(r8, o_301, 6);
+    j := registration.siwes_eligibility(u8, v_s);
+    q6 := q6 || ' | ' || coalesce((SELECT x ->> 'registrationStatus' FROM jsonb_array_elements(j -> 'courses') x WHERE x ->> 'code' = 'ZZV 301'), 'missing')
+          || ' held ' || coalesce((SELECT x ->> 'held' FROM jsonb_array_elements(j -> 'courses') x WHERE x ->> 'code' = 'ZZV 301'), '-');
+    UPDATE registration.course_registration SET status = 'SUBMITTED' WHERE id = r8;
+    j := registration.siwes_eligibility(u8, v_s);
+    q6 := q6 || ' | submitted ' || coalesce((SELECT x ->> 'registrationStatus' FROM jsonb_array_elements(j -> 'courses') x WHERE x ->> 'code' = 'ZZV 301'), 'missing');
+    -- a course owed or in the structure, held by no registration: null
+    j := registration.siwes_eligibility(u1, v_s);
+    q6 := q6 || ' | not held ' || coalesce((SELECT coalesce(x ->> 'registrationStatus', 'null') || '/' || (x ->> 'held') FROM jsonb_array_elements(j -> 'courses') x WHERE x ->> 'code' = 'ZZV 301'), 'missing');
+
+    -- ═══ (R4) a student whose programme carries no SIWES course at their level is told what the Academic Office does, never that it registers the course for them ═══
+    u9 := pg_temp.v_student(9, v_pg, 300);  r9 := pg_temp.v_reg(u9, v_s, 1, 300);
+    BEGIN
+        INSERT INTO registration.entry (registration_id, offering_id, units, status) VALUES (r9, o_301, 6, 'REGISTERED');
+        q7 := 'accepted';
+    EXCEPTION WHEN check_violation THEN
+        GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT, hint = PG_EXCEPTION_HINT;
+        q7 := split_part(v_err, ':', 1) || ' | ' || hint;
+    END;
+
+    -- ═══ (R5) a programme configured for a period that is still a DRAFT (the seven seeded programmes' shape): charged, and its student can pay ═══
+    PERFORM registration.siwes_add_programme(v_s, v_pd);
+    BEGIN PERFORM registration.siwes_set_course(v_pd, NULL, 'ZZV 332'); EXCEPTION WHEN check_violation THEN NULL; END;
+    PERFORM registration.siwes_set_period(v_s, 'DRAFT', NULL, NULL, NULL, NULL, 6, 'check V777 review');
+    ud := pg_temp.v_student(10, v_pd, 300);  rd := pg_temp.v_reg(ud, v_s, 2, 300);
+    q8 := (SELECT p.state FROM registration.siwes_period p WHERE p.session = v_s) || ' applies=' || registration.siwes_applies(ud, v_s) || ' eligible=' || registration.siwes_eligible(ud, v_s)
+          || ' may_pay=' || registration.siwes_may_pay(ud, v_s) || ' | unpaid ' || pg_temp.v_put(rd, o_332, 6);
+    j := registration.siwes_eligibility(ud, v_s);
+    q8 := q8 || ' | page ' || (j ->> 'mode') || '/bound=' || (j ->> 'bound') || '/canPay=' || (j ->> 'canPay');
+    PERFORM pg_temp.v_as('student', ud);
+    t := finance.siwes_reference(ud) ->> 'reference';
+    PERFORM pg_temp.v_as('bursar', who);
+    PERFORM finance.confirm_payment(t, 'Bank transfer', 'check V777 review');
+    PERFORM pg_temp.v_as('academic', who);
+    q8 := q8 || ' | paid ' || pg_temp.v_put(rd, o_332, 6) || '/' || (pg_temp.v_on(rd, o_332) = t)::text;
+
+    RAISE EXCEPTION 'the V777 review check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V777 review check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V777 review R1: the preview of an add by ICT Support or a record editor says what the entry trigger will: a SIWES course of a student who has paid nothing is a failing rule SIWES_FEE (not overridable), SIWES_UNPAID in the trigger''s words; paid, it passes; a plain course has no such row (one row fewer); and the act is refused as the preview says',
+      coalesce(split_part(q1, ' | ', 1) = '17/false/false/SIWES_UNPAID' AND split_part(q1, ' | ', 2) LIKE '17/true/false/%' AND split_part(q1, ' | ', 3) = 'plain -' AND split_part(q1, ' | ', 4) = 'rows 17/16'
+               AND q2 IN ('REG_RULE', 'SIWES_UNPAID'), false),
+      coalesce(q1, '-') || ' || ' || coalesce(q2, '-'));
+  PERFORM pg_temp.assert('V777 review R2: a course that comes to be charged — the Academic Office''s Mark, a retitle V776 reads as SIWES — links the entries the paid students already hold (none for the student who has paid nothing), the refund desk then holds their payments, marking again changes nothing, and the unpaid holder is linked when they pay',
+      coalesce(q3 = 'ok/ok/ok | free 000 | refund ok'
+               AND q4 = 'marked true/true | links paid 1 unpaid 0 retitled 1 | on ZZV-P3 nowhere ZZV-P5 | refund REFUND_SIWES_REGISTERED/REFUND_SIWES_REGISTERED | again 101 | unpaid pays ZZV-P4', false),
+      coalesce(q3, '-') || ' || ' || coalesce(q4, '-'));
+  PERFORM pg_temp.assert('V777 review R2b: taking a course off the SIWES courses is refused while a student holds it in a session still to come or running (SIWES_COURSE_IN_USE, in words that say so) and accepted once the entry is dropped, whatever a closed session''s registrations hold: the closed session''s entry stays linked and its payment still held from the refund desk',
+      coalesce(q5 = 'ok | now true/true | dropped ok/false | closed one stays linked 1 refund REFUND_SIWES_REGISTERED', false), coalesce(q5, '-'));
+  PERFORM pg_temp.assert('V777 review R3: the SIWES page says on which registration the held course is — a draft is DRAFT, submitted SUBMITTED — and null where none holds it',
+      coalesce(q6 = 'ok | DRAFT held true | submitted SUBMITTED | not held null/false', false), coalesce(q6, '-'));
+  PERFORM pg_temp.assert('V777 review R4: a student whose programme carries no SIWES course at their level is refused SIWES_NOT_IN_REACH with the hint that the Academic Office adds the course to the programme, then the fee is paid and the course registered — never that it registers the course for them',
+      coalesce(q7 = 'SIWES_NOT_IN_REACH | Your programme carries no SIWES course at your level; the Academic Office adds the course to the programme, then the SIWES registration fee is paid and the course registered.', false), coalesce(q7, '-'));
+  PERFORM pg_temp.assert('V777 review R5: a programme configured for a period that is still a DRAFT (the shape of the seven seeded programmes) — V752 binds nobody, yet the SIWES course is charged: refused SIWES_UNPAID, the page reads COURSE and can pay, the reference is drawn and payable, and once paid the course is accepted and stands on that payment',
+      coalesce(q8 = 'DRAFT applies=false eligible=false may_pay=true | unpaid SIWES_UNPAID | page COURSE/bound=false/canPay=true | paid ok/true', false), coalesce(q8, '-'));
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures

@@ -362,7 +362,7 @@ Academic
 
 1. Open **Course Registration** `/student/register`. Choose the semester in the switcher.
 2. Tick your **Electives** in the Electives panel; the **{level} Level Core Courses** and carryovers are already on the form.
-3. Watch the **units meter** — "N of min–max credit units" with the pill *Below minimum*, *Over limit* or *Valid*. The limits per semester are 18–24 units at 100–600 Level (postgraduate levels: 700 → 9–48, 800 → 6–48, 900 → 0–48). In a SIWES semester the form is fixed to exactly the SIWES course's units.
+3. Watch the **units meter** — "N of min–max credit units" with the pill *Below minimum*, *Over limit* or *Valid*. The limits per semester are 18–24 units at 100–600 Level (postgraduate levels: 700 → 9–48, 800 → 6–48, 900 → 0–48). In a SIWES semester the form is fixed to exactly the SIWES course's units. A SIWES course carries the SIWES registration fee, which is paid before the course is registered (see **SIWES courses and the SIWES fee** below).
 4. Press **Save the draft** at any time to keep your choices.
 5. Press **Submit for approval** (enabled only while the meter reads *Valid*). The status becomes **Submitted** — "Submitted on … — with your Head of Department".
 6. Your Head of Department **approves** or **returns** the registration. Approved: "Approved on …" and the **Course form** button appears (§8). Returned: "Returned to you" with the HOD's reason; edit and submit again.
@@ -377,6 +377,15 @@ Messages you may meet on submit:
 | "you are on probation (CGPA …); the registration carries N units and the limit on probation at … level is …" | Only if the Registry has set a probation ceiling for your level (none is set at present). |
 | "No core course is offered to your programme this semester yet" | Registration has not been opened for the session/semester, or the programme structure is empty. Ask your department. |
 | "that course is not offered to your programme at your level this semester" | The course is not bound to your programme or has no offering this semester. |
+
+**SIWES courses and the SIWES fee.** A course the Academic Office marks as a SIWES (industrial training) course carries the ₦4,000 **SIWES registration fee**, whatever your programme, level or semester. You pay it **once a session** — one payment covers every SIWES course you register in the session, in either semester, a carryover included — and **before** the course is registered. Pay it on **SIWES** `/student/siwes`, which is on your menu when your programme carries a SIWES course at your level or you hold one; paying does not register the course. Until the fee is paid the course is locked on Course Registration with the pill "SIWES fee required", and a SIWES carryover is left off your draft until you have paid; then you add it yourself on Course Registration. If the Academic Office has opened SIWES registration for your programme's 300 Level Second Semester, you register the SIWES course alone on the SIWES page instead, because that semester holds nothing else. The fee is asked of an undergraduate in study, in the current session only; a SIWES course you registered before the fee was asked stays registered, and the SIWES page asks you the fee for it.
+
+| Message | Meaning |
+|---|---|
+| "the SIWES registration fee for 2026/2027 is not paid; … is registered once it is" | Pay the fee on **SIWES** `/student/siwes`, then add the course. |
+| "the Bursary has not published the SIWES registration fee for 2026/2027; … is registered once it is published and paid" | The Bursary states and publishes the fee on Fee Setup. Ask the Bursary. |
+| "… is a SIWES course and carries the SIWES registration fee for 2026/2027, but your programme carries no SIWES course at your level, so the fee cannot be paid for it" | The course is not part of your programme at your level. Ask the Academic Office to add it to the programme; once it is added you pay the SIWES fee and register it. |
+| "SIWES does not bind your Second Semester of 2026/2027; your SIWES course is registered on Course Registration, not here" | You pressed Register on the SIWES page, but your SIWES course is registered on Course Registration. |
 
 **Add and drop after submission.** While the semester is OPEN and today is on or before the late-registration date, an **Add or drop courses** panel appears on a submitted or approved registration. *Add* is refused if it takes you over the maximum ("adding this course puts you at N units, over the maximum of M at L level"). *Drop* is refused for a carryover ("a carryover cannot be dropped; it must be repeated") and for a course in which a mark is already recorded ("a mark is already recorded in this course; it cannot be dropped"). Outside the window: "add and drop is not open for {session} semester n".
 
@@ -1165,11 +1174,11 @@ Both are faculty offices bound to the faculty on their grant.
 
 ### 6.5 SIWES Coordinator
 
-The SIWES Coordinator (`siwes`) is a department office. The home dashboard `/` shows the industrial-training offerings of the department for the second-semester sitting, students, and how many still have no supervisor ("N SIWES students have no supervisor" → **Assign supervisors**).
+The SIWES Coordinator (`siwes`) is a department office. The home dashboard `/` shows the industrial-training offerings of the department for the second-semester sitting (the dashboard counts that sitting only; **SIWES Supervision** below takes either semester), students, and how many still have no supervisor ("N SIWES students have no supervisor" → **Assign supervisors**).
 
 - **SIWES Supervision** `/siwes`: choose session, semester and the SIWES course; assign a **Supervisor** per student (searchable select of the department's lecturers); record the **Practical /60**; the **Assessment /40** is the supervisor's entry. Inputs are enabled only while the sheet is at Entry ("The SIWES score sheet is not open yet.").
 - **My SIWES Students** `/me/siwes`: your own supervisees' assessment, if you supervise as well.
-- Flagging a new course as industrial training is not done on the portal; ask the Directorate of ICT. Placement records and logbooks for SIWES are not on the portal.
+- A course is flagged as an industrial-training (SIWES) course by the Academic Office, or the Registry, on **SIWES registration** `/siwes/registration` (panel *SIWES courses*), and a course whose title reads SIWES, Industrial Training, Industrial Attachment or Industrial Work Experience is flagged as it is added or retitled; a department asks the Academic Office. Flagging a course starts charging the ₦4,000 SIWES registration fee for it (once a session for each student, whichever semester, level or programme). Placement records and logbooks for SIWES are not on the portal.
 
 ### 6.6 Librarian and Chief Security Officer
 

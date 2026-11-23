@@ -15,10 +15,12 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
   if (!loaded.student) return <Shell route="s/register" me={loaded.me}><ProblemNotice problem={loaded.problem} /></Shell>;
   const session = typeof q.session === "string" && /^\d{4}\/\d{4}$/.test(q.session) ? q.session : loaded.student.session;
   const semester = q.semester === "2" ? 2 : q.semester === "3" ? 3 : 1;
-  // V752: a Second Semester the SIWES rule may bind reads the student's SIWES too — the page then sends them to the SIWES page
+  // V752: a Second Semester the SIWES rule may bind reads the student's SIWES too — the page then sends them to the SIWES page.
+  // V777: and every semester's form, where the student's menu carries SIWES: a SIWES course on the form is locked on the fee, and
+  // the form names the fee and says whether it can be paid now (the SIWES window) — the one call, only for a student of SIWES
   const [v, siwes] = await Promise.all([
     api<RegistrationView>(`/api/v1/me/registration?session=${encodeURIComponent(session)}&semester=${semester}`),
-    semester === 2 && loaded.student.siwesArea ? api<MySiwes>(`/api/v1/me/siwes?session=${encodeURIComponent(session)}`) : null,
+    loaded.student.siwesArea ? api<MySiwes>(`/api/v1/me/siwes?session=${encodeURIComponent(session)}`) : null,
   ]);
   const semName = (n: number) => (n === 1 ? "First" : n === 2 ? "Second" : "Third") + " semester";
   // the subtitle names the student's real level and the semester being registered, not the static demo one

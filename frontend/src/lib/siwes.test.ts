@@ -14,7 +14,13 @@ import {
   unreachedLines, unreachedWords, type SiwesCatalogueCourse, type SiwesConfigProgramme, type SiwesCourse,
   NO_COURSE_YET, PROGRAMMES_HINT, RECOGNISED_STANDS, SIWES_COURSE_ADD_HINT, attachmentForWords, courseHint, courseHintWords, newlyRecognised, offeredCourseWords,
   onSiwesCourses, paidHeldWords, recognisedForWords, type SiwesUnreached,
-  NO_COURSE_300, SIWES_COURSE_LEVEL_HINT, SIWES_FEE_STANDARD, confirmUseItWords, elsewhereWhere, elsewhereWords, foundInsteadWords, secondSemesterWords, type SiwesElsewhere,
+  ON_COURSE_REGISTRATION, SIWES_COURSE_LEVEL_HINT, SIWES_FEE_STANDARD, confirmUseItWords, elsewhereWhere, elsewhereWords, foundInsteadWords, secondSemesterWords, type SiwesElsewhere,
+  // V777: every SIWES course carries the fee — the COURSE shape, the lock on Course Registration's menu, the Bursary's list
+  SIWES_LOCK_PILL, SIWES_LOCK_TITLE, UNPAID_HEAD, UNPAID_WORDS, courseSemesters, courseWhere, coursesToRegister, heldCourses, isCourseMode, ownCourseLine, ownCourseList, ownCourses,
+  reasonsToSay, registerLinks, siwesFeeScopeWords, siwesLockKind, siwesLockNotes, siwesUnpaidRegisteredWords, unpaidEntries, unpaidEntry, unpaidLine, unpaidStanding, unpaidTotals,
+  unpaidTotal, unpaidWhere, type SiwesOwnCourse, type SiwesUnpaidEntry,
+  // V777, the review of the application layer: a held course by the registration that holds it, the shut payment window, the desk's draft period, the Unpaid tab
+  heldAs, heldStanding, heldToSiwesRow, periodHolds, removeProgrammeWords, siwesPayShutWords, submitLinks, unpaidTabShown, type SiwesPeriod,
 } from "./siwes.ts";
 
 const OPEN: MySiwes = {
@@ -967,7 +973,12 @@ test("V776: an older answer without the new keys reads as before — no source, 
   assert.deepEqual(courseHint(programmeCourseLines(old.programmes[1])[0], true), { kind: "NONE", found: null, words: "No SIWES course found", action: "set it, or add the course to the SIWES courses below" });
 });
 
-test("V776: the cohorts no SIWES course reaches are named with their numbers: not asked to pay or register until one does", () => {
+// V777: what the cohorts no SIWES course reaches wait for — to be held to the SIWES course alone; the fee is every SIWES course's all the same
+const UNREACHED_WAITS = "not held to the SIWES course alone until a SIWES course reaches them; a SIWES course their programme carries still asks them the SIWES fee when they register it, on Course Registration";
+// V777: what a programme just added with no course set says of its 300 Level students
+const ADDED_WAITS = "Its 300 Level students are not held to the SIWES course alone until one is set; they pay the SIWES fee when they register a SIWES course, on Course Registration.";
+
+test("V776: the cohorts no SIWES course reaches are named with their numbers: not held to the SIWES course alone until one does", () => {
   // registration.siwes_config's unreached[], as an answer without the newer keys carries it: of each, no course is found
   const none = "No SIWES course found — set it, or add the course to the SIWES courses below";
   const u = unreachedLines({ unreached: [
@@ -984,8 +995,10 @@ test("V776: the cohorts no SIWES course reaches are named with their numbers: no
     { key: "C97765|BMAS", name: "C97765 (BMAS)", words: "1,200 students at 300 Level", course: none },
   ]);
   assert.equal(unreachedLines({ unreached: [{ programmeCode: "C97764", programme: "B.Sc. Check Two", students: 1 }] }).title, "No SIWES course reaches 1 student at 300 Level yet");
-  assert.equal(u.words, "They are not asked to pay the SIWES registration fee or to register until a SIWES course reaches them.");
+  assert.equal(u.words, `They are ${UNREACHED_WAITS}.`);
   assert.equal(unreachedWords(), u.words);
+  // V777: never "not asked to pay": a SIWES course their programme carries asks them the fee, on Course Registration
+  assert.doesNotMatch(u.words, /not asked/);
   // a reader is offered nothing to press: each line says the Academic Office does it
   assert.equal(unreachedLines({ unreached: [{ programmeCode: "C97764", students: 1 }] }).lines[0].course, "No SIWES course found — the Academic Office sets it, or adds the course to the SIWES courses");
   assert.equal(unreachedLines({ unreached: [] }).lines.length, 0);
@@ -995,8 +1008,7 @@ test("V776: a programme added with no SIWES course found is said so, a warning; 
   // POST /programmes answers the session's configuration
   const config = { programmes: [STRUCTURE, NONE, DEPARTMENT, SET] };
   assert.deepEqual(programmeAddedWords(config, "C97762", "2025/2026"), { tone: "warn",
-    words: "B.Sc. Check None takes SIWES in 2025/2026, but no SIWES course is found for it (CCMAS) yet: set it, or add the course to the SIWES courses. "
-      + "Its 300 Level students are not asked to pay or register until a SIWES course reaches them." });
+    words: `B.Sc. Check None takes SIWES in 2025/2026, but no SIWES course is found for it (CCMAS) yet: set it, or add the course to the SIWES courses. ${ADDED_WAITS}` });
   // no curriculum of its own: the programme whole
   assert.match(programmeAddedWords({ programmes: [{ ...NONE, curricula: [] }] }, "C97762", "2025/2026").words, /no SIWES course is found for it yet: set it/);
   // one curriculum found, the other not: still a warning, naming the one
@@ -1041,14 +1053,17 @@ test("V776: the SIWES courses: where each stands in the catalogue, how it is kno
 
 test("V776: a SIWES course no programme comes by on its own says why, from its own fields", () => {
   const c = (o: Partial<SiwesCatalogueCourse>): SiwesCatalogueCourse => ({ code: "ZZK 499", title: "Industrial Training", level: 300, semester: "SECOND", state: "LIVE", recognised: false, ...o });
+  // V777: no programme comes by it on its own, and it carries the SIWES fee all the same — said, so that the one is never read as the other
+  const charged = " Students who register it pay the SIWES fee all the same.";
   // a Second Semester course in force at another level: still a programme's course where it is set for it (registration.siwes_set_course)
   assert.equal(notRecognisedWords(c({ level: 400 })),
-    "No programme comes by it on its own: it is a 400 Level course, not 300 Level. It is a programme's SIWES course only where it is set for the programme.");
+    `No programme comes by it on its own: it is a 400 Level course, not 300 Level. It is a programme's SIWES course only where it is set for the programme.${charged}`);
   // First Semester: never a programme's SIWES course (the SIWES course is a Second Semester course), so no such tail
-  assert.equal(notRecognisedWords(c({ semester: "FIRST" })), "No programme comes by it on its own: it is taught in the First Semester, not the Second.");
+  assert.equal(notRecognisedWords(c({ semester: "FIRST" })), `No programme comes by it on its own: it is taught in the First Semester, not the Second.${charged}`);
   assert.equal(notRecognisedWords(c({ level: 400, semester: "FIRST" })),
-    "No programme comes by it on its own: it is a 400 Level course, not 300 Level; it is taught in the First Semester, not the Second.");
-  assert.equal(notRecognisedWords(c({ semester: "3" })), "No programme comes by it on its own: it is taught in the Third Semester, not the Second.");
+    `No programme comes by it on its own: it is a 400 Level course, not 300 Level; it is taught in the First Semester, not the Second.${charged}`);
+  assert.equal(notRecognisedWords(c({ semester: "3" })), `No programme comes by it on its own: it is taught in the Third Semester, not the Second.${charged}`);
+  // an ended course carries no fee: nothing is said of it
   assert.equal(notRecognisedWords(c({ state: "ENDED" })), "No programme comes by it on its own: it has ended in the catalogue.");
   assert.equal(notRecognisedWords(c({ state: "ENDED", level: 200 })), "No programme comes by it on its own: it has ended in the catalogue; it is a 200 Level course, not 300 Level.");
   // the server's word alone decides: a course it recognises, or an answer that does not say, carries no reason — whatever its fields
@@ -1056,8 +1071,8 @@ test("V776: a SIWES course no programme comes by on its own says why, from its o
   assert.equal(notRecognisedWords(c({ recognised: undefined, level: 400 })), null);
   assert.equal(notRecognisedWords(c({ recognised: null, semester: "FIRST" })), null);
   // not recognised with nothing in its fields to say why: said plainly, no reason made up
-  assert.equal(notRecognisedWords(c({})), "No programme comes by it on its own: it is not a 300 Level, Second Semester course in force.");
-  assert.equal(notRecognisedWords(c({ semester: "BOTH", level: undefined })), "No programme comes by it on its own: it is not a 300 Level, Second Semester course in force.");
+  assert.equal(notRecognisedWords(c({})), `No programme comes by it on its own: it is not a 300 Level, Second Semester course in force.${charged}`);
+  assert.equal(notRecognisedWords(c({ semester: "BOTH", level: undefined })), `No programme comes by it on its own: it is not a 300 Level, Second Semester course in force.${charged}`);
   // no code of the database's is shown
   for (const o of [{ level: 400 }, { semester: "FIRST" }, { state: "ENDED" }, {}]) assert.doesNotMatch(notRecognisedWords(c(o)) ?? "", /FIRST|SECOND|ENDED|recognised/);
 });
@@ -1070,33 +1085,41 @@ test("V776: a course added to the SIWES courses, or taken off them: what the des
     { code: "ZZK 301", title: "Check field course", level: 300, semester: "SECOND", state: "LIVE", byTitle: false, recognised: true, programmes: [], setFor: [] },
     { code: "ZZK 499", title: "Field attachment", level: 400, semester: "SECOND", state: "LIVE", byTitle: false, recognised: false, programmes: [], setFor: [] },
   ];
-  assert.deepEqual(siwesCourseAddedWords(list, "zzk  301"), { tone: "ok", words: "ZZK 301 is now a SIWES course" });
+  // V777: marking a course starts charging it, and the notice says so
+  assert.deepEqual(siwesCourseAddedWords(list, "zzk  301"), { tone: "ok", words: "ZZK 301 is now a SIWES course, and carries the SIWES registration fee" });
   assert.deepEqual(siwesCourseAddedWords(list, "ZZK 499"), { tone: "warn",
-    words: "ZZK 499 is now a SIWES course. No programme comes by it on its own: it is a 400 Level course, not 300 Level. It is a programme's SIWES course only where it is set for the programme." });
+    words: "ZZK 499 is now a SIWES course. No programme comes by it on its own: it is a 400 Level course, not 300 Level. It is a programme's SIWES course only where it is set for the programme. Students who register it pay the SIWES fee all the same." });
   // an answer without the list, or one that holds the course under another code: added, nothing more claimed
-  for (const l of [null, undefined, [], [list[1]]]) assert.deepEqual(siwesCourseAddedWords(l, "ZZK 301"), { tone: "ok", words: "ZZK 301 is now a SIWES course" });
+  for (const l of [null, undefined, [], [list[1]]]) assert.deepEqual(siwesCourseAddedWords(l, "ZZK 301"), { tone: "ok", words: "ZZK 301 is now a SIWES course, and carries the SIWES registration fee" });
   // "Not a SIWES course" says what it does before it is done, and what the database refuses
   const off = siwesCourseOffWords({ code: "ZZK 396", title: "Industrial Attachment (check)" });
   assert.match(off, /^Take ZZK 396 — Industrial Attachment \(check\) off the SIWES courses\?/);
   assert.match(off, /no programme comes by it as its SIWES course/);
+  // V777: taking it off stops charging it
+  assert.match(off, /it stops charging the SIWES registration fee, and no programme comes by it as its SIWES course\./);
   assert.match(off, /It stays off while its title stands, until it is added here again\./);
-  assert.match(off, /refused while the course is set here as a programme's SIWES course, while students who have paid or registered for SIWES are reached by it, or while students are registered in an attachment semester it makes\.$/);
+  assert.match(off, /refused while the course is set here as a programme's SIWES course, while a student holds it, in a session still to come or running, on a registration that stands on the SIWES fee, while students who have paid or registered for SIWES are reached by it, or while students are registered in an attachment semester it makes\.$/);
   assert.match(siwesCourseOffWords({ code: "ZZK 396", title: null }), /^Take ZZK 396 off the SIWES courses\?/);
   assert.doesNotMatch(off, /SIWES_COURSE_IN_USE|industrial_training/);
   // a course nobody was recognised by and no attachment semester rests on: neither is spoken of
   assert.doesNotMatch(off, /written down for|attachment semester —/);
 });
 
-test("V776: the sentence under the SIWES courses names the fee the Bursary has published, and no amount before it has", () => {
+test("V776, V777: the sentence under the SIWES courses says which listed courses carry the fee (those not ended), naming it only once the Bursary has published it", () => {
   assert.equal(siwesCoursesHint({ amount: "4000.00", state: "PUBLISHED" }),
-    "Each department carries SIWES under its own course code and title; a course whose title reads SIWES or Industrial Training is listed as it is added to the catalogue; "
-    + "the ₦4,000 SIWES registration fee is paid before a student registers the SIWES course of the Second Semester of 300 Level "
-    + "(a SIWES course at another level or in the First Semester is not covered yet).");
+    "Each department carries SIWES under its own course code and title; a course whose title reads SIWES or Industrial Training is listed as it is added to the catalogue. "
+    + "Every course listed here that has not ended carries the ₦4,000 SIWES registration fee: a student pays it once a session, before registering any of them, whatever the programme, level or semester. "
+    + "A course listed only because it is set as a programme's SIWES course is charged to the students that programme holds to SIWES alone, and an ended course is not charged while it stays ended. "
+    + "Adding a course here starts charging it; taking one off stops.");
   // a draft, or no fee stated: the fee is paid first all the same, its amount not yet the Bursary's word
   for (const fee of [{ amount: 5000, state: "DRAFT" }, { amount: null, state: "PUBLISHED" }, null, undefined]) {
-    assert.match(siwesCoursesHint(fee), /; the SIWES registration fee is paid before a student registers the SIWES course of the Second Semester of 300 Level \(a SIWES course at another level or in the First Semester is not covered yet\)\.$/);
+    assert.match(siwesCoursesHint(fee), /Every course listed here that has not ended carries the SIWES registration fee: a student pays it once a session, before registering any of them, whatever the programme, level or semester\./);
     assert.doesNotMatch(siwesCoursesHint(fee), /₦/);
+    // never the blanket "every course listed" (an ended course, or one set for a programme and not added, is not charged outside its cohort)
+    assert.doesNotMatch(siwesCoursesHint(fee), /Every course listed here carries/);
   }
+  // V777: no sentence says the First Semester or another level is "not covered yet"
+  for (const fee of [{ amount: "4000.00", state: "PUBLISHED" }, null]) assert.doesNotMatch(siwesCoursesHint(fee), /not covered|Second Semester of 300 Level/);
 });
 
 // ── V776, the recognition written down: the answers of registration.siwes_config and siwes_mark_course on a scratch database with the
@@ -1173,7 +1196,10 @@ test("V776: a row with no SIWES course says what the catalogue offers now — on
 test("V776: a course written down stands — the desk says it, never that it is read afresh, and never that saving the period or adding a programme takes every course", () => {
   assert.equal(RECOGNISED_STANDS, "A course written down stands until the Academic Office sets another; the catalogue changing later does not move it.");
   assert.ok(PROGRAMMES_HINT.includes(RECOGNISED_STANDS));
-  assert.match(PROGRAMMES_HINT, /^A programme not taking SIWES keeps its Second Semester as before\. A programme's SIWES course is the one set here\. /);
+  // V777: first, that the fee is every SIWES course's whether or not its programme is listed; then what listing a programme does
+  assert.match(PROGRAMMES_HINT, /^Every SIWES course carries the SIWES registration fee, whether or not its programme is listed here: a student who registers one pays it first, once a session, and registers the course on Course Registration\. /);
+  assert.match(PROGRAMMES_HINT, /A programme listed here is also held to SIWES alone in its 300 Level Second Semester, registered on the SIWES page once the period is open; a programme not listed keeps its Second Semester as before\. A programme's SIWES course is the one set here\. /);
+  assert.doesNotMatch(PROGRAMMES_HINT, /not asked|not covered/);
   // written down when the programme is added, only where its Second Semester is the SIWES semester, or when a course is added to the SIWES courses; otherwise the officer takes what is found
   assert.match(PROGRAMMES_HINT, /is written down as its course when the programme is added — only where its Second Semester is the SIWES semester, the SIWES course alone — /);
   assert.match(PROGRAMMES_HINT, /or when a course is added to the SIWES courses that gives a waiting programme its own structure's course; otherwise the row says what the catalogue offers and the Academic Office takes the course\. /);
@@ -1185,7 +1211,7 @@ test("V776: a course written down stands — the desk says it, never that it is 
   assert.deepEqual(["STRUCTURE", "DEPARTMENT"].map(courseSourceWords), ["Written down from the programme's own structure", "Written down: its department's one SIWES course"]);
 });
 
-test("V776: of a cohort no SIWES course reaches, those who have paid or registered stay held to SIWES — never said to be not asked to pay", () => {
+test("V776: of a cohort no SIWES course reaches, those who have paid or registered stay held to SIWES — never said to be left out of the fee", () => {
   // registration.siwes_config's unreached[] once the course a programme was recognised by had ended with one of its two students paid
   const rows: SiwesUnreached[] = [
     { paid: 0, found: ZZQ397, choices: [ZZQ397], students: 1, programme: "B.Sc. Made-up Found", curriculum: "CCMAS", programmeCode: "C98763" },
@@ -1206,8 +1232,7 @@ test("V776: of a cohort no SIWES course reaches, those who have paid or register
       course: "No SIWES course found — set it, or add the course to the SIWES courses below" },
   ]);
   // what holds them, with some paid: the paid apart from the others
-  assert.equal(u.words, "Those who have paid or registered stay held to SIWES, and cannot register until the course is set; "
-    + "the others are not asked to pay the SIWES registration fee or to register until a SIWES course reaches them.");
+  assert.equal(u.words, `Those who have paid or registered stay held to SIWES, and cannot register until the course is set; the others are ${UNREACHED_WAITS}.`);
   assert.doesNotMatch(u.lines[3].words, /not asked to pay/);
   // a reader: the Academic Office sets it
   assert.deepEqual(unreachedLines({ unreached: rows }).lines.map((l) => l.course.split(" — ")[1]), ["the Academic Office sets it",
@@ -1227,7 +1252,7 @@ test("V776: of a cohort no SIWES course reaches, those who have paid or register
   const all = unreachedLines({ unreached: [{ paid: 2, students: 2, programmeCode: "C98761" }] });
   assert.deepEqual([all.paid, all.words], [2, "They have paid or registered: they stay held to SIWES, and cannot register until the course is set."]);
   assert.equal(unreachedWords(2, 2), all.words);
-  assert.equal(unreachedWords(0, 5), "They are not asked to pay the SIWES registration fee or to register until a SIWES course reaches them.");
+  assert.equal(unreachedWords(0, 5), `They are ${UNREACHED_WAITS}.`);
 });
 
 test("V776: a programme added with its SIWES course not yet written down says what the catalogue offers it", () => {
@@ -1236,11 +1261,11 @@ test("V776: a programme added with its SIWES course not yet written down says wh
   assert.deepEqual(programmeAddedWords(config, "C98764", "2025/2026"), { tone: "warn",
     words: "B.Sc. Made-up Several takes SIWES in 2025/2026, but its SIWES course (CCMAS) is not set yet. "
       + "Several SIWES courses found: ZZQ 395 Industrial Attachment B (made up) (6 units); ZZQ 396 Industrial Attachment A (made up) (6 units) — set the one the programme's students register. "
-      + "Its 300 Level students are not asked to pay or register until a SIWES course reaches them." });
+      + ADDED_WAITS });
   assert.deepEqual(programmeAddedWords(config, "C98763", "2025/2026"), { tone: "warn",
     words: "B.Sc. Made-up Found takes SIWES in 2025/2026, but its SIWES course (CCMAS) is not set yet. "
       + "Found in the catalogue: ZZQ 397 SIWES (made up found) (6 units) — use it on the programme's row, or set another. "
-      + "Its 300 Level students are not asked to pay or register until a SIWES course reaches them." });
+      + ADDED_WAITS });
   // nothing offered, and a course recognised as it was added: as before
   assert.match(programmeAddedWords(config, "C98762", "2025/2026").words, /, but no SIWES course is found for it \(CCMAS\) yet: set it, or add the course to the SIWES courses\. /);
   assert.deepEqual(programmeAddedWords(config, "C98761", "2025/2026"), { tone: "ok", words: "B.Sc. Made-up Structure takes SIWES in 2025/2026: its SIWES course is ZZQ 399" });
@@ -1291,13 +1316,15 @@ test("V776: the SIWES courses say whose course each is — set here or recognise
 test("V776: taking a course off the SIWES courses names the programmes left waiting and the attachment semesters it ends", () => {
   const names = { C98761: "B.Sc. Made-up Structure", C98765: "B.Sc. Made-up Department" };
   const off = siwesCourseOffWords(L_STRUCTURE, names);
-  assert.match(off, /^Take ZZQ 399 — Industrial Training \(made up\) off the SIWES courses\?\n\nThe portal then reads it as an ordinary course: no programme comes by it as its SIWES course\. /);
-  assert.match(off, /The programme it was written down for \(B\.Sc\. Made-up Structure\) waits for a SIWES course again: its 300 Level students are not asked to pay the SIWES registration fee or to register until one is set or written down\. /);
+  assert.match(off, /^Take ZZQ 399 — Industrial Training \(made up\) off the SIWES courses\?\n\nThe portal then reads it as an ordinary course: it stops charging the SIWES registration fee, and no programme comes by it as its SIWES course\. /);
+  assert.match(off, /The programme it was written down for \(B\.Sc\. Made-up Structure\) waits for a SIWES course again: its 300 Level students are not held to the SIWES course alone until one is set or written down\. /);
+  // V777: the programmes it was written down for lose only the binding; the fee is a course's, and goes with the course
+  assert.doesNotMatch(off, /not asked to pay/);
   assert.match(off, /\n\nTaking it off also ends the attachment semester — the semester that holds the SIWES course alone — of B\.Sc\. Made-up Structure \(300 Level, Second Semester\)\.\n\n/);
   assert.match(off, /or while students are registered in an attachment semester it makes\.$/);
   // recognised for several; no attachment semester: not spoken of
   const dept = siwesCourseOffWords({ ...L_DEPARTMENT, setFor: [{ code: "C98765", source: "DEPARTMENT" }, { code: "C98761", curriculum: "BMAS", source: "STRUCTURE" }] }, names);
-  assert.match(dept, /The programmes it was written down for \(B\.Sc\. Made-up Department; B\.Sc\. Made-up Structure \(BMAS\)\) wait for a SIWES course again: their 300 Level students /);
+  assert.match(dept, /The programmes it was written down for \(B\.Sc\. Made-up Department; B\.Sc\. Made-up Structure \(BMAS\)\) wait for a SIWES course again: their 300 Level students are not held to the SIWES course alone/);
   assert.doesNotMatch(dept, /attachment semester —/);
   // written down for nobody: nobody is left waiting, and its attachment semester is named still
   const waiting = siwesCourseOffWords(L_WAITING, names);
@@ -1316,10 +1343,10 @@ test("V776: a course added to the SIWES courses has the waiting programmes recog
     { code: "C98769", curriculum: null, course: "ZZQ 390" }]);
   const names = { C98763: "B.Sc. Made-up Found", C98768: "B.Sc. Made-up Head of several" };
   assert.deepEqual(siwesCourseAddedWords(after, "zzq 302", before, names), { tone: "ok",
-    words: "ZZQ 302 is now a SIWES course. Now written down as the course of: B.Sc. Made-up Found — ZZQ 397; B.Sc. Made-up Head of several — ZZQ 393; C98769 — ZZQ 390." });
+    words: "ZZQ 302 is now a SIWES course, and carries the SIWES registration fee. Now written down as the course of: B.Sc. Made-up Found — ZZQ 397; B.Sc. Made-up Head of several — ZZQ 393; C98769 — ZZQ 390." });
   // nobody came by a course: the bare success; and nothing is claimed without the list as it stood before
-  assert.deepEqual(siwesCourseAddedWords(before, "ZZQ 302", before, names), { tone: "ok", words: "ZZQ 302 is now a SIWES course" });
-  for (const b of [undefined, null]) assert.deepEqual(siwesCourseAddedWords(after, "ZZQ 302", b, names), { tone: "ok", words: "ZZQ 302 is now a SIWES course" });
+  assert.deepEqual(siwesCourseAddedWords(before, "ZZQ 302", before, names), { tone: "ok", words: "ZZQ 302 is now a SIWES course, and carries the SIWES registration fee" });
+  for (const b of [undefined, null]) assert.deepEqual(siwesCourseAddedWords(after, "ZZQ 302", b, names), { tone: "ok", words: "ZZQ 302 is now a SIWES course, and carries the SIWES registration fee" });
   assert.deepEqual(newlyRecognised(null, null), []);
   // a course set on the desk since is not "recognised"; one recognised for a curriculum names it; more than four are counted
   assert.deepEqual(newlyRecognised([], [{ ...L_SET }, { ...L_WAITING, setFor: [{ code: "C98763", curriculum: "BMAS", source: "DEPARTMENT" }] }]), [{ code: "C98763", curriculum: "BMAS", course: "ZZQ 397" }]);
@@ -1328,7 +1355,8 @@ test("V776: a course added to the SIWES courses has the waiting programmes recog
   // a course no programme comes by on its own is a warning still, with whoever was recognised by the act after it
   const fourth = row(q("ZZQ 499", "Field attachment"), { level: 400, byTitle: false, recognised: false });
   assert.deepEqual(siwesCourseAddedWords([fourth, after[2]], "ZZQ 499", [L_WAITING], names), { tone: "warn",
-    words: "ZZQ 499 is now a SIWES course. No programme comes by it on its own: it is a 400 Level course, not 300 Level. It is a programme's SIWES course only where it is set for the programme. "
+    words: "ZZQ 499 is now a SIWES course. No programme comes by it on its own: it is a 400 Level course, not 300 Level. "
+      + "It is a programme's SIWES course only where it is set for the programme. Students who register it pay the SIWES fee all the same. "
       + "Now written down as the course of: B.Sc. Made-up Found — ZZQ 397." });
 });
 
@@ -1363,7 +1391,8 @@ const X_CURRICULA: SiwesConfigProgramme = { ...unit, code: "C98769", name: "B.Sc
   curricula: [{ found: ZZQ390, mapped: false, choices: [ZZQ390, ZZQ391], curriculum: "CCMAS" }] };
 const FIRST_SENTENCE = "Its SIWES course ZZQ 387 Industrial Training I (made up first semester) is a First Semester course (300 Level)";
 const FOURTH_SENTENCE = "Its SIWES course ZZQ 386 Industrial Training IV (made up fourth year) is a 400 Level course";
-const NOT_ASKED = "SIWES registration and its fee cover the Second Semester of 300 Level only for now, so it cannot be set for this programme yet";
+// V777: such a course is charged all the same — its students pay the fee when they register it on Course Registration; nothing to set
+const NOT_ASKED = "Its students pay the SIWES fee when they register it, on Course Registration";
 
 test("V776 round 3: where a course is found the row says what the programme's Second Semester is — the SIWES semester, or one that also carries required courses", () => {
   assert.equal(secondSemesterWords(X_SEVERAL), "Its Second Semester is the SIWES semester: students register the SIWES course alone");
@@ -1407,7 +1436,9 @@ test("V776 round 3: a programme whose SIWES course is carried where SIWES regist
   // a reader is told the same; nobody is invited to set a course the database would refuse
   assert.deepEqual(courseHint(programmeCourseLines(X_FIRST)[0], false), first);
   for (const h of [first, fourth]) assert.doesNotMatch(courseHintWords(h), /set it|Use it|add the course|the Academic Office sets/);
-  assert.equal(NO_COURSE_300, "No 300 Level SIWES course");
+  // V777: never "not covered yet" or "cannot be set": the course is charged, on Course Registration — a dead end no more
+  for (const h of [first, fourth]) assert.doesNotMatch(courseHintWords(h), /not covered|cannot|only for now|not asked/);
+  assert.equal(ON_COURSE_REGISTRATION, "Registered on Course Registration");
   // where it stands: a course of another level is that level's; a First Semester one says its level in brackets; an answer short of either says what it can
   assert.equal(elsewhereWhere({ level: 400, semester: "FIRST" }), "a 400 Level course");
   assert.equal(elsewhereWhere({ level: 400, semester: "BOTH" }), "a 400 Level course");
@@ -1417,7 +1448,7 @@ test("V776 round 3: a programme whose SIWES course is carried where SIWES regist
   assert.equal(elsewhereWhere({ level: 300, semester: null }), "a course outside the Second Semester of 300 Level");
   assert.equal(elsewhereWhere({ level: undefined, semester: "BOTH" }), "a course outside the Second Semester of 300 Level");
   // several: each with where it stands, the first few named and the rest counted; its title left out where the answer has none
-  assert.deepEqual(elsewhereWords([E_FIRST, E_FOURTH]), { action: NOT_ASKED.replace("so it cannot", "so they cannot"),
+  assert.deepEqual(elsewhereWords([E_FIRST, E_FOURTH]), { action: NOT_ASKED.replace("when they register it", "when they register one of them"),
     words: "Its SIWES courses are ZZQ 387 Industrial Training I (made up first semester) (300 Level, First Semester); ZZQ 386 Industrial Training IV (made up fourth year) (400 Level)" });
   assert.equal(elsewhereWords([E_FIRST, E_FOURTH, { code: "ZZQ 385", level: 400, semester: "FIRST" }, { code: "ZZQ 384", level: 200, semester: "SECOND" }])?.words.endsWith("; ZZQ 385 (400 Level, First Semester); and 1 more"), true);
   assert.equal(elsewhereWords([{ code: "ZZQ 385", level: 400 }])?.words, "Its SIWES course ZZQ 385 is a 400 Level course");
@@ -1497,17 +1528,20 @@ test("V776 round 3: a programme added with a course found, or several offered, i
     words: "B.Sc. Made-up Found takes SIWES in 2025/2026, but its SIWES course (CCMAS) is not set yet. "
       + "Found in the catalogue: ZZQ 397 SIWES (made up found) (6 units) — use it on the programme's row, or set another. "
       + "Its Second Semester also carries 2 required courses (5 units), which students bound to SIWES could no longer register. "
-      + "Its 300 Level students are not asked to pay or register until a SIWES course reaches them." });
+      + ADDED_WAITS });
   assert.deepEqual(programmeAddedWords(config, "C98764", "2025/2026"), { tone: "warn",
     words: "B.Sc. Made-up Several takes SIWES in 2025/2026, but its SIWES course (CCMAS) is not set yet. "
       + "Several SIWES courses found: ZZQ 395 Industrial Attachment B (made up) (6 units); ZZQ 396 Industrial Attachment A (made up) (6 units) — set the one the programme's students register. "
       + "Its Second Semester is the SIWES semester: students register the SIWES course alone. "
-      + "Its 300 Level students are not asked to pay or register until a SIWES course reaches them." });
+      + ADDED_WAITS });
   assert.match(programmeAddedWords(config, "C98769", "2025/2026").words, /Its Second Semester also carries 1 required course \(4 units\), which students bound to SIWES could no longer register\. Its 300 Level students /);
 });
 
-test("V776 round 3: the Set course form says a programme's SIWES course is a 300 Level course", () => {
-  assert.equal(SIWES_COURSE_LEVEL_HINT, "A programme's SIWES course is a 300 Level course, taught in the Second Semester.");
+test("V776 round 3, V777: the Set course form keeps the rule — a 300 Level, Second Semester course — and says the others are charged all the same", () => {
+  assert.equal(SIWES_COURSE_LEVEL_HINT, "Set course names the programme's course for the semester SIWES holds alone: a 300 Level course, taught in the Second Semester. "
+    + "A SIWES course at another level or in the First Semester is not set here; its students pay the SIWES fee when they register it, on Course Registration.");
+  // never the claim that every SIWES course is a 300 Level one
+  assert.doesNotMatch(SIWES_COURSE_LEVEL_HINT, /^A programme's SIWES course is a 300 Level course/);
 });
 
 test("V776 round 3: an older answer without the new keys renders as before — no semester, nothing carried elsewhere, no confirmation", () => {
@@ -1519,7 +1553,7 @@ test("V776 round 3: an older answer without the new keys renders as before — n
   assert.equal(confirmUseItWords(oldFound, ZZQ397, null), null);
   assert.deepEqual(programmeAddedWords({ programmes: [oldFound] }, "C00098", "2025/2026"), { tone: "warn",
     words: "Found takes SIWES in 2025/2026, but its SIWES course (CCMAS) is not set yet. Found in the catalogue: ZZQ 397 SIWES (made up found) (6 units) — use it on the programme's row, or set another. "
-      + "Its 300 Level students are not asked to pay or register until a SIWES course reaches them." });
+      + ADDED_WAITS });
   const u = unreachedLines({ unreached: [{ programmeCode: "C00098", programme: "Found", curriculum: "CCMAS", students: 1, found: ZZQ397 }], programmes: [oldFound] }, true);
   assert.equal(u.lines[0].semester, undefined);
   // a course written down on a row of an older answer carries no offer
@@ -1552,4 +1586,425 @@ test("V776: a cohort of a programme whose written course has ended is told so fi
   assert.doesNotMatch(live.lines[0].course, /has ended/);
   // an older answer without the programme row: as before
   assert.doesNotMatch(unreachedLines({ unreached: config.unreached }, true).lines[0].course, /has ended/);
+});
+
+// ── V777: every SIWES course carries the fee — the answers of registration.siwes_eligibility, siwes_fee_gate_many and
+//    siwes_entries_unpaid on a scratch database with the migration applied (made-up programmes and courses), as the API sends them ──────
+const PERIOD_777 = { state: "OPEN", registrationOpens: "2026-11-21", registrationCloses: "2026-12-02", trainingStarts: "2026-12-22", trainingEnds: "2027-06-20", durationMonths: 6 };
+const own = (code: string, o: Partial<SiwesOwnCourse> = {}): SiwesOwnCourse => ({ code, title: `Made-up SIWES ${code.slice(-3)}`, units: 6, level: 300, semester: 1, basis: "Core", state: "LIVE",
+  why: "STRUCTURE", held: false, passed: false, ...o });
+const G301 = own("ZZG 301");
+const G302 = own("ZZG 302", { semester: 2, units: 3 });
+const G311 = own("ZZG 311", { semester: 1, units: 3 });
+const G312 = own("ZZG 312", { semester: 2, units: 3 });
+const G402 = own("ZZG 402", { level: 400, semester: 2 });
+// a student of a programme SIWES does not bind, whose programme's structure carries a SIWES course at their level: mode COURSE
+const COURSE: MySiwes = {
+  eligible: true, applies: false, mode: "COURSE", bound: false, registerOn: "COURSE_REGISTRATION", canPay: true, canRegister: false, reasons: [], session: "2025/2026",
+  level: null, semester: null, programme: { code: "C97791", name: "B.Sc. Made-up Attachment" }, department: "Arts and Social Sciences Education", faculty: "Education",
+  course: null, courses: [G301], period: PERIOD_777, registrationOpen: true, fee: { amount: 4000, state: "PUBLISHED" }, paid: null, openReference: null, registration: null,
+  otherCourses: [], semesterFees: null,
+};
+const PAID_777 = { reference: "MOAUM-FEE-9", amount: 4000, receiptNo: "R9", at: "2026-11-22T10:00:00Z", source: "PORTAL" };
+
+test("V777: a SIWES course among the ordinary courses — the fee is paid first, then the course is registered on Course Registration, never here", () => {
+  const today = "2026-11-22";
+  assert.equal(isCourseMode(COURSE), true);
+  assert.equal(isCourseMode(OPEN), false);
+  // unpaid: pay the fee, once a session; nothing says "alone", nothing is "in the way", the Second Semester is nowhere
+  let n = siwesNext(COURSE, today);
+  assert.deepEqual([n.step, n.tone, n.pay, n.register, n.print, n.receipt, n.link], ["PAY", "info", true, false, false, false, null]);
+  assert.equal(n.title, "Pay the SIWES registration fee of ₦4,000");
+  assert.equal(n.words, "Every SIWES course carries the fee, paid once a session. Pay it, then register ZZG 301 (300 Level, First Semester) on Course Registration.");
+  for (const w of [n.title, n.words]) assert.doesNotMatch(w, /alone|Second Semester|drop|Remove|SIWES page|other courses/);
+  // a reference already drawn is paid, never a second one
+  n = siwesNext({ ...COURSE, openReference: { reference: "MOAUM-SIW-7", amount: "4000", expiresAt: null } }, today);
+  assert.deepEqual([n.step, n.pay], ["PAY_REFERENCE", true]);
+  assert.equal(n.title, "Pay ₦4,000 to register ZZG 301");
+  assert.equal(n.words, "Pay the SIWES registration fee against reference MOAUM-SIW-7, then register ZZG 301 (300 Level, First Semester) on Course Registration.");
+  // no fee published, no registration: nothing to pay yet, said so
+  n = siwesNext({ ...COURSE, fee: { amount: "4000", state: "DRAFT" }, canPay: false }, today);
+  assert.deepEqual([n.step, n.pay], ["FEE_NOT_SET", false]);
+  assert.equal(n.words, "The Bursary publishes the SIWES registration fee; ZZG 301 (300 Level, First Semester) is registered only once it is published and paid.");
+  assert.equal(siwesNext({ ...COURSE, fee: null }, today).step, "FEE_NOT_SET");
+  // the server's canPay false never offers a Pay the database would refuse
+  assert.equal(siwesNext({ ...COURSE, canPay: false }, today).pay, false);
+  // paid: register the course on Course Registration, the semester it is taught in; paying does not register it; the receipt of a portal payment
+  n = siwesNext({ ...COURSE, paid: PAID_777 }, today);
+  assert.deepEqual([n.step, n.tone, n.register, n.pay, n.print, n.receipt], ["REGISTER_COURSE", "info", false, false, false, true]);
+  assert.equal(n.title, "Fee paid: register ZZG 301 on Course Registration");
+  assert.equal(n.words, "Your SIWES registration fee for 2025/2026 is paid: it covers every SIWES course you register in the session. Register ZZG 301 (300 Level, First Semester) on Course Registration. Paying does not register it.");
+  assert.doesNotMatch(n.words, /other courses/);
+  assert.deepEqual(n.link, { href: "/student/register?session=2025%2F2026&semester=1", label: "Course Registration" });
+  // an old-portal payment settles it all the same, with no portal receipt
+  assert.deepEqual([siwesNext({ ...COURSE, paid: { ...PAID_777, source: "OLD_PORTAL", receiptNo: null } }, today).step, siwesNext({ ...COURSE, paid: { ...PAID_777, source: "OLD_PORTAL" } }, today).receipt], ["REGISTER_COURSE", false]);
+  // the course is on the registration and the fee paid: registered, nothing more to do here
+  n = siwesNext({ ...COURSE, paid: PAID_777, courses: [{ ...G301, why: "HELD", held: true }] }, today);
+  assert.deepEqual([n.step, n.tone, n.link, n.register, n.print], ["REGISTERED", "ok", null, false, false]);
+  assert.equal(n.words, "ZZG 301 is on your registration for 2025/2026, and the SIWES registration fee is paid.");
+  // the registration's status as the answer carries it: an approved or locked one registers the course, as an answer without it did
+  for (const registrationStatus of ["APPROVED", "LOCKED", null, undefined]) {
+    n = siwesNext({ ...COURSE, paid: PAID_777, courses: [{ ...G301, why: "HELD", held: true, registrationStatus }] }, today);
+    assert.deepEqual([n.step, n.tone, n.link], ["REGISTERED", "ok", null]);
+  }
+  // a SIWES course already passed is neither owed nor asked for
+  assert.deepEqual(ownCourses({ courses: [G301, { ...G302, passed: true }] }).map((c) => c.code), ["ZZG 301"]);
+  assert.match(siwesNext({ ...COURSE, courses: [G301, { ...G302, passed: true }] }, today).words, /ZZG 301 \(300 Level, First Semester\) on Course Registration/);
+  assert.doesNotMatch(siwesNext({ ...COURSE, courses: [G301, { ...G302, passed: true }] }, today).words, /ZZG 302/);
+});
+
+test("V777: a student who holds an unpaid SIWES course from before the rule is told so, and asked the fee now", () => {
+  const today = "2026-11-22";
+  // the 139 of 2025/2026: registered (an approved registration), no SIWES payment — HELD, in reach, may pay
+  const held: MySiwes = { ...COURSE, courses: [{ ...G302, why: "HELD", held: true }] };
+  let n = siwesNext(held, today);
+  assert.deepEqual([n.step, n.tone, n.pay, n.register], ["PAY_HELD", "bad", true, false]);
+  assert.equal(n.title, "Pay the SIWES registration fee of ₦4,000");
+  assert.equal(n.words, "You registered ZZG 302 (300 Level, Second Semester) for 2025/2026 before every SIWES course carried the SIWES registration fee. It is asked of every student who registers one, once a session, so you have to pay it now.");
+  assert.match(n.words, /before every SIWES course carried the SIWES registration fee/);
+  assert.match(n.words, /you have to pay it now/);
+  // a held course and another still to register: pay, then register the other
+  n = siwesNext({ ...held, courses: [{ ...G311, why: "HELD", held: true }, G312] }, today);
+  assert.equal(n.step, "PAY_HELD");
+  assert.match(n.words, /^You registered ZZG 311 \(300 Level, First Semester\) for 2025\/2026 before /);
+  assert.match(n.words, /so you have to pay it now; then register ZZG 312 \(300 Level, Second Semester\) on Course Registration\.$/);
+  // a reference already drawn is paid
+  assert.equal(siwesNext({ ...held, openReference: { reference: "MOAUM-SIW-8", amount: 4000, expiresAt: null } }, today).step, "PAY_REFERENCE");
+  // paid at last: every course held, registered
+  assert.equal(siwesNext({ ...held, paid: PAID_777 }, today).step, "REGISTERED");
+  // the fee not yet published: said, not asked
+  n = siwesNext({ ...held, fee: null, canPay: false }, today);
+  assert.deepEqual([n.step, n.pay], ["FEE_NOT_SET", false]);
+  assert.equal(n.words, "ZZG 302 (300 Level, Second Semester) is on your registration. The Bursary publishes the SIWES registration fee; you pay it here once it does.");
+  // two held: the plural
+  assert.match(siwesNext({ ...COURSE, courses: [{ ...G311, held: true }, { ...G312, held: true }], paid: PAID_777 }, today).words, /^ZZG 311 and ZZG 312 are on your registration for 2025\/2026/);
+});
+
+test("V777: the courses of a student carry their own level and semester — one payment, a link to Course Registration for each semester", () => {
+  const two: MySiwes = { ...COURSE, courses: [G311, G312], paid: PAID_777 };
+  assert.deepEqual([courseWhere(G311), courseWhere(G402), courseWhere(G311, " · "), courseWhere({}), courseWhere({ level: 400 }), courseWhere({ semester: 2 })],
+    ["300 Level, First Semester", "400 Level, Second Semester", "300 Level · First Semester", "", "400 Level", "Second Semester"]);
+  assert.equal(ownCourseList([G311, G312]), "ZZG 311 (300 Level, First Semester) and ZZG 312 (300 Level, Second Semester)");
+  assert.equal(ownCourseList([G311, G312, G402]), "ZZG 311 (300 Level, First Semester), ZZG 312 (300 Level, Second Semester) and ZZG 402 (400 Level, Second Semester)");
+  assert.equal(ownCourseList([{ code: "ZZG 400" }]), "ZZG 400");
+  assert.equal(ownCourseList([]), "");
+  assert.equal(ownCourseLine(G301), "ZZG 301 — Made-up SIWES 301 (6 units) · 300 Level · First Semester");
+  assert.deepEqual(courseSemesters([G312, G311, G402]), [1, 2]);
+  assert.deepEqual(registerLinks(two), [
+    { href: "/student/register?session=2025%2F2026&semester=1", label: "Course Registration, First Semester" },
+    { href: "/student/register?session=2025%2F2026&semester=2", label: "Course Registration, Second Semester" }]);
+  // one semester: one link, plainly named; nothing to register: none
+  assert.deepEqual(registerLinks({ ...two, courses: [G402] }), [{ href: "/student/register?session=2025%2F2026&semester=2", label: "Course Registration" }]);
+  assert.deepEqual(registerLinks({ ...two, courses: [{ ...G402, held: true }] }), []);
+  assert.deepEqual([heldCourses(two).length, coursesToRegister(two).length], [0, 2]);
+  // the step names both, the first semester's link
+  const n = siwesNext(two, "2026-11-22");
+  assert.equal(n.step, "REGISTER_COURSE");
+  assert.equal(n.title, "Fee paid: register ZZG 311 and ZZG 312 on Course Registration");
+  assert.equal(n.link?.href, "/student/register?session=2025%2F2026&semester=1");
+  // the Course Registration link keeps its default for the SIWES semester (V752): the Second Semester
+  assert.equal(courseRegistrationPage("2025/2026").href, "/student/register?session=2025%2F2026&semester=2");
+  assert.equal(courseRegistrationPage("2025/2026", 1).href, "/student/register?session=2025%2F2026&semester=1");
+  assert.equal(courseRegistrationPage(null, null).href, "/student/register?semester=2");
+});
+
+test("V777: the COURSE shape's tiles and card — the courses with where each is taught, never 300 Level, Second Semester; no training dates as the student's", () => {
+  const n = siwesNext(COURSE, "2026-11-22");
+  assert.deepEqual(siwesTiles(COURSE, n.step), [
+    ["SIWES session", "2025/2026", "300 Level · First Semester"],
+    ["You", "Eligible", "B.Sc. Made-up Attachment"],
+    ["SIWES fee", "₦4,000", "Not paid"],
+    ["SIWES courses", "1", "ZZG 301"],
+  ]);
+  // two courses in two semesters: counted, never one semester's name for both
+  const two = { ...COURSE, courses: [G311, G402] };
+  assert.deepEqual(siwesTiles(two, "PAY").map((t) => t[2]), ["2 courses", "B.Sc. Made-up Attachment", "Not paid", "ZZG 311, ZZG 402"]);
+  // paid; registered
+  assert.deepEqual(siwesTiles({ ...COURSE, paid: PAID_777 }, "REGISTER_COURSE")[2], ["SIWES fee", "Paid", "₦4,000 · 22 November 2026"]);
+  assert.deepEqual(siwesTiles({ ...COURSE, paid: PAID_777, courses: [{ ...G301, held: true }] }, "REGISTERED")[1], ["You", "Registered", "B.Sc. Made-up Attachment"]);
+  // the fee not published
+  assert.deepEqual(siwesTiles({ ...COURSE, fee: null }, "FEE_NOT_SET")[2], ["SIWES fee", "—", "Not published yet"]);
+  for (const t of siwesTiles(COURSE, n.step)) assert.doesNotMatch(t.join(" "), /Second Semester|January|Training/);
+  // the dashboard card is shown while a SIWES course is theirs to pay for: the SIWES semester's rule does not bind them
+  assert.equal(siwesApplies(COURSE), false);
+  // the COURSE guard stands on its own: whatever `applies` says (true, when a portal payment or a SIWES registration stands) or lacks
+  // (an older answer: the reasons would read this eligible student as bound), a COURSE answer is never read as the SIWES semester's
+  assert.equal(siwesApplies({ ...COURSE, applies: true }), false);
+  assert.equal(siwesApplies({ ...COURSE, applies: undefined }), false);
+  assert.equal(siwesApplies({ ...COURSE, applies: null }), false);
+  assert.equal(siwesApplies({ ...COURSE, applies: undefined, registration: { id: "r1", status: "APPROVED", at: null } }), false);
+  // and the same answer without its mode is read from `applies` and the reasons, as before
+  assert.equal(siwesApplies({ ...COURSE, mode: null, applies: true }), true);
+  assert.equal(siwesApplies({ ...COURSE, mode: undefined, applies: undefined }), true);
+  assert.equal(siwesCardShown(COURSE), true);
+  assert.equal(siwesCardShown({ ...COURSE, mode: null, eligible: false, reasons: ["NO_SIWES_COURSE"] }), false);
+  // a student of the SIWES semester is as ever: V752's shape, key for key
+  const bound: MySiwes = { ...OPEN, mode: "SEMESTER", bound: true, registerOn: "SIWES_PAGE", courses: [{ ...own("CSC 399", { semester: 2 }) }] };
+  assert.equal(siwesNext(bound, "2026-11-12").step, "PAY");
+  assert.equal(siwesNext(bound, "2026-11-12").title, "Pay the SIWES registration fee of ₦4,000");
+  assert.deepEqual(siwesTiles(bound, "PAY")[0], ["SIWES session", "2025/2026", "300 Level · Second Semester"]);
+  assert.equal(siwesApplies(bound), true);
+});
+
+test("V777: a student whose programme carries no SIWES course at their level is told that one reason — never the configuration's", () => {
+  // registration.siwes_eligibility for a student of a programme with none: V752's reasons, plus NO_SIWES_COURSE
+  const none: MySiwes = { ...OPEN, eligible: false, applies: false, mode: null, bound: false, registerOn: null, canPay: false, courses: [], level: 300, semester: 2, course: null,
+    reasons: ["NOT_CONFIGURED", "NO_COURSE", "NO_SIWES_COURSE"] };
+  assert.deepEqual(reasonsToSay(none.reasons), ["NO_SIWES_COURSE"]);
+  assert.deepEqual(reasonWords(none.reasons), ["Your programme carries no SIWES course at your level, and you hold or owe none: no SIWES fee is asked of you."]);
+  assert.equal(notEligibleWords(none.reasons), "Not eligible: No SIWES course at the level");
+  // beside the other reasons that stand (not in study, say), the configuration's still fall away
+  assert.deepEqual(reasonsToSay(["NOT_IN_STUDY", "NOT_300_LEVEL", "NO_PERIOD", "NO_SIWES_COURSE"]), ["NOT_IN_STUDY", "NO_SIWES_COURSE"]);
+  // without it, every reason is said as before
+  assert.deepEqual(reasonsToSay(["NOT_300_LEVEL", "NOT_CONFIGURED"]), ["NOT_300_LEVEL", "NOT_CONFIGURED"]);
+  assert.deepEqual(reasonsToSay(null), []);
+  // the page: nothing to pay for, said in one sentence — never "not set for this session", whether or not a period is set
+  for (const period of [OPEN.period, null]) {
+    const n = siwesNext({ ...none, period }, "2026-11-22");
+    assert.deepEqual([n.step, n.tone, n.title, n.pay, n.register], ["NOT_ELIGIBLE", "info", "No SIWES fee is asked of you", false, false]);
+    assert.equal(n.words, "Your programme carries no SIWES course at your level, and you hold or owe none: no SIWES fee is asked of you.");
+  }
+  assert.equal(siwesApplies({ eligible: false, reasons: ["NO_SIWES_COURSE"], registration: null }), false);
+  assert.equal(siwesCardShown(none), false);
+  // V752's reasons for the bound shape stay as they were
+  assert.equal(reasonWords(["NOT_300_LEVEL"])[0], "SIWES registration is for 300 Level students, in the Second Semester.");
+  assert.equal(rowState({ paid: false, registered: false, eligible: false, reasons: ["NOT_300_LEVEL", "NO_SIWES_COURSE"] })[0], "Not eligible: No SIWES course at the level");
+});
+
+test("V777: a SIWES course locked on Course Registration's menu while its fee is unpaid, as a GST/EPS course is — what holds it, and what is done", () => {
+  // the gate's words as registration.siwes_fee_gate_many sends them: the first word is the code, never shown
+  const unpaid = "SIWES_UNPAID: the SIWES registration fee for 2025/2026 is not paid; ZZG 301 is registered once it is";
+  const unset = "SIWES_FEE_NOT_SET: the Bursary has not published the SIWES registration fee for 2025/2026; ZZG 302 is registered once it is published and paid";
+  const noReach = "SIWES_NOT_IN_REACH: ZZG 303 is a SIWES course and carries the SIWES registration fee for 2025/2026, but your programme carries no SIWES course at your level, so the fee cannot be paid for it";
+  assert.deepEqual([unpaid, unset, noReach, "", null, undefined, "SOMETHING_NEW: words"].map(siwesLockKind), ["UNPAID", "FEE_NOT_SET", "NOT_IN_REACH", "UNPAID", "UNPAID", "UNPAID", "UNPAID"]);
+  assert.deepEqual(SIWES_LOCK_PILL, { UNPAID: "SIWES fee required", FEE_NOT_SET: "SIWES fee not published", NOT_IN_REACH: "Not open to you" });
+  assert.equal(SIWES_LOCK_TITLE.UNPAID, "Locked until the SIWES fee is paid");
+  for (const t of [...Object.values(SIWES_LOCK_PILL), ...Object.values(SIWES_LOCK_TITLE)]) assert.doesNotMatch(t, /SIWES_[A-Z_]+/);
+  // the notes over the form: the fee unpaid first, with the amount only when the Bursary has published it
+  const notes = siwesLockNotes([{ code: "ZZG 301", gate: unpaid }, { code: "ZZG 311", gate: unpaid }, { code: "ZZG 301", gate: unpaid }, { code: "ZZG 302", gate: unset }, { code: "ZZG 303", gate: noReach }], "2025/2026", 4000);
+  assert.deepEqual(notes.map((x) => [x.kind, x.title, x.pay]), [["bad", "SIWES fee required", true], ["info", "SIWES fee not published yet", false], ["info", "SIWES course not open to you", false]]);
+  assert.equal(notes[0].words, "Pay the SIWES registration fee of ₦4,000 for 2025/2026 to register ZZG 301 and ZZG 311. It is paid once a session, whichever SIWES course you register: pay it on the SIWES page, then register the course here.");
+  assert.equal(notes[1].words, "The Bursary has not published the SIWES registration fee for 2025/2026; ZZG 302 is registered once it is published and paid.");
+  assert.equal(notes[2].words, "ZZG 303 is a SIWES course, but your programme carries no SIWES course at your level, so the fee cannot be paid for it: ask the Academic Office.");
+  // no amount before one is published; nothing locked, no note
+  assert.doesNotMatch(siwesLockNotes([{ code: "ZZG 301", gate: unpaid }], "2025/2026")[0].words, /₦/);
+  assert.deepEqual(siwesLockNotes([], "2025/2026", 4000), []);
+  for (const x of notes) assert.doesNotMatch(x.words, /SIWES_[A-Z_]+/);
+  // a SIWES course already on the registration with the fee unpaid (registered before the rule): the note asks the fee now
+  assert.equal(siwesUnpaidRegisteredWords(["ZZG 302"], "2025/2026", 4000),
+    "ZZG 302 is on your registration, but the SIWES registration fee of ₦4,000 for 2025/2026 is not paid. You registered it before every SIWES course carried the fee; "
+    + "it is asked of every student who registers one, once a session, so you have to pay it now, on the SIWES page.");
+  assert.match(siwesUnpaidRegisteredWords(["ZZG 311", "ZZG 312"], "2025/2026"),/^ZZG 311 and ZZG 312 are on your registration, but the SIWES registration fee for 2025\/2026 is not paid\. You registered them before /);
+});
+
+test("V777: a SIWES course only on a draft (or returned) registration is on the registration, not registered — the student submits it; a submitted one waits for approval", () => {
+  const today = "2026-11-22";
+  const heldOn = (registrationStatus: string | null, c: SiwesOwnCourse = G301): SiwesOwnCourse => ({ ...c, why: "HELD", held: true, registrationStatus });
+  assert.deepEqual(["DRAFT", "RETURNED", "SUBMITTED", "APPROVED", "LOCKED", null, undefined].map((registrationStatus) => heldStanding({ registrationStatus })),
+    ["UNSENT", "UNSENT", "AWAITING", "REGISTERED", "REGISTERED", "REGISTERED", "REGISTERED"]);
+  assert.equal(heldStanding({}), "REGISTERED");
+  // the fee paid, the course held on a draft or a returned registration: submit the registration — never the green "registered"
+  for (const status of ["DRAFT", "RETURNED"]) {
+    const d: MySiwes = { ...COURSE, paid: PAID_777, courses: [heldOn(status)] };
+    const n = siwesNext(d, today);
+    assert.deepEqual([n.step, n.tone, n.register, n.pay, n.receipt], ["SUBMIT_REGISTRATION", "info", false, false, true], status);
+    assert.equal(n.title, "Submit your registration to register ZZG 301");
+    assert.equal(n.words, "The SIWES registration fee for 2025/2026 is paid. ZZG 301 (300 Level, First Semester) is on your registration, not yet submitted: "
+      + "a SIWES course is registered only once the registration that holds it is submitted and approved. Submit your registration on Course Registration.");
+    assert.deepEqual(n.link, { href: "/student/register?session=2025%2F2026&semester=1", label: "Course Registration" });
+    assert.notEqual(n.title, "SIWES course registered");
+    assert.deepEqual(siwesTiles(d, n.step)[1], ["You", "Not submitted", "B.Sc. Made-up Attachment"]);
+    assert.deepEqual(heldAs(d, "UNSENT").map((c) => c.code), ["ZZG 301"]);
+    assert.deepEqual(heldAs(d, "REGISTERED"), []);
+    // the link to submit it, for the semester the course is taught in
+    assert.deepEqual(submitLinks(d), [{ href: "/student/register?session=2025%2F2026&semester=1", label: "Course Registration" }]);
+  }
+  // submitted: waiting for its approval, nothing for the student to do here
+  const waiting: MySiwes = { ...COURSE, paid: PAID_777, courses: [heldOn("SUBMITTED")] };
+  const w = siwesNext(waiting, today);
+  assert.deepEqual([w.step, w.tone, w.link, w.register, w.pay], ["AWAITING_APPROVAL", "info", null, false, false]);
+  assert.equal(w.title, "ZZG 301 is waiting for approval");
+  assert.equal(w.words, "The SIWES registration fee for 2025/2026 is paid. ZZG 301 (300 Level, First Semester) is on your registration, waiting for approval: "
+    + "a SIWES course is registered once the registration that holds it is approved.");
+  assert.deepEqual(siwesTiles(waiting, w.step)[1], ["You", "Awaiting approval", "B.Sc. Made-up Attachment"]);
+  assert.deepEqual(submitLinks(waiting), []);
+  // approved or locked: registered, as ever
+  for (const status of ["APPROVED", "LOCKED"]) {
+    const d: MySiwes = { ...COURSE, paid: PAID_777, courses: [heldOn(status)] };
+    assert.equal(siwesNext(d, today).step, "REGISTERED");
+    assert.deepEqual(siwesTiles(d, "REGISTERED")[1], ["You", "Registered", "B.Sc. Made-up Attachment"]);
+    assert.deepEqual(submitLinks(d), []);
+  }
+  // two held courses, one approved and one only a draft: the draft is the one to submit, in its own semester
+  const mixed: MySiwes = { ...COURSE, paid: PAID_777, courses: [heldOn("APPROVED", G311), heldOn("DRAFT", G312)] };
+  const m = siwesNext(mixed, today);
+  assert.deepEqual([m.step, m.title], ["SUBMIT_REGISTRATION", "Submit your registration to register ZZG 312"]);
+  assert.equal(m.words, "The SIWES registration fee for 2025/2026 is paid. ZZG 311 (300 Level, First Semester) is already on your registration; "
+    + "ZZG 312 (300 Level, Second Semester) is on your registration, not yet submitted: a SIWES course is registered only once the registration that holds it is submitted and approved. Submit your registration on Course Registration.");
+  assert.equal(m.link?.href, "/student/register?session=2025%2F2026&semester=2");
+  // a course to register beside one held on a draft: register it; the held one is named as it stands
+  const beside: MySiwes = { ...COURSE, paid: PAID_777, courses: [heldOn("DRAFT", G311), G312] };
+  const b = siwesNext(beside, today);
+  assert.equal(b.step, "REGISTER_COURSE");
+  assert.equal(b.words, "Your SIWES registration fee for 2025/2026 is paid: it covers every SIWES course you register in the session. Register ZZG 312 (300 Level, Second Semester) on Course Registration; "
+    + "ZZG 311 (300 Level, First Semester) is on your registration, not yet submitted. Paying does not register it. A course is registered only once the registration that holds it is submitted.");
+  assert.deepEqual(siwesTiles(beside, b.step)[1], ["You", "Eligible", "B.Sc. Made-up Attachment"]);
+  // its semester has the course to register already: one link, the register link; the submit link is for the other semester only
+  assert.deepEqual(registerLinks(beside).map((l) => l.href), ["/student/register?session=2025%2F2026&semester=2"]);
+  assert.deepEqual(submitLinks(beside).map((l) => l.href), ["/student/register?session=2025%2F2026&semester=1"]);
+  assert.deepEqual(submitLinks({ ...beside, courses: [heldOn("DRAFT", G311), own("ZZG 321", { semester: 1 })] }), []);
+  assert.deepEqual(submitLinks({ ...COURSE, courses: [heldOn("DRAFT", G311), heldOn("RETURNED", G402)] }).map((l) => l.label), ["Course Registration, First Semester", "Course Registration, Second Semester"]);
+  // the fee unpaid, the course held on a draft: the fee is asked first, as for any held course
+  assert.equal(siwesNext({ ...COURSE, courses: [heldOn("DRAFT")] }, today).step, "PAY_HELD");
+  // an older answer that does not say: registered, as before
+  assert.equal(siwesNext({ ...COURSE, paid: PAID_777, courses: [{ ...G301, why: "HELD", held: true }] }, today).step, "REGISTERED");
+});
+
+test("V777: the codes in the SIWES words are shown without a curriculum mark, as on the rest of the portal; the key stays the raw code", () => {
+  const today = "2026-11-22";
+  const bmas = own("MAC 399 BMAS", { semester: 1, title: "SIWES (made up)" });
+  assert.equal(ownCourseList([bmas]), "MAC 399 (300 Level, First Semester)");
+  assert.equal(ownCourseList([bmas, G312]), "MAC 399 (300 Level, First Semester) and ZZG 312 (300 Level, Second Semester)");
+  assert.equal(ownCourseLine(bmas), "MAC 399 — SIWES (made up) (6 units) · 300 Level · First Semester");
+  const d: MySiwes = { ...COURSE, courses: [bmas] };
+  assert.equal(siwesNext(d, today).words, "Every SIWES course carries the fee, paid once a session. Pay it, then register MAC 399 (300 Level, First Semester) on Course Registration.");
+  assert.equal(siwesNext({ ...d, openReference: { reference: "MOAUM-SIW-7", amount: 4000, expiresAt: null } }, today).title, "Pay ₦4,000 to register MAC 399");
+  assert.equal(siwesNext({ ...d, paid: PAID_777 }, today).title, "Fee paid: register MAC 399 on Course Registration");
+  assert.equal(siwesNext({ ...d, paid: PAID_777, courses: [{ ...bmas, held: true }] }, today).words, "MAC 399 is on your registration for 2025/2026, and the SIWES registration fee is paid.");
+  assert.deepEqual(siwesTiles(d, "PAY")[3], ["SIWES courses", "1", "MAC 399"]);
+  // the notes over the form say it the same way, the code however it reaches them
+  const unpaid = "SIWES_UNPAID: the SIWES registration fee for 2025/2026 is not paid; MAC 399 BMAS is registered once it is";
+  assert.match(siwesLockNotes([{ code: "MAC 399 BMAS", gate: unpaid }], "2025/2026", 4000)[0].words, /to register MAC 399\. /);
+  assert.equal(siwesLockNotes([{ code: "MAC 399 BMAS", gate: unpaid }, { code: "MAC 399", gate: unpaid }], "2025/2026")[0].words.includes("BMAS"), false);
+  // the course is still told by its key
+  assert.equal(ownCourses(d)[0].code, "MAC 399 BMAS");
+  assert.deepEqual(courseSemesters(ownCourses(d)), [1]);
+});
+
+test("V777: a student SIWES binds, whose First or Third Semester holds a SIWES course while the SIWES window is not open, is told when the fee can be paid — no payment link", () => {
+  const today = "2026-11-22";
+  const period = (p: Partial<SiwesPeriod>): SiwesPeriod => ({ ...PERIOD_777, state: "OPEN", ...p });
+  // V752's student (SEMESTER), the fee published and unpaid, the window not open: the server's canPay is false
+  const bound = (p: SiwesPeriod | null): MySiwes => ({ ...OPEN, mode: "SEMESTER", bound: true, applies: true, canPay: false, registrationOpen: false, period: p });
+  const before = bound(period({ registrationOpens: "2026-11-28", registrationCloses: "2026-12-02" }));
+  assert.equal(siwesPayShutWords(before, today), "SIWES registration opens on 28 November 2026: the SIWES registration fee cannot be paid before then. Pay it once SIWES registration opens, then register the course here.");
+  assert.equal(siwesPayShutWords(bound(period({ registrationOpens: "2026-11-01", registrationCloses: "2026-11-15", state: "CLOSED" })), today),
+    "SIWES registration is closed, so the SIWES registration fee cannot be paid now: ask the Academic Office.");
+  assert.equal(siwesPayShutWords(bound(period({ state: "DRAFT", registrationOpens: null, registrationCloses: null })), today),
+    "SIWES registration has not opened yet: the SIWES registration fee cannot be paid before then. Pay it once SIWES registration opens, then register the course here.");
+  assert.match(siwesPayShutWords(bound(null), today) ?? "", /^SIWES registration is closed, so /);
+  // nothing is said where the fee can be paid, or nothing says it cannot be: the form links to the SIWES page as ever
+  for (const d of [{ ...before, canPay: true }, { ...before, canPay: null }, { ...before, canPay: undefined }, { ...before, registrationOpen: true }, { ...before, paid: PAID_777 },
+    { ...before, fee: { amount: 4000, state: "DRAFT" } }, { ...before, fee: null }, { ...COURSE, canPay: false, registrationOpen: false }, null, undefined]) {
+    assert.equal(siwesPayShutWords(d, today), null);
+  }
+  // the notes over the form: the fee unpaid said without a payment link, and when the fee can be paid; the others as they were
+  const shut = siwesPayShutWords(before, today)!;
+  const unpaid = "SIWES_UNPAID: the SIWES registration fee for 2025/2026 is not paid; ZZG 311 is registered once it is";
+  const unset = "SIWES_FEE_NOT_SET: the Bursary has not published the SIWES registration fee for 2025/2026; ZZG 302 is registered once it is published and paid";
+  const notes = siwesLockNotes([{ code: "ZZG 311", gate: unpaid }, { code: "ZZG 312", gate: unpaid }, { code: "ZZG 302", gate: unset }], "2025/2026", 4000, shut);
+  assert.deepEqual(notes.map((x) => [x.kind, x.title, x.pay]), [["bad", "SIWES fee required", false], ["info", "SIWES fee not published yet", false]]);
+  assert.equal(notes[0].words, `ZZG 311 and ZZG 312 carry the SIWES registration fee of ₦4,000 for 2025/2026, paid once a session before they are registered. ${shut}`);
+  assert.equal(siwesLockNotes([{ code: "ZZG 311", gate: unpaid }], "2025/2026", undefined, shut)[0].words,
+    `ZZG 311 carries the SIWES registration fee for 2025/2026, paid once a session before it is registered. ${shut}`);
+  assert.doesNotMatch(notes[0].words, /pay it on the SIWES page/);
+  // without the words, or with none, the note is as it was
+  for (const none of [undefined, null, ""]) {
+    const n = siwesLockNotes([{ code: "ZZG 311", gate: unpaid }], "2025/2026", 4000, none);
+    assert.deepEqual([n[0].pay, n[0].words], [true, "Pay the SIWES registration fee of ₦4,000 for 2025/2026 to register ZZG 311. It is paid once a session, whichever SIWES course you register: pay it on the SIWES page, then register the course here."]);
+  }
+  // a course already on the registration: the fee is asked, and when it can be paid
+  assert.equal(siwesUnpaidRegisteredWords(["ZZG 302"], "2025/2026", 4000, shut),
+    "ZZG 302 is on your registration, but the SIWES registration fee of ₦4,000 for 2025/2026 is not paid. You registered it before every SIWES course carried the fee; "
+    + `it is asked of every student who registers one, once a session. ${shut}`);
+  assert.doesNotMatch(siwesUnpaidRegisteredWords(["ZZG 302"], "2025/2026", 4000, shut), /pay it now, on the SIWES page/);
+  assert.match(siwesUnpaidRegisteredWords(["ZZG 302"], "2025/2026", 4000, null), /so you have to pay it now, on the SIWES page\.$/);
+});
+
+test("V777: the desk's first panel holds nobody to SIWES alone while the period is a draft; the question before a programme is taken out says the same", () => {
+  assert.deepEqual([periodHolds({ state: "OPEN" }), periodHolds({ state: "CLOSED" }), periodHolds({ state: "DRAFT" }), periodHolds(null), periodHolds(undefined)], [true, true, false, false, false]);
+  // an opened period holds the programmes below: stated as a fact
+  for (const state of ["OPEN", "CLOSED"]) assert.deepEqual(heldToSiwesRow({ state }), ["Held to SIWES alone", "300 Level · Second Semester of the programmes below"]);
+  // a draft or no period: nobody yet, and what their students do meanwhile
+  for (const p of [{ state: "DRAFT" }, null, undefined]) {
+    const [label, value] = heldToSiwesRow(p);
+    assert.equal(label, "Held to SIWES alone");
+    assert.match(value, /^Nobody yet: once the period is opened, the 300 Level · Second Semester of the programmes below\. /);
+    assert.match(value, /their students pay the SIWES fee and register the course on Course Registration, like every other student\.$/);
+  }
+  const fee = "they register the Second Semester as before, and still pay the SIWES fee when they register a SIWES course.";
+  assert.equal(removeProgrammeWords("B.Sc. Made-up", "C97761", "2025/2026", { state: "OPEN" }),
+    `Take B.Sc. Made-up (C97761) out of SIWES for 2025/2026? Its 300 Level students are then no longer held to the SIWES course alone: ${fee}`);
+  for (const p of [{ state: "DRAFT" }, null]) {
+    const w = removeProgrammeWords("B.Sc. Made-up", "C97761", "2025/2026", p);
+    assert.equal(w, `Take B.Sc. Made-up (C97761) out of SIWES for 2025/2026? Its 300 Level students will not be held to the SIWES course alone when the period is opened: ${fee}`);
+    assert.doesNotMatch(w, /no longer held/);
+  }
+});
+
+test("V777: the desk's Unpaid courses tab stays when its read failed, unless the office is refused it", () => {
+  const row = {} as SiwesUnpaidEntry;
+  assert.equal(unpaidTabShown([row], null), true);
+  assert.equal(unpaidTabShown([], null), true);
+  // a timeout or a server error: the tab is kept, to say so
+  for (const status of [500, 502, 503, 504, 401, 404]) assert.equal(unpaidTabShown(null, { status }), true, String(status));
+  assert.equal(unpaidTabShown(null, {}), true);
+  // a refusal: the office does not read the list, so the tab is not theirs; nothing read and nothing wrong: no tab
+  assert.equal(unpaidTabShown(null, { status: 403 }), false);
+  assert.equal(unpaidTabShown(null, null), false);
+  assert.equal(unpaidTabShown(undefined, undefined), false);
+});
+
+test("V777: the Bursary's list of SIWES courses held without the fee, read from the API's names and counted by student", () => {
+  // registration.siwes_entries_unpaid's rows, in the database's names and in the API's
+  const db = { student_id: "s1", matric_no: "MOAU/ZSG/97/7903", name: "ZZGATE, G3", programme_code: "C97792", programme: "B.Sc. Made-up Beside", current_level: 300,
+    course_code: "ZZG 302", course_title: "Made-up SIWES 302", level: 300, semester: 2, registration_status: "APPROVED", payable: true };
+  const api = { studentId: "s2", matricNo: "MOAU/ZSG/97/7904", name: "ZZGATE, G4", programme: "B.Sc. Made-up Beside", currentLevel: 400, courseCode: "ZZG 402", courseTitle: null,
+    level: 400, semester: 1, registrationStatus: "DRAFT", payable: false };
+  const rows = unpaidEntries([db, api, null, 5, { ...db, course_code: "ZZG 303", semester: "1", payable: "yes" }]);
+  assert.equal(rows.length, 3);
+  assert.deepEqual(rows[0], { studentId: "s1", matricNo: "MOAU/ZSG/97/7903", name: "ZZGATE, G3", programme: "B.Sc. Made-up Beside", currentLevel: 300, courseCode: "ZZG 302",
+    courseTitle: "Made-up SIWES 302", level: 300, semester: 2, registrationStatus: "APPROVED", payable: true });
+  assert.deepEqual([rows[1].studentId, rows[1].courseTitle, rows[1].payable, rows[1].currentLevel], ["s2", null, false, 400]);
+  // a number from a string; only an explicit true is payable
+  assert.deepEqual([rows[2].semester, rows[2].payable], [1, false]);
+  // a page ({rows}), an answer that is neither: nothing
+  assert.equal(unpaidEntries({ rows: [db] }).length, 1);
+  for (const none of [null, undefined, "x", {}, 3]) assert.deepEqual(unpaidEntries(none), []);
+  // GET /siwes/admin/unpaid-entries pages the list as the desk's students are paged: rows, how many in all, the students holding them
+  const page = { session: "2025/2026", total: 3, students: 2, fee: 4000, page: 0, size: 2, rows: [
+    { studentId: "s1", matricNo: "M1", name: "A", programmeCode: "C1", programme: "P", departmentCode: "D", department: "Dept", facultyCode: "F", faculty: "Fac",
+      currentLevel: 300, courseCode: "ZZG 302", courseTitle: "T", level: 300, semester: 2, registrationStatus: "APPROVED", payable: true }] };
+  assert.equal(unpaidEntries(page)[0].courseCode, "ZZG 302");
+  assert.deepEqual([unpaidTotal(page), unpaidTotal({ total: "7" }), unpaidTotal({ total: 0 }), unpaidTotal([db]), unpaidTotal({ rows: [] }), unpaidTotal(null), unpaidTotal({ total: "x" })], [3, 7, 0, null, null, null, null]);
+  assert.equal(unpaidEntry({}).courseCode, "");
+  // where it stands, the course's place, the words
+  assert.deepEqual([unpaidStanding(rows[0]), unpaidStanding(rows[1])], [["Asked to pay now", "bad"], ["Not asked in this session", "grey"]]);
+  assert.deepEqual([unpaidWhere(rows[0]), unpaidWhere(rows[1]), unpaidWhere({ level: null, semester: null })], ["300 Level, Second Semester", "400 Level, First Semester", ""]);
+  assert.equal(unpaidLine(rows[0]).length, UNPAID_HEAD.length);
+  assert.deepEqual(unpaidLine(rows[0]), ["MOAU/ZSG/97/7903", "ZZGATE, G3", "B.Sc. Made-up Beside", 300, "ZZG 302", "Made-up SIWES 302", 300, "Second Semester", "Approved", "Asked to pay now"]);
+  assert.deepEqual(unpaidLine(rows[1]).slice(5, 9), ["", 400, "First Semester", "Draft"]);
+  // the figures: courses, students (each once), those asked now, and what they owe at the fee in force — none before one is published
+  const more = [...rows, { ...rows[0], courseCode: "ZZG 312" }];
+  assert.deepEqual(unpaidTotals(more, 4000), { entries: 4, students: 2, payable: 1, owed: 4000 });
+  assert.deepEqual(unpaidTotals(more, "4000.00"), { entries: 4, students: 2, payable: 1, owed: 4000 });
+  assert.deepEqual(unpaidTotals(more, null), { entries: 4, students: 2, payable: 1, owed: null });
+  assert.deepEqual(unpaidTotals([], 4000), { entries: 0, students: 0, payable: 0, owed: 0 });
+  assert.match(UNPAID_WORDS, /^Students who hold a SIWES course on a registration of the session and have paid no SIWES fee for it\./);
+  assert.match(UNPAID_WORDS, /Nothing here changes a registration\.$/);
+  const typed: SiwesUnpaidEntry = rows[0];
+  assert.equal(typed.registrationStatus, "APPROVED");
+});
+
+test("V777: the Bursary's fee panel says every SIWES course carries the fee, naming the amount only once it is published", () => {
+  assert.equal(siwesFeeScopeWords(4000),
+    "Every SIWES course carries the SIWES registration fee of ₦4,000: it is paid once a session by every student who registers one, whatever the programme, level or semester, "
+    + "before the course is registered. A student who registers several SIWES courses in a session pays it once.");
+  for (const none of [null, undefined, "", 0]) {
+    const w = siwesFeeScopeWords(none);
+    assert.match(w, /^Every SIWES course carries the SIWES registration fee: it is paid once a session by every student who registers one/);
+    assert.doesNotMatch(w, /₦/);
+  }
+  // never the old scope
+  assert.doesNotMatch(siwesFeeScopeWords(4000), /300 Level students of the programmes|Second Semester/);
 });

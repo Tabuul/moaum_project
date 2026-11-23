@@ -6,6 +6,8 @@
  * orders a list that carries only the entry type (the examination card's courses, V501) and keeps the server's order within a
  * category, so the screen, the course form, the card and their PDFs list the same courses in the same order.
  */
+import { SIWES_LOCK_PILL, siwesLockKind } from "./siwes.ts";
+
 export type CourseCategory = "CARRY_OVER" | "GST" | "CORE" | "ELECTIVE";
 
 export const CATEGORIES: CourseCategory[] = ["CARRY_OVER", "GST", "CORE", "ELECTIVE"];
@@ -87,10 +89,13 @@ const STATUS: Record<string, string> = {
 
 /** a short status for a course the search found: Available, on the list already, or why not. A carry-over that runs in the
  *  semester is put on the registration by the engine itself, so it is never added by hand */
-export function courseStatus(c: { refusal?: string | null; on_registration?: boolean; recommended?: boolean | null; category?: string | null; gstHeld?: string | null }): { label: string; ok: boolean } {
+export function courseStatus(c: { refusal?: string | null; on_registration?: boolean; recommended?: boolean | null; category?: string | null; gstHeld?: string | null; siwesHeld?: string | null }): { label: string; ok: boolean } {
   if (c.on_registration) return { label: "Already added", ok: false };
   // V512: a GST/EPS course — a carry-over too — waits for the GST fee
   if (!c.refusal && c.gstHeld) return { label: "GST/EPS payment required", ok: false };
+  // V777: a SIWES course — every one carries the SIWES fee, a carry-over too — waits for the fee (or, as Course Registration's pill says it, for
+  // the Bursary to publish it, or is not open to the student); the database's words are read for the kind, never shown
+  if (!c.refusal && c.siwesHeld) return { label: SIWES_LOCK_PILL[siwesLockKind(c.siwesHeld)], ok: false };
   if (!c.refusal && c.category === "CARRY_OVER" && c.recommended) return { label: "Added automatically", ok: false };
   if (!c.refusal && c.recommended) return { label: "On your list", ok: true };
   if (!c.refusal) return { label: "Available", ok: true };
