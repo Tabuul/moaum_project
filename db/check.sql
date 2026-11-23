@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 783
+\set EXPECTED 784
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -45452,6 +45452,31 @@ BEGIN
       coalesce(msg = 'A MOAUM-LEG-MOAUMZZO77191-9774-9775 / School fees (legacy) ' || chr(183) || ' semester 1 excess 28605.00 | C MOAUM-LEG-MOAUMZZO77193-9774-9775 / School fees (legacy) ' || chr(183) || ' semester 1 excess 28605.00'
                    || ' | D MOAUM-LEG-MOAUMZZO77194-9774-9775-HOSTELFEE / Hostel fee (legacy) excess none | E MOAUM-LEG-MOAUMZZO77195-9774-9775 / School fees (legacy) ' || chr(183) || ' semester 1'
                    || ' | F MOAUM-LEG-MOAUMZZO77196-9774-9775-S1 / School fees (legacy) ' || chr(183) || ' semester 1', false), msg);
+END $$;
+
+-- ── V782: the overpaid school fees reading runs with jit = off. CI's PostgreSQL 17 compiles (JIT) any statement the planner puts above 100,000
+--          and, on tables never analysed, the main statement of finance.overpaid_read is estimated at 1.6e10: each refresh of a session took
+--          10.5 s there (and the developer's build of PostgreSQL has no JIT, so nothing slow ever showed here). Every function named in V782
+--          carries jit=off (and the six reads of a session for the students asked for their plan_cache_mode setting still), each exactly once. ──
+DO $$
+DECLARE
+    v_names text[] := ARRAY['fee_profiles_of', 'fee_sums_of', 'session_charges_of', 'session_payments_of', 'possible_double_charges_of',
+        'overpaid_of', 'overpaid_read', 'overpaid', 'overpaid_refresh', 'overpaid_refresh_due', 'overpaid_desk', 'overpaid_figures',
+        'overpaid_credits_request', 'overpaid_credits_decide', 'overpaid_credits_withdraw', 'overpaid_credit_post',
+        'withdrawal_sources', 'student_excess', 'overpayment_shortfall', 'decide_overpayments', 'legacy_credit_excess',
+        'legacy_credit_initiate', 'legacy_credit_resubmit', 'legacy_credit_decide', 'legacy_credit_rows', 'legacy_reconciliation_figures'];
+    n_fn int; n_off int; n_names int; n_leaf int; n_leaf_kept int;
+BEGIN
+    SELECT count(*), count(*) FILTER (WHERE 'jit=off' = ANY (p.proconfig)) INTO n_fn, n_off
+      FROM pg_proc p WHERE p.pronamespace = 'finance'::regnamespace AND p.proname = ANY (v_names);
+    SELECT count(DISTINCT p.proname) INTO n_names
+      FROM pg_proc p WHERE p.pronamespace = 'finance'::regnamespace AND p.proname = ANY (v_names);
+    SELECT count(*), count(*) FILTER (WHERE 'plan_cache_mode=force_custom_plan' = ANY (p.proconfig)) INTO n_leaf, n_leaf_kept
+      FROM pg_proc p WHERE p.pronamespace = 'finance'::regnamespace
+       AND p.proname IN ('fee_profiles_of', 'fee_sums_of', 'session_charges_of', 'session_payments_of', 'possible_double_charges_of', 'overpaid_of');
+    PERFORM pg_temp.assert('V782: the overpaid school fees reading runs with jit = off — each of the 26 functions named is there once and carries it, the six reads that work out a session for the students asked for keep their custom plans',
+        coalesce(n_names = cardinality(v_names) AND n_fn = n_names AND n_off = n_fn AND n_leaf = 6 AND n_leaf_kept = 6, false),
+        format('names %s of %s | functions %s | jit off %s | leaf reads %s keeping custom plans %s', n_names, cardinality(v_names), n_fn, n_off, n_leaf, n_leaf_kept));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────
