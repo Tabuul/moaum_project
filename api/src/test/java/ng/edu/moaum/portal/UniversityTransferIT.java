@@ -40,6 +40,27 @@ class UniversityTransferIT {
 
     private static final String BASE = "/api/v1/transfers/inter-university";
 
+    /**
+     * V780: an incoming transfer registered by staff has a portal account the moment it is approved — a first password: the
+     * admission number the record was given (MOAUM/ADM/YY/NNNNNN), with the change of password forced before anything else. A wrong
+     * password opens nothing, and once the student has chosen one their own number opens nothing (V428).
+     */
+    private void signsInOnTheAdmissionNumber(ItSupport it, String jamb) {
+        String adm = jdbc.sql("SELECT admission_no FROM people.student WHERE upper(jamb_reg_no) = :j").param("j", jamb.toUpperCase()).query(String.class).single();
+        assertThat(adm).matches("MOAUM/ADM/[0-9]{2}/[0-9]{6}");
+        assertThat(jdbc.sql("SELECT count(*) FROM iam.student_account a JOIN people.student s ON s.id = a.student_id WHERE upper(s.jamb_reg_no) = :j AND a.must_change AND a.temp_expires_at IS NULL")
+                .param("j", jamb.toUpperCase()).query(Integer.class).single()).isEqualTo(1);
+        ResponseEntity<Map> wrong = it.anon(HttpMethod.POST, "/api/v1/student-auth/sign-in", Map.of("matricNo", adm, "password", "not the password " + UUID.randomUUID()));
+        assertThat(wrong.getBody()).as(String.valueOf(wrong.getBody())).containsEntry("code", "AUTH_BAD_CREDENTIALS");
+        ResponseEntity<Map> first = it.anon(HttpMethod.POST, "/api/v1/student-auth/sign-in", Map.of("matricNo", adm, "password", adm));
+        assertThat(first.getStatusCode().is2xxSuccessful()).as(String.valueOf(first.getBody())).isTrue();
+        assertThat(first.getBody()).containsEntry("mustChange", true);
+        assertThat(String.valueOf(first.getBody().get("token"))).isNotBlank();
+        // the number typed in lower case is the same number
+        assertThat(it.anon(HttpMethod.POST, "/api/v1/student-auth/sign-in", Map.of("matricNo", adm.toLowerCase(), "password", adm.toLowerCase()))
+                .getStatusCode().is2xxSuccessful()).isTrue();
+    }
+
     private static Map<String, Object> placed(Map<String, Object> r, Map<String, Object> programme, String level) {
         Map<String, Object> out = new HashMap<>(r);
         out.put("faculty", programme.get("faculty_code")); out.put("dept", programme.get("dept_code")); out.put("programme", programme.get("code")); out.put("level", level);
@@ -133,6 +154,8 @@ class UniversityTransferIT {
         assertThat(jdbc.sql("SELECT entry_mode || '|' || status || '|' || programme_code || '|' || current_level || '|' || coalesce(sex, '-') FROM people.student WHERE upper(jamb_reg_no) = :j")
                 .param("j", jambIn).query(String.class).list()).containsExactly("TRANSFER|ADMITTED|" + to.get("code") + "|200|M");
         assertThat(jdbc.sql("SELECT count(*) FROM people.student WHERE upper(jamb_reg_no) = :j").param("j", jambRejected).query(Integer.class).single()).isZero();
+        // V780: the student the batch made signs in on the admission number — the number is the first password and the change is forced
+        signsInOnTheAdmissionNumber(it, jambIn);
 
         // the batch as it stands, and the transfers found by the reference
         Map<String, Object> view = it.get(registrar, BASE + "/" + batch).getBody();
@@ -242,6 +265,8 @@ class UniversityTransferIT {
         assertThat(jdbc.sql("SELECT entry_mode || '|' || status || '|' || programme_code || '|' || current_level || '|' || sex || '|' || date_of_birth FROM people.student WHERE upper(jamb_reg_no) = :j")
                 .param("j", jambIn).query(String.class).list()).containsExactly("TRANSFER|ADMITTED|" + to.get("code") + "|200|F|2004-05-06");
         assertThat(jdbc.sql("SELECT status FROM people.student WHERE id = :s").param("s", out).query(String.class).single()).isEqualTo("TRANSFERRED_OUT");
+        // V780: the student the form made signs in on the admission number too
+        signsInOnTheAdmissionNumber(it, jambIn);
         // the lookup now finds the record the transfer made; the transfers are found by the number at the other university
         assertThat((Map<String, Object>) it.get(preparer, BASE + "/lookup?number=" + jambIn + "&direction=INCOMING").getBody().get("student")).containsEntry("status", "ADMITTED");
         // a form naming someone else for a number on the register: recorded on that record only with the point that the name differs

@@ -155,6 +155,15 @@ Points to look at: `APPLICANT_LINKED` (an applicant under the JAMB number become
   (drawn until free), status ADMITTED, entry mode TRANSFER, entry and current level as stated, in the effective session. The
   applicant is linked where there is one, and the contact the row gives is kept. The previous university, programme and level
   stay on the transfer. The matriculation number follows under Matriculation Management, as for any admitted student.
+- **Signing in (V780).** The student signs in on the **admission number** the record was given (for example `MOAUM/ADM/25/000023`) until
+  the matriculation number is issued. The approval opens their portal account at the same moment (before V780 it opened none, and the
+  sign-in answered "No portal account has been opened for this number yet"): the **first password is the admission number itself**, and
+  the change of password is forced before anything else; once the student has chosen one, their own number opens nothing. Tell the
+  student their admission number (it is on the transfer and on the record); nothing else is needed. A transfer made from an online
+  application (V766) is not changed by this: the student signs in with the number and the application's own password, carried over at the
+  first sign-in. A record that already has an applicant's account on its candidate keeps that password too. Transfer students approved
+  before V780 and still without an account were given theirs when V780 was applied (`people.open_transfer_student_account`). A student
+  who cannot sign in despite this: ICT Support's reset (Student password reset) acts on the account that now exists.
 - **Incoming, an existing record.** Nothing on the record changes; the transfer is recorded on it.
 
 ## Who

@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 695
+\set EXPECTED 697
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -42726,6 +42726,84 @@ BEGIN
       coalesce(mb = 'added none | BMAS course marked none bound B1:false,B2:false | CCMAS course marked C97792 BMAS ZZR 360 STRUCTURE, C97792 CCMAS ZZR 398 STRUCTURE bound B1:true,B2:true | C97793 added none | report marked C97793 every ZZR 372 STRUCTURE bound R1:true', false), mb);
   PERFORM pg_temp.assert('V776: SIWES — a course labelled for the curriculum does not beat an unlabelled course of more units: the programme waits and the desk lists both',
       coalesce(mc = 'C97794 written none [CCMAS course - found - choices ZZR 381,ZZR 382] bound R2:false | C97795 written C97795 every ZZR 391 STRUCTURE [CCMAS course ZZR 391 found - choices -; - course ZZR 391 found - choices -] bound L1:true | set C97794 every ZZR 382 DESK bound R2:true', false), mc);
+END $$;
+-- ── V780. An inter-university transfer student registered by staff signs in on the admission number. Made-up students only. The
+--          incoming transfer registered on the form and approved by another officer: the record made (ADMITTED, entry by TRANSFER,
+--          an admission number) has its account — a sealed cost-12 hash and must_change on, no temporary password, so the first
+--          sign-in is the admission number and the change is forced (the state the door reads as a first password); the account is
+--          opened once (a second call opens nothing, the one account kept); and the helper opens none for a record that was not
+--          made by TRANSFER, one ended as a duplicate or closed, one with an applicant's account to carry over, or one with an
+--          account already. The block undoes its writes ──
+DO $$
+DECLARE p_to text; fac_to text; dept_to text;
+        off1 uuid := '00000000-0000-0000-0000-0000000780a1'; off2 uuid := '00000000-0000-0000-0000-0000000780b2';
+        v_full jsonb; made jsonb; decided text; acct text; again boolean; n_acct int;
+        s_utme uuid := gen_random_uuid(); s_closed uuid := gen_random_uuid(); s_dup uuid := gen_random_uuid(); s_app uuid := gen_random_uuid();
+        s_have uuid := gen_random_uuid(); s_open uuid := gen_random_uuid(); cand uuid := gen_random_uuid();
+        guards text; g1 text; g2 text; g3 text; g4 text; g5 text; g6 text; msg text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.actor_id', off1::text, true);
+        PERFORM set_config('moaum.actor_office', 'academic', true);
+        PERFORM set_config('moaum.reason', 'check V780', true);
+        SELECT p.code, p.faculty_code, p.dept_code INTO p_to, fac_to, dept_to FROM ref.programme p
+         WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code IS NOT NULL
+           AND 200 = ANY (people.programme_levels(p.code)) ORDER BY p.code LIMIT 1;
+        -- the form registers one incoming student; another officer approves; the record made has its account
+        v_full := jsonb_build_object('direction', 'INCOMING', 'jamb_reg_no', 'ZQ78000021AA', 'surname', 'CHECKTSE', 'other_names', 'Echo', 'sex', 'F',
+                        'date_of_birth', '2004-05-06', 'faculty', fac_to, 'dept', dept_to, 'programme', p_to, 'level', '200', 'university_code', 'UNIJOS',
+                        'other_programme', 'B.Sc. Physics', 'other_level', '200', 'other_matric_no', 'UJ/2022/SC/78021', 'other_entry_session', '2022/2023',
+                        'other_cgpa', '3.45', 'other_cgpa_scale', '5', 'documents', '["RELEASE_LETTER", "TRANSCRIPT"]'::jsonb, 'remarks', 'In good standing');
+        made := people.register_university_transfer(v_full, NULL, 'The Senate approved the transfer', 'SEN/780/1');
+        PERFORM set_config('moaum.actor_id', off2::text, true);
+        PERFORM set_config('moaum.actor_office', 'registrar', true);
+        decided := people.decide_university_transfer((made->>'transferId')::uuid, true, 'Checked against the Senate minutes')->>'action';
+        acct := (SELECT (a.password_hash ~ '^\$2[abxy]\$12\$') || ':' || a.must_change || ':' || (a.temp_expires_at IS NULL) || ':' || (a.temp_issued_by IS NULL)
+                        || ':' || (a.failed_attempts = 0) || ':' || (a.locked_until IS NULL) || ':' || (s.admission_no ~ '^MOAUM/ADM/\d{2}/\d{6}$') || ':' || s.entry_mode || ':' || s.status
+                   FROM people.student s JOIN iam.student_account a ON a.student_id = s.id WHERE upper(s.jamb_reg_no) = 'ZQ78000021AA');
+        -- opened once: a second call opens nothing, the one account is kept
+        again := people.open_transfer_student_account((SELECT s.id FROM people.student s WHERE upper(s.jamb_reg_no) = 'ZQ78000021AA'));
+        n_acct := (SELECT count(*) FROM iam.student_account a JOIN people.student s ON s.id = a.student_id WHERE upper(s.jamb_reg_no) = 'ZQ78000021AA');
+
+        -- the guards, on made-up records inserted directly
+        INSERT INTO people.student (id, admission_no, jamb_reg_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status) VALUES
+            (s_utme,   'MOAUM/ADM/80/780001', 'ZQ78000001AA', 'CHECKTSA', 'Utme',    p_to, 'UTME',     '2020/2021', 100, 100, 'ADMITTED'),
+            (s_app,    'MOAUM/ADM/80/780004', 'ZQ78000004AA', 'CHECKTSD', 'Applicant', p_to, 'TRANSFER', '2020/2021', 200, 200, 'ADMITTED'),
+            (s_have,   'MOAUM/ADM/80/780005', 'ZQ78000005AA', 'CHECKTSE', 'Account', p_to, 'TRANSFER', '2020/2021', 200, 200, 'ADMITTED'),
+            (s_open,   'MOAUM/ADM/80/780006', 'ZQ78000006AA', 'CHECKTSF', 'Open',    p_to, 'TRANSFER', '2020/2021', 200, 200, 'ADMITTED');
+        -- a closed record has its matriculation number (a student cannot be withdrawn before they are matriculated)
+        INSERT INTO people.student (id, matric_no, admission_no, jamb_reg_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (s_closed, 'MOAU/ZQ/TS/80/78002', 'MOAUM/ADM/80/780002', 'ZQ78000002AA', 'CHECKTSB', 'Closed', p_to, 'TRANSFER', '2020/2021', 200, 200, 'WITHDRAWN', now());
+        INSERT INTO people.student (id, admission_no, jamb_reg_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, duplicate_of)
+        VALUES (s_dup, 'MOAUM/ADM/80/780003', 'ZQ78000003AA', 'CHECKTSC', 'Duplicate', p_to, 'TRANSFER', '2020/2021', 200, 200, 'ADMITTED', s_open);
+        -- an applicant's account on the candidate of s_app: its password is carried over at the first sign-in, so none is opened here
+        INSERT INTO admissions.candidate (id, session, jamb_reg_no, surname, other_names, programme, entry_mode, entry_level, offer_state)
+        VALUES (cand, '2020/2021', 'ZQ78000004AA', 'CHECKTSD', 'Applicant', (SELECT p.name FROM ref.programme p WHERE p.code = p_to), 'UTME', 100, 'PROPOSED');
+        INSERT INTO admissions.applicant_account (id, session, candidate_id, jamb_key, email, phone, password_hash)
+        VALUES (gen_random_uuid(), '2020/2021', cand, 'ZQ78000004AA', 'zq78000004aa@example.com', '08030007804', crypt('x', gen_salt('bf', 12)));
+        UPDATE people.student SET candidate_id = cand WHERE id = s_app;
+        INSERT INTO iam.student_account (id, student_id, password_hash, must_change)
+        VALUES (gen_random_uuid(), s_have, crypt('chosen', gen_salt('bf', 12)), false);
+        -- each call made before the accounts are read (a query's uncorrelated subselects are evaluated before its function calls)
+        g1 := people.open_transfer_student_account(s_utme)::text || ':' || people.open_transfer_student_account(s_closed)::text || ':'
+              || people.open_transfer_student_account(s_dup)::text || ':' || people.open_transfer_student_account(s_app)::text || ':'
+              || people.open_transfer_student_account(s_have)::text || ':' || people.open_transfer_student_account(gen_random_uuid())::text;
+        g2 := (SELECT count(*) FROM iam.student_account a WHERE a.student_id IN (s_utme, s_closed, s_dup, s_app));
+        g3 := (SELECT (NOT a.must_change)::text FROM iam.student_account a WHERE a.student_id = s_have);
+        g4 := people.open_transfer_student_account(s_open)::text;
+        g5 := people.open_transfer_student_account(s_open)::text;
+        g6 := (SELECT a.must_change::text || ':' || (a.temp_expires_at IS NULL)::text FROM iam.student_account a WHERE a.student_id = s_open);
+        guards := g1 || ' | none ' || g2 || ' | have kept ' || g3 || ' | open ' || g4 || ' then ' || g5 || ' ' || g6;
+        RAISE EXCEPTION 'the V780 check undoes its writes';
+    EXCEPTION WHEN raise_exception THEN
+        GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+        IF msg <> 'the V780 check undoes its writes' THEN RAISE; END IF;
+    END;
+    PERFORM pg_temp.assert('V780: an incoming transfer registered by staff and approved by another officer gets its account — a sealed cost-12 hash, must_change on and no temporary password (the state the door reads as a first password: the admission number, the change forced) — opened once',
+        coalesce(decided = 'CREATE' AND acct = 'true:true:true:true:true:true:true:TRANSFER:ADMITTED' AND again = false AND n_acct = 1, false),
+        format('decided %s | account %s | again %s | accounts %s', decided, acct, again, n_acct));
+    PERFORM pg_temp.assert('V780: the account helper opens none for a record not made by TRANSFER, one closed or ended as a duplicate, one with an applicant''s account to carry over or an account already, nor for a number nobody holds; for a transfer student with none it opens one, once, as a first password',
+        coalesce(guards = 'false:false:false:false:false:false | none 0 | have kept true | open true then false true:true', false), guards);
 END $$;
 -- ── result ────────────────────────────────────────────────────────────────
 -- A check that ERRORS never reaches its assert, so counting only failures
