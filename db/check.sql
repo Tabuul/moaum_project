@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 846
+\set EXPECTED 858
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -27642,7 +27642,7 @@ BEGIN
                                'firstDegreeInstitution', 'A Check University', 'firstDegreeQualification', 'B.Sc.', 'docTranscript', 'old-doc-1.pdf'),
             jsonb_build_object('legacyApplicationNo', 'oldpg/9877/0001', 'lastName', 'CHECKMIGPG', 'firstName', 'New', 'email', 'pgmig.new2@example.test', 'session', s0, 'programme', prog),
             jsonb_build_object('legacyApplicationNo', 'OLDPG/9877/0003', 'lastName', 'CHECKMIGPG', 'firstName', 'Claimed', 'email', 'pgmig.claimed@example.test', 'session', s0,
-                               'programmeCode', prog, 'applicationFeeStatus', 'Paid', 'applicationFeeReference', 'OLD-APP-6733', 'applicationFeeAmount', '20000'),
+                               'programmeCode', prog, 'applicationFeeStatus', 'Paid', 'applicationFeeReference', 'OLD-APP-6733', 'applicationFeeAmount', '15000'),
             jsonb_build_object('legacyApplicationNo', 'OLDPG/9877/0004', 'lastName', 'CHECKMIGPG', 'firstName', 'Mapped', 'email', 'pgmig.mapped@example.test', 'session', s0,
                                'programme', 'Masters in Check Migration (Old Portal)'),
             jsonb_build_object('legacyApplicationNo', 'OLDPG/9877/0005', 'lastName', 'CHECKMIGPG', 'firstName', 'Admitted', 'email', 'pgmig.admitted@example.test', 'session', s0,
@@ -47364,6 +47364,325 @@ BEGIN
       coalesce(m_office = 'hod identify 42501 SUMMER_OFFICE, hod tell 42501 SUMMER_OFFICE, bursar identify 42501 SUMMER_OFFICE, bursar tell 42501 SUMMER_OFFICE, academic tell 4', false), m_office);
   PERFORM pg_temp.assert('V779: only an identification moves identifiedAt and the missing-history figure — a selection writes no candidate row (the printed confirmation still names the category), and a walk reads a student who selects or is authorised while it runs',
       coalesce(m_ident = 'selected: candidates 0 identifiedAt none missing history 0 printed category FINAL_YEAR | walk 1/2 1/2 1/1 1/0 0/0 | results 993801=0,993802=0,993803=1,993804=0 missing history 3', false), m_ident);
+END $$;
+
+-- ── V783: a postgraduate application fee paid on the old portal clears on its own ──
+-- Made-up applicants of a made-up session and programme (the session's application fee is the portal's default, ₦20,000). The
+-- applicants' file: one whose application fee is only Paid and reaches the fee (cleared at the import: posted as a confirmed reference
+-- through the channel "Old portal", stamped decided by the system, an event on the application, the once-only migration notice saying
+-- the fee is recorded — and the same file again leaves one fee, one event), one only Paid below the fee (held, the check warns with the
+-- amount, the applicant is told it is being verified and not asked to pay), one Verified below the fee (posted as before: V675's rule is
+-- unchanged), and one Paid below the fee an officer then verifies (the officer's door still works). Then the reasons a fee is held — a
+-- reference another application's fee reference holds, an application fee already confirmed here, an acceptance fee, a reference an
+-- officer rejected on another application, a reference on another ledger (an applicant's fee reference, a student's payment), a twin of
+-- an applicant who has paid — each refused by the clearing and left as it was; a rejected fee never cleared again; the clearing silent and
+-- the import's flag put back; the held fees cleared in one pass, with one email, and not twice; and a second file whose check and import
+-- agree about which fee clears and say so. The block undoes its writes.
+CREATE OR REPLACE FUNCTION pg_temp.v783_app(p_session text, p_prog text, p_surname text, p_other text, p_dob date, p_phone text, p_email text)
+RETURNS uuid LANGUAGE plpgsql AS $$
+DECLARE v_ap uuid; v_app uuid;
+BEGIN
+    INSERT INTO admissions.pg_applicant (session, surname, other_names, date_of_birth, email, phone, password_hash)
+    VALUES (p_session, p_surname, p_other, p_dob, p_email, p_phone, '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345') RETURNING id INTO v_ap;
+    INSERT INTO admissions.pg_application (applicant_id, session, application_no, programme_code, entry_level, state, submitted_at)
+    VALUES (v_ap, p_session, 'PG/50/' || lpad(platform.next_number('PG_APPLICATION', 'UNIVERSITY', p_session)::text, 6, '0'), p_prog, 800, 'SUBMITTED', now())
+    RETURNING id INTO v_app;
+    RETURN v_app;
+END $$;
+
+DO $$
+DECLARE s0 text := '9850/9851'; who uuid := gen_random_uuid(); bur uuid := gen_random_uuid(); prog text := 'C97830';
+        v_dept text; v_fac text; b1 uuid; b2 uuid; b3 uuid; rows1 jsonb; rows3 jsonb; v_err text;
+        a_full admissions.pg_application; a_part admissions.pg_application; a_ver admissions.pg_application; a_off admissions.pg_application;
+        f_full admissions.pg_legacy_fee; f_part admissions.pg_legacy_fee; f_ver admissions.pg_legacy_fee; f_off admissions.pg_legacy_fee;
+        v_full text; v_part text; w_part text; refused text; posted_full int; events_full int; events_full_again int; fees_full_again int;
+        told_part text; told_full text; notice_import int; hold_list text;
+        f_clash admissions.pg_legacy_fee; f_paid admissions.pg_legacy_fee; f_acc admissions.pg_legacy_fee;
+        r_clash text; r_paid text; r_acc text; k_clash boolean; k_paid boolean; k_acc boolean; still_held int;
+        corrected boolean; again boolean; mails_once int; r_before text; r_after text; off_state text; off_by uuid; off_mail int; off_event int;
+        a_fl uuid; f_fl admissions.pg_legacy_fee; flag_after text; flag_after_blank text; fl_notices int; fl_before int; fl_state text; other_notices int;
+        a_twin uuid; f_twin admissions.pg_legacy_fee; r_twin text; k_twin boolean;
+        a_rj uuid; f_rej admissions.pg_legacy_fee; f_rj admissions.pg_legacy_fee; r_rej text; k_rej boolean; k_rej_again boolean; rej_state text;
+        e_fee text; e_pay text; e_none text; h_els text; a_rv uuid; f_dec admissions.pg_legacy_fee; k_dec boolean; dec_state text;
+        a_cl uuid; a_sh uuid; f_cl admissions.pg_legacy_fee; f_sh admissions.pg_legacy_fee; p1_cleared int := -1; p1_held int := -1; p2_cleared int := -1; pass1 record; pass2 record; cl_state text; sh_state text; cl_mails int; cl_emails int; cl_before int;
+        c_row1 text; c_row2 text; n_row1 text; n_row2 text; st_row1 text; st_row2 text; told_dry text;
+        b4 uuid; rows4 jsonb; c_row3 text; c_row4 text; n_row3 text; n_row4 text; st_row3 text; st_row4 text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'V783 check: PG application fee clears on its own', true);
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'pgschool', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES
+            (who, 'CHK/V783/S', 'CHECKV783', 'School', NULL), (bur, 'CHK/V783/B', 'CHECKV783', 'Bursar', NULL);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), s0, '9850-10-01', '9851-08-31') ON CONFLICT (name) DO NOTHING;
+        SELECT d.code, d.faculty_code INTO v_dept, v_fac FROM ref.department d ORDER BY d.code LIMIT 1;
+        INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, pg_award, pg_research)
+        VALUES (prog, 'M.Sc. Check Fee Clearing', v_dept, v_fac, 'POST GRADUATE', 0, 'MSC', false);
+
+        rows1 := jsonb_build_array(
+            jsonb_build_object('legacyApplicationNo', 'OLDPG/9850/0001', 'lastName', 'CHECKFEECLEAR', 'firstName', 'Full', 'email', 'v783.full@example.test', 'session', s0,
+                               'programmeCode', prog, 'applicationFeeStatus', 'Paid', 'applicationFeeReference', 'OLD-APP-7831', 'applicationFeeAmount', '₦20,000',
+                               'applicationFeeDate', '05/01/2026'),
+            jsonb_build_object('legacyApplicationNo', 'OLDPG/9850/0002', 'lastName', 'CHECKFEECLEAR', 'firstName', 'Part', 'email', 'v783.part@example.test', 'session', s0,
+                               'programmeCode', prog, 'applicationFeeStatus', 'Paid', 'applicationFeeReference', 'OLD-APP-7832', 'applicationFeeAmount', '15000'),
+            jsonb_build_object('legacyApplicationNo', 'OLDPG/9850/0003', 'lastName', 'CHECKFEECLEAR', 'firstName', 'Verified', 'email', 'v783.verified@example.test', 'session', s0,
+                               'programmeCode', prog, 'applicationFeeStatus', 'Verified', 'applicationFeeReference', 'OLD-APP-7833', 'applicationFeeAmount', '15000'),
+            jsonb_build_object('legacyApplicationNo', 'OLDPG/9850/0004', 'lastName', 'CHECKFEECLEAR', 'firstName', 'Officer', 'email', 'v783.officer@example.test', 'session', s0,
+                               'programmeCode', prog, 'applicationFeeStatus', 'Paid', 'applicationFeeReference', 'OLD-APP-7834', 'applicationFeeAmount', '10000'));
+        b1 := (admissions.pg_migration_open('APPLICANTS', 'C:\fakepath\v783 applicants.xlsx', repeat('b', 64), 4, true) ->> 'id')::uuid;
+        PERFORM admissions.pg_migration_stage(b1, 1, rows1);
+        PERFORM admissions.pg_migration_check(b1, 1, 4);
+        v_full := (SELECT r.verdict || ':' || (r.problems::text LIKE '%FEE_UNDER_REVIEW%') FROM admissions.pg_migration_row r WHERE r.batch_id = b1 AND r.row_no = 1);
+        v_part := (SELECT r.verdict || ':' || (r.problems::text LIKE '%FEE_UNDER_REVIEW%') FROM admissions.pg_migration_row r WHERE r.batch_id = b1 AND r.row_no = 2);
+        w_part := (SELECT e->>'message' FROM admissions.pg_migration_row r, jsonb_array_elements(r.problems) e WHERE r.batch_id = b1 AND r.row_no = 2 AND e->>'code' = 'FEE_UNDER_REVIEW');
+        PERFORM admissions.pg_migration_import(b1, 1, 4);
+        PERFORM admissions.pg_migration_finish(b1);
+        SELECT a.* INTO a_full FROM admissions.pg_application a JOIN admissions.pg_legacy_application l ON l.application_id = a.id WHERE l.legacy_application_no = 'OLDPG/9850/0001';
+        SELECT a.* INTO a_part FROM admissions.pg_application a JOIN admissions.pg_legacy_application l ON l.application_id = a.id WHERE l.legacy_application_no = 'OLDPG/9850/0002';
+        SELECT a.* INTO a_ver FROM admissions.pg_application a JOIN admissions.pg_legacy_application l ON l.application_id = a.id WHERE l.legacy_application_no = 'OLDPG/9850/0003';
+        SELECT a.* INTO a_off FROM admissions.pg_application a JOIN admissions.pg_legacy_application l ON l.application_id = a.id WHERE l.legacy_application_no = 'OLDPG/9850/0004';
+        SELECT * INTO f_full FROM admissions.pg_legacy_fee WHERE legacy_reference = 'OLD-APP-7831';
+        SELECT * INTO f_part FROM admissions.pg_legacy_fee WHERE legacy_reference = 'OLD-APP-7832';
+        SELECT * INTO f_ver FROM admissions.pg_legacy_fee WHERE legacy_reference = 'OLD-APP-7833';
+        SELECT * INTO f_off FROM admissions.pg_legacy_fee WHERE legacy_reference = 'OLD-APP-7834';
+        posted_full := (SELECT count(*) FROM admissions.pg_fee_reference fr WHERE fr.reference = 'OLD-APP-7831' AND fr.confirmed_at IS NOT NULL AND fr.channel = 'Old portal'
+                           AND fr.application_id = a_full.id AND fr.kind = 'APPLICATION' AND fr.amount = 20000);
+        events_full := (SELECT count(*) FROM admissions.pg_application_event e WHERE e.application_id = a_full.id AND e.kind = 'OLD_PORTAL_FEE_CLEARED');
+        notice_import := (SELECT count(*) FROM platform.notice n WHERE n.event_key LIKE 'pg-fee-verified:%' AND n.about_id IN (a_full.id, a_part.id, a_ver.id));
+        told_full := (SELECT n.body FROM platform.notice n WHERE n.event_key = 'pg-migrated:' || a_full.id AND n.channel = 'EMAIL');
+        told_part := (SELECT n.body FROM platform.notice n WHERE n.event_key = 'pg-migrated:' || a_part.id AND n.channel = 'EMAIL');
+        BEGIN
+            PERFORM admissions.pg_new_fee_reference(a_part.id, 'APPLICATION');
+            refused := 'issued';
+        EXCEPTION WHEN check_violation THEN refused := split_part(SQLERRM, ':', 1);
+        END;
+        hold_list := (SELECT (r->>'hold_reason') FROM jsonb_array_elements(admissions.pg_legacy_list('fees', 50, 0)->'rows') r WHERE r->>'legacy_reference' = 'OLD-APP-7832');
+        -- the same file again: one fee, one event
+        b2 := (admissions.pg_migration_open('APPLICANTS', 'C:\fakepath\v783 applicants.xlsx', repeat('b', 64), 4, true) ->> 'id')::uuid;
+        PERFORM admissions.pg_migration_stage(b2, 1, rows1);
+        PERFORM admissions.pg_migration_check(b2, 1, 4);
+        PERFORM admissions.pg_migration_import(b2, 1, 4);
+        events_full_again := (SELECT count(*) FROM admissions.pg_application_event e WHERE e.application_id = a_full.id AND e.kind = 'OLD_PORTAL_FEE_CLEARED');
+        fees_full_again := (SELECT count(*) FROM admissions.pg_legacy_fee x WHERE upper(x.legacy_reference) = 'OLD-APP-7831');
+
+        -- the reasons a fee is held, each refused by the clearing and left as it was
+        INSERT INTO admissions.pg_fee_reference (application_id, kind, reference, amount, expires_at, confirmed_at, channel)
+        VALUES (a_full.id, 'APPLICATION', 'OLD-APP-7835', 20000, now(), now(), 'Old portal');
+        INSERT INTO admissions.pg_legacy_fee (batch_id, application_id, kind, legacy_reference, amount, session, purpose, stated_status, state) VALUES
+            (b1, a_part.id, 'APPLICATION', 'OLD-APP-7835', 20000, s0, 'Application fee paid on the old portal', 'Paid', 'REQUIRES_REVIEW') RETURNING * INTO f_clash;
+        INSERT INTO admissions.pg_legacy_fee (batch_id, application_id, kind, legacy_reference, amount, session, purpose, stated_status, state) VALUES
+            (b1, a_ver.id, 'APPLICATION', 'OLD-APP-7836', 20000, s0, 'Application fee paid on the old portal', 'Paid', 'REQUIRES_REVIEW') RETURNING * INTO f_paid;
+        INSERT INTO admissions.pg_legacy_fee (batch_id, application_id, kind, legacy_reference, amount, session, purpose, stated_status, state) VALUES
+            (b1, a_part.id, 'ACCEPTANCE', 'OLD-ACC-7831', 50000, s0, 'Acceptance fee paid on the old portal', 'Paid', 'REQUIRES_REVIEW') RETURNING * INTO f_acc;
+        r_clash := admissions.pg_legacy_fee_clear_reason(f_clash.id);
+        r_paid := admissions.pg_legacy_fee_clear_reason(f_paid.id);
+        r_acc := admissions.pg_legacy_fee_clear_reason(f_acc.id);
+        k_clash := admissions.pg_legacy_fee_autoclear(f_clash.id, true);
+        k_paid := admissions.pg_legacy_fee_autoclear(f_paid.id, true);
+        k_acc := admissions.pg_legacy_fee_autoclear(f_acc.id, true);
+        still_held := (SELECT count(*) FROM admissions.pg_legacy_fee x WHERE x.id IN (f_clash.id, f_paid.id, f_acc.id) AND x.state = 'REQUIRES_REVIEW');
+        UPDATE admissions.pg_legacy_fee SET state = 'REJECTED', decision_note = 'V783 check: removed' WHERE id IN (f_clash.id, f_paid.id, f_acc.id);
+
+        -- the held fee whose amount is put right: cleared with its email once, not twice
+        r_before := admissions.pg_legacy_fee_clear_reason(f_part.id);
+        UPDATE admissions.pg_legacy_fee SET amount = 20000 WHERE id = f_part.id;
+        r_after := coalesce(admissions.pg_legacy_fee_clear_reason(f_part.id), 'none');
+        corrected := admissions.pg_legacy_fee_autoclear(f_part.id, true);
+        again := admissions.pg_legacy_fee_autoclear(f_part.id, true);
+        mails_once := (SELECT count(*) FROM platform.notice n WHERE n.event_key = 'pg-fee-verified:' || f_part.id AND n.channel = 'EMAIL' AND n.body LIKE '%OLD-APP-7832%You do not pay it again%');
+
+        -- the clearing is silent and puts the import's flag back as it found it: no notice but its own, whether the flag was set or not
+        a_fl := pg_temp.v783_app(s0, prog, 'Checkfeeclear', 'Flag Check', DATE '1980-01-01', '08030000781', 'v783.flag@example.test');
+        INSERT INTO admissions.pg_legacy_fee (batch_id, application_id, kind, legacy_reference, amount, session, purpose, stated_status, state) VALUES
+            (b1, a_fl, 'APPLICATION', 'OLD-APP-7845', 20000, s0, 'Application fee paid on the old portal', 'Paid', 'REQUIRES_REVIEW') RETURNING * INTO f_fl;
+        fl_before := (SELECT count(*) FROM platform.notice n WHERE n.about_id = a_fl);
+        PERFORM set_config('moaum.pg_migration', 'import in progress', true);
+        PERFORM admissions.pg_legacy_fee_autoclear(f_fl.id, false);
+        flag_after := current_setting('moaum.pg_migration', true);
+        PERFORM set_config('moaum.pg_migration', '', true);
+        fl_state := (SELECT x.state FROM admissions.pg_legacy_fee x WHERE x.id = f_fl.id);
+        fl_notices := (SELECT count(*) FROM platform.notice n WHERE n.about_id = a_fl) - fl_before;
+        other_notices := (SELECT count(*) FROM platform.notice n WHERE n.about_id IN (a_full.id, a_part.id)
+                             AND n.event_key NOT LIKE 'pg-migrated:%' AND n.event_key NOT LIKE 'pg-fee-verified:%');
+        flag_after_blank := coalesce(current_setting('moaum.pg_migration', true), '');
+
+        -- the reasons that go beyond V675's clash: a twin of an applicant who has paid, a reference an officer rejected, a reference on
+        -- another ledger, and a fee already decided is never cleared again
+        UPDATE admissions.pg_applicant SET date_of_birth = DATE '1990-05-06', phone = '08031234567' WHERE id = a_full.applicant_id;
+        a_twin := pg_temp.v783_app(s0, prog, 'Checkfeeclear', 'Full', DATE '1990-05-06', '08031234567', 'v783.twin@example.test');
+        INSERT INTO admissions.pg_legacy_fee (batch_id, application_id, kind, legacy_reference, amount, session, purpose, stated_status, state) VALUES
+            (b1, a_twin, 'APPLICATION', 'OLD-APP-7840', 20000, s0, 'Application fee paid on the old portal', 'Paid', 'REQUIRES_REVIEW') RETURNING * INTO f_twin;
+        r_twin := admissions.pg_legacy_fee_clear_reason(f_twin.id);
+        k_twin := admissions.pg_legacy_fee_autoclear(f_twin.id, true);
+        a_rj := pg_temp.v783_app(s0, prog, 'Checkfeeclear', 'Rejected Ref', DATE '1981-02-03', '08030000782', 'v783.rejected@example.test');
+        INSERT INTO admissions.pg_legacy_fee (batch_id, application_id, kind, legacy_reference, amount, session, purpose, stated_status, state, decided_by, decided_office, decided_at, decision_note) VALUES
+            (b1, a_ver.id, 'APPLICATION', 'OLD-APP-7839', 20000, s0, 'Application fee paid on the old portal', 'Paid', 'REJECTED', bur, 'bursar', now(), 'V783 check: not on the bank statement') RETURNING * INTO f_rej;
+        INSERT INTO admissions.pg_legacy_fee (batch_id, application_id, kind, legacy_reference, amount, session, purpose, stated_status, state) VALUES
+            (b1, a_rj, 'APPLICATION', 'OLD-APP-7839', 20000, s0, 'Application fee paid on the old portal', 'Paid', 'REQUIRES_REVIEW') RETURNING * INTO f_rj;
+        r_rej := admissions.pg_legacy_fee_clear_reason(f_rj.id);
+        k_rej := admissions.pg_legacy_fee_autoclear(f_rj.id, true);
+        k_rej_again := admissions.pg_legacy_fee_autoclear(f_rej.id, true);
+        rej_state := (SELECT x.state FROM admissions.pg_legacy_fee x WHERE x.id = f_rej.id);
+        -- a rejected fee on an application with nothing else against it: only its own state keeps it from being cleared
+        a_rv := pg_temp.v783_app(s0, prog, 'Checkfeeclear', 'Rejected Own', DATE '1984-05-06', '08030000785', 'v783.rejown@example.test');
+        INSERT INTO admissions.pg_legacy_fee (batch_id, application_id, kind, legacy_reference, amount, session, purpose, stated_status, state, decided_by, decided_office, decided_at, decision_note) VALUES
+            (b1, a_rv, 'APPLICATION', 'OLD-APP-7848', 20000, s0, 'Application fee paid on the old portal', 'Paid', 'REJECTED', bur, 'bursar', now(), 'V783 check: not on the bank statement') RETURNING * INTO f_dec;
+        k_dec := admissions.pg_legacy_fee_autoclear(f_dec.id, true);
+        dec_state := (SELECT x.state FROM admissions.pg_legacy_fee x WHERE x.id = f_dec.id);
+        PERFORM set_config('session_replication_role', 'replica', true);
+        INSERT INTO admissions.fee_reference (id, application_id, kind, reference, amount, expires_at) VALUES (gen_random_uuid(), gen_random_uuid(), 'APPLICATION', 'OLD-APP-7838', 20000, now());
+        INSERT INTO finance.payment_reference (student_id, session, reference, purpose, amount, expires_at) VALUES (gen_random_uuid(), s0, 'OLD-APP-7843', 'School fees', 20000, now());
+        PERFORM set_config('session_replication_role', 'origin', true);
+        e_fee := admissions.pg_application_fee_elsewhere('old-app-7838 ');
+        e_pay := admissions.pg_application_fee_elsewhere('OLD-APP-7843');
+        e_none := coalesce(admissions.pg_application_fee_elsewhere('OLD-APP-7844'), 'none');
+        h_els := admissions.pg_application_fee_hold(a_rj, s0, 'OLD-APP-7838', 20000);
+
+        -- the held fees cleared in one pass: the clean one with one email, the short one held; a second pass clears nothing
+        a_cl := pg_temp.v783_app(s0, prog, 'Checkfeeclear', 'Clean Pass', DATE '1982-03-04', '08030000783', 'v783.clean@example.test');
+        a_sh := pg_temp.v783_app(s0, prog, 'Checkfeeclear', 'Short Pass', DATE '1983-04-05', '08030000784', 'v783.short@example.test');
+        INSERT INTO admissions.pg_legacy_fee (batch_id, application_id, kind, legacy_reference, amount, session, purpose, stated_status, state) VALUES
+            (b1, a_cl, 'APPLICATION', 'OLD-APP-7841', 20000, s0, 'Application fee paid on the old portal', 'Paid', 'REQUIRES_REVIEW') RETURNING * INTO f_cl;
+        INSERT INTO admissions.pg_legacy_fee (batch_id, application_id, kind, legacy_reference, amount, session, purpose, stated_status, state) VALUES
+            (b1, a_sh, 'APPLICATION', 'OLD-APP-7842', 5000, s0, 'Application fee paid on the old portal', 'Paid', 'REQUIRES_REVIEW') RETURNING * INTO f_sh;
+        cl_before := (SELECT count(*) FROM platform.notice n WHERE n.about_id = a_cl AND n.channel = 'EMAIL');
+        SELECT * INTO pass1 FROM admissions.pg_legacy_fees_autoclear_held(true);
+        SELECT * INTO pass2 FROM admissions.pg_legacy_fees_autoclear_held(true);
+        p1_cleared := pass1.cleared; p1_held := pass1.held; p2_cleared := pass2.cleared;
+        cl_state := (SELECT x.state FROM admissions.pg_legacy_fee x WHERE x.id = f_cl.id);
+        sh_state := (SELECT x.state FROM admissions.pg_legacy_fee x WHERE x.id = f_sh.id);
+        cl_mails := (SELECT count(*) FROM platform.notice n WHERE n.event_key = 'pg-fee-verified:' || f_cl.id);
+        cl_emails := (SELECT count(*) FROM platform.notice n WHERE n.about_id = a_cl AND n.channel = 'EMAIL') - cl_before;
+
+        INSERT INTO admissions.pg_legacy_fee (batch_id, application_id, kind, legacy_reference, amount, session, purpose, stated_status, state, decided_by, decided_office, decided_at, decision_note) VALUES
+            (b1, a_ver.id, 'APPLICATION', 'OLD-APP-7847', 20000, s0, 'Application fee paid on the old portal', 'Paid', 'REJECTED', bur, 'bursar', now(), 'V783 check: not on the gateway record');
+        -- a second file whose check and import agree: a Paid fee on a reference an officer rejected is warned of and held, its row note
+        -- says why; a clean one reads READY and its note says it cleared
+        rows3 := jsonb_build_array(
+            jsonb_build_object('legacyApplicationNo', 'OLDPG/9850/0031', 'lastName', 'CHECKFEECLEAR', 'firstName', 'Dry', 'email', 'v783.dry@example.test', 'session', s0,
+                               'programmeCode', prog, 'applicationFeeStatus', 'Paid', 'applicationFeeReference', 'OLD-APP-7847', 'applicationFeeAmount', '20000'),
+            jsonb_build_object('legacyApplicationNo', 'OLDPG/9850/0032', 'lastName', 'CHECKFEECLEAR', 'firstName', 'Dryer', 'email', 'v783.dryer@example.test', 'session', s0,
+                               'programmeCode', prog, 'applicationFeeStatus', 'Paid', 'applicationFeeReference', 'OLD-APP-7846', 'applicationFeeAmount', '20000'));
+        b3 := (admissions.pg_migration_open('APPLICANTS', 'C:\fakepath\v783 second.xlsx', repeat('c', 64), 2, true) ->> 'id')::uuid;
+        PERFORM admissions.pg_migration_stage(b3, 1, rows3);
+        PERFORM admissions.pg_migration_check(b3, 1, 2);
+        c_row1 := (SELECT r.verdict || ':' || (SELECT e->>'message' FROM jsonb_array_elements(r.problems) e WHERE e->>'code' = 'FEE_UNDER_REVIEW')
+                     FROM admissions.pg_migration_row r WHERE r.batch_id = b3 AND r.row_no = 1);
+        c_row2 := (SELECT r.verdict || ':' || (r.problems::text LIKE '%FEE_UNDER_REVIEW%') FROM admissions.pg_migration_row r WHERE r.batch_id = b3 AND r.row_no = 2);
+        PERFORM admissions.pg_migration_import(b3, 1, 2);
+        PERFORM admissions.pg_migration_finish(b3);
+        n_row1 := (SELECT r.result_note FROM admissions.pg_migration_row r WHERE r.batch_id = b3 AND r.row_no = 1);
+        n_row2 := (SELECT r.result_note FROM admissions.pg_migration_row r WHERE r.batch_id = b3 AND r.row_no = 2);
+        st_row1 := (SELECT f.state FROM admissions.pg_legacy_fee f WHERE f.batch_id = b3 AND f.legacy_reference = 'OLD-APP-7847');
+        st_row2 := (SELECT f.state FROM admissions.pg_legacy_fee f WHERE f.batch_id = b3 AND f.legacy_reference = 'OLD-APP-7846');
+        told_dry := (SELECT n.body FROM platform.notice n JOIN admissions.pg_legacy_application l ON l.application_id = n.about_id
+                      WHERE l.legacy_application_no = 'OLDPG/9850/0031' AND n.event_key LIKE 'pg-migrated:%' AND n.channel = 'EMAIL');
+
+        -- a third file: a new applicant under another surname whose date of birth and phone are those of an applicant who has paid, and a
+        -- fee whose status the old portal gave as not verified — each warned of by the check and held by the import, for the reason the check gave
+        rows4 := jsonb_build_array(
+            jsonb_build_object('legacyApplicationNo', 'OLDPG/9850/0041', 'lastName', 'CHECKFEEOTHER', 'firstName', 'Twinned', 'email', 'v783.twinned@example.test', 'session', s0,
+                               'programmeCode', prog, 'dateOfBirth', '06/05/1990', 'phone', '08031234567', 'applicationFeeStatus', 'Paid',
+                               'applicationFeeReference', 'OLD-APP-7849', 'applicationFeeAmount', '20000'),
+            jsonb_build_object('legacyApplicationNo', 'OLDPG/9850/0042', 'lastName', 'CHECKFEECLEAR', 'firstName', 'Unverified', 'email', 'v783.unverified@example.test', 'session', s0,
+                               'programmeCode', prog, 'applicationFeeStatus', 'Not Verified', 'applicationFeeReference', 'OLD-APP-7850', 'applicationFeeAmount', '20000'));
+        b4 := (admissions.pg_migration_open('APPLICANTS', 'C:\fakepath\v783 third.xlsx', repeat('d', 64), 2, true) ->> 'id')::uuid;
+        PERFORM admissions.pg_migration_stage(b4, 1, rows4);
+        PERFORM admissions.pg_migration_check(b4, 1, 2);
+        c_row3 := (SELECT r.verdict || ':' || coalesce((SELECT e->>'message' FROM jsonb_array_elements(r.problems) e WHERE e->>'code' = 'FEE_UNDER_REVIEW'), 'no warning')
+                     FROM admissions.pg_migration_row r WHERE r.batch_id = b4 AND r.row_no = 1);
+        c_row4 := (SELECT r.verdict || ':' || coalesce((SELECT e->>'message' FROM jsonb_array_elements(r.problems) e WHERE e->>'code' = 'FEE_UNDER_REVIEW'), 'no warning')
+                     FROM admissions.pg_migration_row r WHERE r.batch_id = b4 AND r.row_no = 2);
+        PERFORM admissions.pg_migration_import(b4, 1, 2);
+        PERFORM admissions.pg_migration_finish(b4);
+        n_row3 := (SELECT r.result_note FROM admissions.pg_migration_row r WHERE r.batch_id = b4 AND r.row_no = 1);
+        n_row4 := (SELECT r.result_note FROM admissions.pg_migration_row r WHERE r.batch_id = b4 AND r.row_no = 2);
+        st_row3 := (SELECT f.state FROM admissions.pg_legacy_fee f WHERE f.batch_id = b4 AND f.legacy_reference = 'OLD-APP-7849');
+        st_row4 := (SELECT f.state FROM admissions.pg_legacy_fee f WHERE f.batch_id = b4 AND f.legacy_reference = 'OLD-APP-7850');
+
+        -- an officer still verifies a held fee: the Bursar, not the uploader
+        PERFORM set_config('moaum.actor_id', bur::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        PERFORM admissions.pg_legacy_fee_decide(f_off.id, true, 'V783 check: seen on the statement');
+        SELECT x.state, x.decided_by INTO off_state, off_by FROM admissions.pg_legacy_fee x WHERE x.id = f_off.id;
+        off_mail := (SELECT count(*) FROM platform.notice n WHERE n.event_key = 'pg-fee-verified:' || f_off.id);
+        off_event := (SELECT count(*) FROM admissions.pg_application_event e WHERE e.application_id = a_off.id AND e.kind = 'OLD_PORTAL_FEE_VERIFIED');
+        RAISE EXCEPTION 'the V783 check undoes its writes';
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM <> 'the V783 check undoes its writes' THEN v_err := SQLERRM; END IF;
+    END;
+    PERFORM pg_temp.assert('V783: a Paid application fee that reaches the session''s application fee clears at the import — posted as a confirmed reference through the channel Old portal, stamped decided by the system with the University''s word of 24 November 2026, an event on the application, no email of its own, the applicant''s once-only migration notice saying the fee is recorded — and the same file again leaves one fee and one event; the check does not warn of it',
+        coalesce(v_err IS NULL
+        AND v_full = 'READY:false' AND f_full.state = 'POSTED' AND f_full.fee_reference_id IS NOT NULL AND f_full.decided_office = 'system' AND f_full.decided_by IS NULL
+        AND f_full.decision_note LIKE '%24 November 2026%' AND a_full.fee_confirmed_at IS NOT NULL AND posted_full = 1 AND events_full = 1
+        AND events_full_again = 1 AND fees_full_again = 1 AND notice_import = 0 AND told_full IS NOT NULL AND told_full NOT LIKE '%being verified%'
+        AND told_full LIKE '%the application fee you paid on the old portal is recorded%', false),
+        format('err=%s | check %s | state=%s ref=%s office=%s by=%s note=%s paid=%s posted=%s events=%s again=%s/%s notices=%s told=%s', v_err, v_full, f_full.state,
+               f_full.fee_reference_id IS NOT NULL, f_full.decided_office, f_full.decided_by, left(f_full.decision_note, 60), a_full.fee_confirmed_at IS NOT NULL, posted_full,
+               events_full, events_full_again, fees_full_again, notice_import, left(told_full, 400)));
+    PERFORM pg_temp.assert('V783: a Paid application fee below the application fee stays held — the check warns and names the amount against the fee, the desk lists the reason, the applicant is told it is being verified and is not asked to pay it again meanwhile',
+        coalesce(v_err IS NULL
+        AND v_part = 'WARNING:true' AND w_part LIKE '%below the application fee of ₦20,000%' AND w_part LIKE '%₦15,000%'
+        AND f_part.state = 'REQUIRES_REVIEW' AND f_part.fee_reference_id IS NULL AND a_part.fee_confirmed_at IS NULL AND refused = 'PG_FEE_UNDER_REVIEW'
+        AND hold_list LIKE '%below the application fee of ₦20,000%' AND told_part LIKE '%being verified by the Bursary%', false),
+        format('err=%s | check %s | warning=%s | state=%s paid=%s refused=%s | list=%s | told=%s', v_err, v_part, w_part, f_part.state, a_part.fee_confirmed_at IS NOT NULL, refused,
+               hold_list, left(told_part, 120)));
+    PERFORM pg_temp.assert('V783: a Verified application fee is posted at the import as before, whatever its amount, and not stamped by the system',
+        coalesce(v_err IS NULL AND f_ver.state = 'POSTED' AND f_ver.decided_office IS NULL AND f_ver.decided_by IS NULL AND a_ver.fee_confirmed_at IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM admissions.pg_application_event e WHERE e.application_id = a_ver.id AND e.kind = 'OLD_PORTAL_FEE_CLEARED'), false),
+        format('err=%s | state=%s office=%s paid=%s', v_err, f_ver.state, f_ver.decided_office, a_ver.fee_confirmed_at IS NOT NULL));
+    PERFORM pg_temp.assert('V783: a fee is held, with its reason, when its reference is another application''s fee reference, when an application fee is already confirmed here for the application, or when it is an acceptance fee — the clearing refuses each and leaves it held and unposted',
+        coalesce(v_err IS NULL
+        AND r_clash LIKE 'the reference is the postgraduate fee reference of application %' AND r_paid LIKE 'an application fee is already confirmed on this portal%'
+        AND r_acc LIKE 'an acceptance fee is verified by the Bursary or the PG Secretary%'
+        AND NOT k_clash AND NOT k_paid AND NOT k_acc AND still_held = 3, false),
+        format('err=%s | clash=%s | paid=%s | acceptance=%s | cleared %s %s %s | held %s', v_err, r_clash, r_paid, r_acc, k_clash, k_paid, k_acc, still_held));
+    PERFORM pg_temp.assert('V783: a held application fee whose amount is put right clears — once: the applicant is emailed once (the same event key as an officer''s verification, so never twice) and a second call clears nothing',
+        coalesce(v_err IS NULL AND r_before LIKE '%below the application fee of ₦20,000%' AND r_after = 'none' AND corrected AND NOT again AND mails_once = 1, false),
+        format('err=%s | before=%s after=%s | cleared %s again %s | mails %s', v_err, r_before, r_after, corrected, again, mails_once));
+    PERFORM pg_temp.assert('V783: an officer still verifies a held application fee — the Bursar, another officer than the uploader — and it posts with the officer''s name, the officer''s event and the email of an officer''s verification',
+        coalesce(v_err IS NULL AND off_state = 'POSTED' AND off_by = bur AND off_mail = 1 AND off_event = 1, false),
+        format('err=%s | state=%s by=%s mail=%s event=%s', v_err, off_state, off_by, off_mail, off_event));
+    PERFORM pg_temp.assert('V783: the clearing is silent and leaves the import''s flag as it found it — a fee cleared without notice queues nothing to the applicant, the flag set by an import in progress is still set after it, a flag left blank stays blank, and the applicants cleared earlier were sent only their own notices',
+        coalesce(v_err IS NULL AND fl_state = 'POSTED' AND fl_notices = 0 AND flag_after = 'import in progress' AND flag_after_blank = '' AND other_notices = 0, false),
+        format('err=%s | state=%s notices=%s | flag after "%s" blank "%s" | other notices %s', v_err, fl_state, fl_notices, flag_after, flag_after_blank, other_notices));
+    PERFORM pg_temp.assert('V783: a fee is held when the applicant has paid on another application of theirs (two of name, date of birth and phone, found through the date of birth and phone), when its reference was rejected by an officer on another application, or when it is on another ledger (an applicant''s fee reference, a student''s payment); a reference on none is free, and a fee already decided is never cleared again',
+        coalesce(v_err IS NULL
+        AND r_twin LIKE 'the applicant has paid the application fee on another application of theirs in the session (PG/50/%' AND NOT k_twin
+        AND r_rej LIKE 'the reference was rejected on PG/50/%V783 check: not on the bank statement%' AND NOT k_rej AND NOT k_rej_again AND rej_state = 'REJECTED' AND NOT k_dec AND dec_state = 'REJECTED'
+        AND e_fee LIKE 'the fee reference of an undergraduate or preliminary application%' AND e_pay LIKE 'a payment reference of%' AND e_none = 'none'
+        AND h_els LIKE 'the reference is the fee reference of an undergraduate or preliminary application%', false),
+        format('err=%s | twin=%s %s | rejected=%s %s %s %s | fee=%s | pay=%s | none=%s | hold=%s', v_err, r_twin, k_twin, r_rej, k_rej, k_rej_again, rej_state, e_fee, e_pay, e_none, h_els));
+    PERFORM pg_temp.assert('V783: the held application fees are cleared in one pass — the clean one cleared with one email to the applicant, the short one kept held for an officer, and a second pass clears nothing',
+        coalesce(v_err IS NULL AND p1_cleared = 1 AND p1_held >= 4 AND p2_cleared = 0 AND cl_state = 'POSTED' AND sh_state = 'REQUIRES_REVIEW' AND cl_mails = 1 AND cl_emails = 1, false),
+        format('err=%s | pass1 %s cleared %s held | pass2 %s | clean=%s short=%s | mails %s emails %s', v_err, p1_cleared, p1_held, p2_cleared, cl_state, sh_state, cl_mails, cl_emails));
+    PERFORM pg_temp.assert('V783: the check and the import agree about a second file — a Paid fee on a reference an officer rejected is warned of with the reason and held, its row note saying why and the applicant told it is being verified; a clean one reads READY, clears, and its row note says so',
+        coalesce(v_err IS NULL
+        AND c_row1 LIKE 'WARNING:%the reference was rejected on PG/50/%' AND st_row1 = 'REQUIRES_REVIEW' AND n_row1 LIKE '%application fee held: the reference was rejected on PG/50/%'
+        AND told_dry LIKE '%being verified by the Bursary%'
+        AND c_row2 = 'READY:false' AND st_row2 = 'POSTED' AND n_row2 LIKE '%application fee cleared on its own%', false),
+        format('err=%s | check1=%s | state1=%s note1=%s | told=%s | check2=%s state2=%s note2=%s', v_err, left(c_row1, 160), st_row1, n_row1, left(told_dry, 60), c_row2, st_row2, n_row2));
+    PERFORM pg_temp.assert('V783: the check and the import both hold a fee whose applicant is a new one who has paid under another surname (two of date of birth and phone, read from the row itself) and a fee whose status the old portal gave as not verified — the check warns with the reason, the import holds it and its row note gives the same reason',
+        coalesce(v_err IS NULL
+        AND c_row3 LIKE 'WARNING:%the applicant has paid the application fee on another application of theirs in the session (PG/50/%' AND st_row3 = 'REQUIRES_REVIEW'
+        AND n_row3 LIKE '%application fee held: the applicant has paid the application fee on another application of theirs in the session (PG/50/%'
+        AND c_row4 LIKE 'WARNING:%the old portal''s status, "Not Verified", does not say the fee was paid%' AND st_row4 = 'REQUIRES_REVIEW'
+        AND n_row4 LIKE '%application fee held: the old portal''s status, "Not Verified", does not say the fee was paid%', false),
+        format('err=%s | check3=%s | state3=%s note3=%s | check4=%s | state4=%s note4=%s', v_err, left(c_row3, 200), st_row3, n_row3, left(c_row4, 200), st_row4, n_row4));
+END $$;
+
+-- the eight functions V783 adds run set-based reads: each carries jit = off, as V782 does for the overpaid reading (CI's PostgreSQL 17 compiles a
+-- statement the planner puts above jit_above_cost, once a call, on a never-analysed database)
+DO $$
+DECLARE v_names text[] := ARRAY['pg_application_fee_short', 'pg_application_fee_elsewhere', 'pg_application_paid_by_person_of', 'pg_application_paid_by_person',
+        'pg_application_fee_hold', 'pg_legacy_fee_clear_reason', 'pg_legacy_fee_autoclear', 'pg_legacy_fees_autoclear_held'];
+        n_fn int; n_off int; n_names int;
+BEGIN
+    SELECT count(*), count(*) FILTER (WHERE 'jit=off' = ANY (p.proconfig)), count(DISTINCT p.proname) INTO n_fn, n_off, n_names
+      FROM pg_proc p WHERE p.pronamespace = 'admissions'::regnamespace AND p.proname = ANY (v_names);
+    PERFORM pg_temp.assert('V783: the eight functions V783 adds run with jit = off — each is there once and carries it',
+        coalesce(n_names = cardinality(v_names) AND n_fn = n_names AND n_off = n_fn, false),
+        format('names %s of %s | functions %s | jit off %s', n_names, cardinality(v_names), n_fn, n_off));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

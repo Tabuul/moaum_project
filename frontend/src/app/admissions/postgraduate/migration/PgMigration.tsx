@@ -476,10 +476,13 @@ function FeesPanel({ office }: { office: string | null }) {
   const kindWords: Record<string, string> = { APPLICATION: "Application fee", ACCEPTANCE: "Acceptance fee", SCHOOL_FEES: "School fees" };
   return (
     <>
-      <Note kind="info" title="A fee paid on the old portal is counted only once it is verified">
-        An application or acceptance fee the old portal verified was posted on import. One it did not is held here: the applicant is not asked to pay it
-        again meanwhile, and the Bursary or the PG Secretary — not the officer who uploaded it — verifies it against the bank or the gateway, or rejects it.
-        School fees are never posted here: the Bursary loads them through its old-portal payments upload, and they read as on record once it has.
+      <Note kind="info" title="An application fee marked Paid on the old portal clears on its own; the rest wait for an officer">
+        A Paid application fee is posted when it is imported, provided the old portal&apos;s own status says it was paid, its amount reaches the session&apos;s application fee, its reference is on no other
+        ledger of the portal and was not rejected by an officer, and the applicant has paid the fee nowhere else. One that fails a check is held below with its
+        reason: the applicant is not asked to pay it again meanwhile, and the Bursary or the PG Secretary — not the officer who uploaded it — verifies it
+        against the bank or the gateway, or rejects it. A fee the old portal marked Verified is posted as before, and an acceptance fee the old portal did not
+        verify is always held for an officer. School fees are never posted here: the Bursary loads them through its old-portal payments upload, and they read
+        as on record once it has.
       </Note>
       {err ? <ProblemNotice problem={err} /> : null}
       <Panel title="Old-portal fees to settle" right={<span className="sub2">{d ? `${d.total} in all` : ""}</span>}>
@@ -489,7 +492,7 @@ function FeesPanel({ office }: { office: string | null }) {
               <span key="k">{kindWords[s(r.kind)] ?? s(r.kind)}</span>, <Two key="a" a={s(r.name)} b={s(r.student_no)} />,
               <Two key="n" a={s(r.legacy_application_no)} b={s(r.application_no)} />, <span key="r" className="tnum">{s(r.legacy_reference)}</span>,
               <span key="m" className="tnum">{naira(r.amount)}</span>, <span key="p" className="tnum">{s(r.paid_on) || "—"}</span>, <span key="st" className="sub2">{s(r.stated_status) || "—"}</span>,
-              r.state === "FOR_BURSARY" ? <Pil key="s" kind={r.on_record ? "ok" : "warn"}>{r.on_record ? "On record" : "For the Bursary's upload"}</Pil> : <Pil key="s" kind="warn">Requires review</Pil>,
+              r.state === "FOR_BURSARY" ? <Pil key="s" kind={r.on_record ? "ok" : "warn"}>{r.on_record ? "On record" : "For the Bursary's upload"}</Pil> : <span key="s"><Pil kind="warn">Requires review</Pil>{r.hold_reason ? <div className="sub2">{s(r.hold_reason)}</div> : null}</span>,
               r.state === "REQUIRES_REVIEW" && mayDecide ? (
                 <span key="b" className="row row--inline row--tight">
                   <Btn kind="secondary" size="sm" disabled={!!r.uploaded_by_me} title={r.uploaded_by_me ? "You uploaded it: another officer verifies it" : undefined} onClick={() => setAct({ row: r, verify: true, note: "" })}>Verify</Btn>

@@ -180,6 +180,66 @@ class PgMigrationIT {
         assertThat((List<Map<String, Object>>) it.getList(school, M + "/batches").getBody()).extracting(r -> String.valueOf(r.get("id"))).contains(UUID.fromString(b1).toString(), b2);
     }
 
+    /**
+     * V783: the University's word of 24 November 2026 on the application fees uploaded from the old portal, "i need the system to auto
+     * clear them". An application fee the old portal marked Paid and that reaches the session's application fee is posted at the
+     * import — nothing of it waits on the Bursary's desk; one below the fee is held, and the desk says why; the Bursar still verifies
+     * the held one.
+     */
+    @Test
+    void aPaidApplicationFeeThatReachesTheFeeClearsOnItsOwnAndAShortOneIsHeldWithItsReason() {
+        int y = it.freePgYear(7600, 7790, 0, 0);
+        String session = y + "/" + (y + 1);
+        it.session(session, y);
+        String code = it.db(() -> jdbc.sql("""
+                SELECT 'C9' || lpad(g::text, 4, '0') FROM generate_series(8000, 9999) g
+                 WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C9' || lpad(g::text, 4, '0')) ORDER BY random() LIMIT 1
+                """).query(String.class).single());
+        it.db(() -> jdbc.sql("""
+                INSERT INTO ref.programme (code, name, dept_code, faculty_code, min_score, archived, category, pg_award)
+                SELECT :c, :n, d.code, d.faculty_code, 0, false, 'POST GRADUATE', 'MSC' FROM ref.department d ORDER BY d.code LIMIT 1
+                """).param("c", code).param("n", "M.Sc. Fee Clearing Check " + y).update());
+        String school = it.officer("pgschool", "institution", "University");
+        String bursar = it.officer("bursar", "institution", "University");
+        String clear = "ITPG-CLR-" + y, held = "ITPG-SHT-" + y;
+        List<Map<String, Object>> rows = List.of(
+                row("legacyApplicationNo", "ITPG/" + y + "/0101", "lastName", "Clearingit", "firstName", "Full", "email", "itpg" + y + "c@example.test",
+                        "session", session, "programmeCode", code, "applicationFeeStatus", "Paid", "applicationFeeReference", clear, "applicationFeeAmount", "20000"),
+                row("legacyApplicationNo", "ITPG/" + y + "/0102", "lastName", "Clearingit", "firstName", "Short", "email", "itpg" + y + "d@example.test",
+                        "session", session, "programmeCode", code, "applicationFeeStatus", "Paid", "applicationFeeReference", held, "applicationFeeAmount", "12000"));
+        Map<String, Object> b = ok(it.call(school, HttpMethod.POST, M + "/batches", Map.of("kind", "APPLICANTS", "fileName", "applicants.xlsx", "rows", 2, "tell", true)));
+        String id = String.valueOf(b.get("id"));
+        ok(it.call(school, HttpMethod.POST, M + "/batches/" + id + "/rows", Map.of("first", 1, "rows", rows)));
+        ok(it.call(school, HttpMethod.POST, M + "/batches/" + id + "/check", Map.of("from", 1, "to", 2)));
+        ok(it.call(school, HttpMethod.POST, M + "/batches/" + id + "/import", Map.of("from", 1, "to", 2)));
+        Map<String, Object> done = ok(it.call(school, HttpMethod.POST, M + "/batches/" + id + "/finish", Map.of()));
+        assertThat(((Number) done.get("created")).intValue()).isEqualTo(2);
+
+        // the fee that reaches the application fee is cleared: posted, stamped by the system, and the application reads its fee as paid
+        Map<String, Object> cleared = it.db(() -> jdbc.sql("""
+                SELECT f.state, f.decided_office, f.decided_by IS NULL AS by_system, a.fee_confirmed_at IS NOT NULL AS paid
+                  FROM admissions.pg_legacy_fee f JOIN admissions.pg_application a ON a.id = f.application_id WHERE f.legacy_reference = :r
+                """).param("r", clear).query().singleRow());
+        assertThat(cleared.get("state")).isEqualTo("POSTED");
+        assertThat(cleared.get("decided_office")).isEqualTo("system");
+        assertThat(cleared.get("by_system")).isEqualTo(true);
+        assertThat(cleared.get("paid")).isEqualTo(true);
+
+        // the desk lists only the held one, with its reason
+        Map<String, Object> fees = ok(it.get(bursar, M + "/list?view=fees&size=500"));
+        List<Map<String, Object>> waiting = (List<Map<String, Object>>) fees.get("rows");
+        assertThat(waiting).extracting(r -> r.get("legacy_reference")).contains(held).doesNotContain(clear);
+        Map<String, Object> shortRow = waiting.stream().filter(r -> held.equals(r.get("legacy_reference"))).findFirst().orElseThrow();
+        assertThat(String.valueOf(shortRow.get("hold_reason"))).contains("below the application fee");
+
+        // the Bursar still verifies it, and it is posted under the Bursar's name
+        ok(it.call(bursar, HttpMethod.POST, M + "/fees/" + shortRow.get("id") + "/decide", Map.of("verify", true, "note", "IT: seen on the statement")));
+        Map<String, Object> verified = it.db(() -> jdbc.sql("SELECT f.state, f.decided_office FROM admissions.pg_legacy_fee f WHERE f.legacy_reference = :r")
+                .param("r", held).query().singleRow());
+        assertThat(verified.get("state")).isEqualTo("POSTED");
+        assertThat(verified.get("decided_office")).isEqualTo("bursar");
+    }
+
     private ResponseEntity<Map> pgSignIn(String identifier, String password) {
         return it.anon(HttpMethod.POST, "/api/v1/pg/sign-in", Map.of("identifier", identifier, "password", password));
     }

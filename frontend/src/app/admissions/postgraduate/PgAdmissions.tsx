@@ -41,7 +41,7 @@ interface Legacy {
   migrated_by: string | null; admission_session: string | null; admission_reference: string | null; admitted_on: string | null; admission_type: string | null;
   admission_decision: string | null; decided_on_old_portal: boolean; accepted_on: string | null; screening_decision: string | null; screened_on: string | null;
   screening_reference: string | null; screening_remarks: string | null; migration_status: string;
-  fees: { id: string; kind: string; legacy_reference: string; amount: number; paid_on: string | null; state: string; stated_status: string | null; decision_note: string | null }[];
+  fees: { id: string; kind: string; legacy_reference: string; amount: number; paid_on: string | null; state: string; stated_status: string | null; decision_note: string | null; decided_office?: string | null }[];
   documents: { id: string; kind: string; label: string; legacy_ref: string; missing: boolean }[];
 }
 export interface PgView { session: string; counts: { total: number; submitted: number; recommended: number; faculty: number; offered: number; accepted: number; admitted: number; not_recommended?: number; returned?: number; not_offered?: number; unpaid?: number;
@@ -67,7 +67,7 @@ const EVENT_LABEL: Record<string, string> = {
   RETURNED: "Returned to the applicant for correction", RESUBMITTED: "Resubmitted after correction", RETURNED_TO_DEPARTMENT: "Returned to the department by the School",
   SCREENING_PENDING: "Physical screening opened", SCREENING_SCHEDULED: "Physical screening scheduled", SCREENING_IN_PROGRESS: "Physical screening in progress",
   SCREENING_CLEARED: "Cleared at physical screening", SCREENING_NOT_CLEARED: "Not cleared at physical screening", SCREENING_CORRECTION_REQUIRED: "Correction required at screening",
-  MIGRATED: "Migrated from the old portal", OLD_PORTAL_FEE_VERIFIED: "Old-portal fee verified", OLD_PORTAL_FEE_REJECTED: "Old-portal fee not verified",
+  MIGRATED: "Migrated from the old portal", OLD_PORTAL_FEE_VERIFIED: "Old-portal fee verified", OLD_PORTAL_FEE_CLEARED: "Old-portal fee cleared by the system", OLD_PORTAL_FEE_REJECTED: "Old-portal fee not verified",
   OLD_PORTAL_DOCUMENT_ATTACHED: "Old-portal document attached",
 };
 const MIGRATION_WORD: Record<string, string> = {
@@ -510,7 +510,7 @@ function DetailPanel({ id, office, onChanged }: { id: string; office: string | n
           </div>
           {d.legacy.fees.length ? (
             <ul className="plain sub2" style={{ marginTop: 8 }}>
-              {d.legacy.fees.map((f) => <li key={f.id}>{f.kind === "APPLICATION" ? "Application fee" : f.kind === "ACCEPTANCE" ? "Acceptance fee" : "School fees"} {f.legacy_reference} · ₦{Number(f.amount).toLocaleString("en-GB")}{f.paid_on ? ` · ${f.paid_on}` : ""} · {FEE_STATE[f.state] ?? f.state}{f.decision_note ? ` — ${f.decision_note}` : ""}</li>)}
+              {d.legacy.fees.map((f) => <li key={f.id}>{f.kind === "APPLICATION" ? "Application fee" : f.kind === "ACCEPTANCE" ? "Acceptance fee" : "School fees"} {f.legacy_reference} · ₦{Number(f.amount).toLocaleString("en-GB")}{f.paid_on ? ` · ${f.paid_on}` : ""} · {f.state === "POSTED" && f.decided_office === "system" ? "Posted (cleared by the system)" : (FEE_STATE[f.state] ?? f.state)}{f.decision_note ? ` — ${f.decision_note}` : ""}</li>)}
             </ul>
           ) : null}
           {d.legacy.documents.length ? (

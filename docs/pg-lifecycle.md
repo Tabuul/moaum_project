@@ -138,7 +138,7 @@ Read only; nothing here changes a fee, a payment or a reference.
 
 ## Old-portal applicants migrated (V675)
 
-Applicants of the old portal, and those it admitted, come into this pipeline at the point the old portal left them, never to apply again: the old application number kept beside this portal's own, the admitted as offers (accepted on a verified acceptance payment, on the register once the old portal's screening cleared them), fees paid there posted when verified and held for the Bursary when not, a student already on the register linked. The desk, the rules and the figures: `docs/pg-legacy-migration.md`.
+Applicants of the old portal, and those it admitted, come into this pipeline at the point the old portal left them, never to apply again: the old application number kept beside this portal's own, the admitted as offers (accepted on a verified acceptance payment, on the register once the old portal's screening cleared them), fees paid there posted when verified (an application fee only marked Paid clears on its own when the portal can check it, V783) and held for the Bursary when not, a student already on the register linked. The desk, the rules and the figures: `docs/pg-legacy-migration.md`.
 
 ## One application a person; documents tracked (V694)
 

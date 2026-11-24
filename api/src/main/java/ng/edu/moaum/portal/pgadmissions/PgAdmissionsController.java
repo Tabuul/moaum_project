@@ -632,7 +632,7 @@ class PgAdmissionsController {
         }
         Map<String, Object> out = new LinkedHashMap<>(l);
         out.put("fees", jdbc.sql("""
-                SELECT f.id, f.kind, f.legacy_reference, f.amount, f.paid_on, f.state, f.stated_status, f.decided_at, f.decision_note
+                SELECT f.id, f.kind, f.legacy_reference, f.amount, f.paid_on, f.state, f.stated_status, f.decided_at, f.decided_office, f.decision_note
                   FROM admissions.pg_legacy_fee f WHERE f.application_id = :id ORDER BY f.created_at
                 """).param("id", id).query().listOfRows());
         out.put("documents", jdbc.sql("""
