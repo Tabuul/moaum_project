@@ -968,6 +968,7 @@ export const MENUS: Record<string, Menu> = {
           { "id": "t/supportlevelhistory", "icon": "clock", "label": "Level Change History" },
           { "id": "t/unpaidreg", "icon": "alert", "label": "Unpaid Registrations" },
           { "id": "t/examcards", "icon": "alert", "label": "Examination Cards Withheld" },
+          { "id": "t/summer", "icon": "cal", "label": "Summer Semester" },
           { "id": "t/siwesreg", "icon": "cal", "label": "SIWES Registration" }
         ]
       },

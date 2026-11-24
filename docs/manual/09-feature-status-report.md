@@ -15,7 +15,7 @@ This is the control document of the package. It states, feature by feature, what
    - 2.1 [Counts by status](#21-counts-by-status)
    - 2.2 [Modules that are complete or usable end to end](#22-modules-that-are-complete-or-usable-end-to-end)
    - 2.3 [The top 25 gaps by user impact](#23-the-top-25-gaps-by-user-impact)
-3. [The complete feature status matrix](#3-the-complete-feature-status-matrix) — 49 module groups, 490 rows (§3.1–§3.49)
+3. [The complete feature status matrix](#3-the-complete-feature-status-matrix) — 49 module groups, 490 rows (§3.1–§3.49); §3.50, the Summer Semester, is added after those counts
 4. [Unused, unwired and stale surfaces](#4-unused-unwired-and-stale-surfaces)
    - 4.1 [Configured but unused tables, columns and states](#41-configured-but-unused-tables-columns-and-states)
    - 4.2 [Endpoints without a screen](#42-endpoints-without-a-screen)
@@ -925,6 +925,30 @@ Every row of every dossier's implementation-status table (A–G), de-duplicated 
 | Identity card verification | NOT IMPLEMENTED | — | See §3.48 |
 | Deferment letter verification | NOT IMPLEMENTED | — | See §3.21 |
 | PG offer letter verification | NOT IMPLEMENTED | — | See §3.14 |
+
+---
+
+### 3.50 Summer Semester (V735 to V756, V779)
+
+The rows of this section are not in the counts of §2.1, which cover §3.1 to §3.49. The status tags describe the build as `docs/summer-semester.md` specifies it. Counts and times quoted in that document were read on 24 November 2026 on the live-shaped copy migrated to main (`docs/performance-audit.md`), and those not read again say so.
+
+| Feature | Status | Evidence | Notes |
+|---|---|---|---|
+| The Summer period (state, registration window, examination and results dates, categories, programmes, levels, optional course ceiling) | IMPLEMENTED | `db/V735`, `V779`; `summer/SummerController.java`; `app/summer/SummerPeriodActs.tsx` | The ceiling (1 to 60, with a reason) is V779's |
+| Eligibility from academic status: every final-year and every spillover student, the authorised as the exception; no outstanding-course test | IMPLEMENTED | `registration.summer_eligibility_of`, `summer_eligibility`, `summer_level` | Set-based and reads no results. Category from the level on record or the engine; never from a matriculation-number pattern |
+| Identification of the eligible, tell by notice in tranches | IMPLEMENTED | `registration.summer_identify`, `summer_tell`; `SummerController` | The pool is rebuilt for each tranche; the desk sends 2,000 a call. On the live-shaped copy migrated to main: 18,588 eligible, identified in 96.3 s in tranches of 400 (31.7 s again in tranches of 2,000, writing nothing); their e-mails take two days at the mailbox's pace |
+| The student's pool and selection: programme structure to the final level, detected carry-overs and authorised courses, both semesters in one call, a missing result never read as a pass | IMPLEMENTED | `registration.summer_selectable`, `summer_select`; `app/student/summer/Picker.tsx` | At most 30 different courses a call; SIWES courses are not offered (owner question Q1) |
+| Itemised fees (programme fee once, a fee for each course), pay before verification, never charged twice | IMPLEMENTED | `registration.summer_summary`, `summer_reference`, `summer_materialize`; `Breakdown.tsx` | Bursary-configured; a paid programme fee is credited (one open credit) whenever the student's last course goes, by any route; it is put back from that open credit when the student selects again, the credit then closed for good (`SUMMER_CREDIT_REINSTATED` refuses its reopening), and if it is cancelled again it is credited again, never lost or counted twice |
+| Verification by the Academic Office: four states, a reason shown to the student, bulk decisions, Reopen, clarification and the student's reply | IMPLEMENTED | `registration.summer_verify`, `summer_selection_move`, `summer_clarify`; `SummerReviewController.java`; `SummerQueue.tsx` | A decision on a paid course is final (owner question Q3) |
+| Reconcile with results: a pass takes an unpaid course back and flags a paid one; a failure confirms; lost evidence sends a result-confirmed course back to pending | IMPLEMENTED | `registration.summer_reconcile`, `summer_reconcile_student`, `summer_evidence`, `summer_passed` | From the student's page after it renders and from the desk; a page read never writes. A selection whose authorisation was withdrawn is flagged `EVIDENCE_CHANGED`, a confirmed one sent back to pending, for the Office to decide |
+| Summer credit from a decision on a paid course; the Bursar settles | IMPLEMENTED | `registration.summer_credit_for_charge`, `summer_withdraw_entry`; `/finance/summer-fees` | Never an automatic refund. An applied credit does not by itself reduce the next Summer's fee; a payment holding only an open decision credit is not held against a correction |
+| Examination gate and override | IMPLEMENTED | `registration.summer_exam_gate`, `summer_unverified`, `summer_exam_override_set` | Opening the examinations is also refused while the registration window is open; the Summer's examination session keeps its session, semester, kind and stream once opened or released (`SUMMER_EXAM_IDENTITY`) |
+| Roster, queue and report, scoped to the department or the faculty, with CSV on the export log | IMPLEMENTED | `registration.summer_roster`, `summer_queue`, `summer_report`; `SummerReportController.java`; `SummerRoster.tsx`, `SummerReports.tsx` | Filters by faculty, department, programme, level (the Summer level), category, state, payment and registration status |
+| Printed Summer Semester Registration Confirmation | IMPLEMENTED | `registration.summer_confirmation`; `app/student/summer/confirmation/pdf/route.ts` | QR only once registered |
+| A paid Summer course the Director of ICT removes is flagged for the Academic Office, and a Summer decision's removal cannot be undone | IMPLEMENTED | `trg_summer_removal_noted`, `trg_summer_removal_held` | |
+| Carry-over clearance by the Summer (Rule A) | NOT IMPLEMENTED | — | Comes after V779 (V778 is reserved for it) |
+| Reversal of a decision on a paid course; a credit applied automatically to the next Summer's fee | NOT IMPLEMENTED | — | Owner question Q3; the existing credit mechanics |
+| A failed SIWES course re-sat in the Summer; the College programmes kept out | NOT IMPLEMENTED / as today | — | Owner questions Q1 and Q2 |
 
 ---
 

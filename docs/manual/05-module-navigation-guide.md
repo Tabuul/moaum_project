@@ -163,6 +163,8 @@ Academic
  → Project Assignments → /examiners/projects
  → Assessments → /examiners/assignments
  → Examiner Reports → /examiners/reports
+ → Summer Semester → /summer
+ → Summer Semester Fees → /finance/summer-fees
 Students
  → Deferments → /deferments
  → Records & Queries → /records
@@ -261,6 +263,7 @@ Academic
  → Migrate from Old Portal → /records/migration
  → Old Portal Uploads → /records/migration/uploads  (V771)
  → Course Registration Correction → /registration/corrections  (V772)
+ → Summer Semester → /summer
 Students
  → Student Records → /students
 Admissions
@@ -324,6 +327,7 @@ Academic
  → Senate Business → /results/approvals
  → Graduation → /graduation
  → Research → /research/projects  (research grants register)
+ → Summer Semester → /summer
 Finance
  → Budget → /finance/budget
 Reports
@@ -351,6 +355,7 @@ Academic
  → Senate Schedule → /results/senate
  → Broadsheets → /results/broadsheet
  → Graduation → /graduation
+ → Summer Semester → /summer
 Students
  → Records & Queries → /records
 Reports
@@ -381,6 +386,7 @@ Academic
  → Assessments → /examiners/assignments
  → Examiner Reports → /examiners/reports
  → Old Portal Uploads → /records/migration/uploads  (V771)
+ → Summer Semester → /summer
 Students
  → Deferments → /deferments
  → Matriculation → /matriculation
@@ -439,6 +445,7 @@ Academic
  → Project Assignments → /examiners/projects
  → Assessments → /examiners/assignments
  → Examiner Reports → /examiners/reports
+ → Summer Semester → /summer
 Students
  → Deferments → /deferments
  → Matriculation → /matriculation
@@ -480,6 +487,7 @@ Academic
  → Assessments → /examiners/assignments
  → Examiner Reports → /examiners/reports
  → Old Portal Uploads → /records/migration/uploads  (V771)
+ → Summer Semester → /summer
 Students
  → Deferments → /deferments
  → Matriculation → /matriculation
@@ -565,6 +573,7 @@ Overview
 Students
  → Financial Clearance → /clearance
  → Records & Queries → /records
+ → Summer Semester → /summer
 Finance
  → Held Scripts → /finance/held-scripts
  → College Payment Report → /college/payments
@@ -588,6 +597,7 @@ Finance
  → Accounting & Books → /finance/accounting
  → Transactions & Accounts → /finance/ledger
  → Reconciliation → /finance/reconcile
+ → Summer Semester Fees → /finance/summer-fees
 Reports
  → Reports & Returns → /reports
  → Student Register → /reports/students
@@ -778,6 +788,7 @@ Academic
  → Project Assignments → /examiners/projects
  → Assessments → /examiners/assignments
  → Examiner Reports → /examiners/reports
+ → Summer Semester → /summer
 Students
  → Deferments → /deferments
  → Faculty Clearance → /clearance
@@ -874,6 +885,7 @@ Academic
  → Project Assignments → /examiners/projects
  → Assessments → /examiners/assignments
  → Examiner Reports → /examiners/reports
+ → Summer Semester → /summer
 Students
  → Deferments → /deferments
  → Department Clearance → /clearance
@@ -1180,6 +1192,7 @@ Start here
 Academic
  → Deferment → /student/deferment
  → Course Registration → /student/register
+ → Summer Semester → /student/summer   (only while the Summer is the student's, V735, V779)
  → Registration History → /student/registration-history
  → Results → /student/results
  → Result Broadsheet → /student/broadsheet
@@ -2942,6 +2955,35 @@ Grading policy note: `policy.grade_band` A 70–100 (5), B 60–69 (4), C 50–5
 
 ---
 
+### 3.58 Summer Semester (V735, V779)
+
+| Point | Content |
+|---|---|
+| Purpose | A third academic period of a session for final-year and spillover students. They select the courses they believe they still owe, from both semesters, pay the Summer fees and are registered; the Academic Office verifies each selection against the record in one of four states; a paid course found not outstanding or rejected becomes a Summer credit the Bursar settles. |
+| Users / roles | Student (own). Setters (`SETTERS`): academic, registrar, dregistrar, super. Readers (`READERS`): those and hod, dean, bursar, studentaccounts, ict, vc, dvc, held to their scope. Fees: `FEE_SETTERS` bursar, studentaccounts, super; `FEE_APPROVERS` bursar, super. |
+| Navigation | Student: Academic → Summer Semester → `/student/summer`. Offices: Academic → Summer Semester → `/summer` (the Bursar: Students → Summer Semester; the Students Account Officer from V779); Summer Semester Fees → `/finance/summer-fees` (bursar: Finance; studentaccounts: School Fees; super: Academic). |
+| Dashboard | The student's Summer card (`/me/summer/card`); the desk's strip of figures on Students. |
+| Main features | Eligibility from academic status (set-based); the pool (structure, detected, authorised); itemised fees; register and pay before verification; four verification states; the verification queue with bulk decisions; Summer credits; reconcile with results; examination gate with an override; roster, report and CSV; printed confirmation. |
+| Create | `POST /me/summer/select`; `PUT /summer/{s}/{y}`; `PUT …/ceiling`; `POST …/identify`; `POST …/authorise`; `POST …/selections/decide`; `POST …/selections/{id}/clarify`; `POST …/exams/{act}/override`; `POST /finance/summer-fees`. |
+| View | `GET /me/summer`, `/me/summer/card`, `/me/summer/confirmation`; `GET /summer/periods`, `…/period` (one Summer with the live unverified count and the overrides, for Period and acts), `…/students`, `…/selections`, `…/selections/{id}`, `…/report`, `…/courses`. |
+| Edit | A period; the ceiling; a student's note; a decision on an unpaid selection (Reopen). A decision on a paid course is final. |
+| Delete / deactivate | A student takes back an unpaid course (`unselect`); a draft fee is deleted. Selections and history are never deleted. |
+| Search | Roster: matriculation number, name, programme. Queue: the same. Picker: code, title, the course as taken. |
+| Filters | Faculty, department, programme, level (the Summer level), category, status, evidence, flag, basis, payment, registration, scope (Selected, Eligible, Everyone). |
+| Reports | `summer_report` by faculty, department, programme, level, category or overall. |
+| Export | CSV from the server for the queue, the roster and the report; each recorded on the export log. |
+| Notifications | SUMMER_OPEN, SUMMER_CLOSING (low priority), SUMMER_REGISTERED, SUMMER_TIMETABLE, SUMMER_COURSE_REVIEWED (§8). |
+| Approval workflow | Verification (§Statuses). Not a maker–checker: one officer decides, and the decision is on the history. |
+| Statuses | Selection: PENDING_VERIFICATION, CONFIRMED_OUTSTANDING, NOT_OUTSTANDING, REJECTED (`verified_via` RESULTS, AUTHORISATION, OFFICER). Charge: DUE, PAID, CANCELLED. Credit: OPEN, APPLIED, REFUNDED (source PAYMENT, DECISION). Period: PLANNED, OPEN, CLOSED. |
+| Validation rules | At most 30 different courses a call; a ceiling of 1 to 60; a reason of ten characters or more for Not outstanding, Reject, an override and a ceiling; a clarification of 10 to 500 characters; a student's note of at most 500. |
+| Security | The database checks the acting office again on every act of the setters: `SUMMER_OFFICE` is 403 from a decision, a clarification, the reconcile, the ceiling, an override, identify and tell, and 422 from setting the period, authorising and retrying (as before V779); readers are held to the active office's unit; a read-write call in ICT Support's view is refused (`SUPPORT_VIEW_READ_ONLY`). |
+| Audit trail | Every Summer table is attached to the spine except `summer_selection_evidence` (a cache); `summer_selection_review` is write-once history. |
+| Related modules | Registration (§3.13), SIWES (§3.16), Results (§3.30), Examination sessions (§3.33), Finance (§3.36 to §3.37), Notices (§3.3). |
+| Common errors | `SUMMER_VERIFICATION_PENDING`, `SUMMER_REGISTRATION_OPEN`, `SUMMER_COURSE_NOT_AVAILABLE`, `SUMMER_COURSE_REFUSED`, `SUMMER_DECIDED_PAID`, `SUMMER_HAS_RESULT`. |
+| Troubleshooting | *02* §8 (the gate, a refused decision, a paid course not registered). |
+
+**Status:** IMPLEMENTED — selecting, paying, verification, the credits, the gate, the reports and the confirmation (V779). NOT IMPLEMENTED — a reversal of a decision on a paid course; a credit applied automatically to the next Summer's fee; a hold on a payment that has only an open decision credit.
+
 ## 4 Screen-by-screen documentation
 
 Every page in `frontend/src/app` is documented below, grouped by module. Each entry gives the page name (menu label or page title), the navigation path, the URL, the purpose, who can access it (the offices whose menus list it, and the API guard that actually decides), the layout, the fields where the page has a form, the actions with the endpoint each calls, what happens after each action, the messages the page shows, a security note and the screenshot that a later edition should carry. Conventions that apply to every page and are not repeated: every table is a `DTable` (client-side search above 8 rows, paging 10/25/50/100/All, a footer "Print" that prints the table with the University's name and the date); every write carries an `X-Reason` header whose text is also the success toast; an API refusal renders a `ProblemNotice` (title, detail, "What to do: remedy — office") and a red toast; no `page.tsx` redirects by office — rights are hidden client-side by the acting office and enforced by the API.
@@ -3593,6 +3635,43 @@ Students → Course Registration Correction → /registration/corrections   (Dep
 **Messages** "No student found"; "{groupRef}: held for the Registrar or the Deputy Registrar."; "{groupRef}: taken off {name}'s registration."; "{ref} confirmed: … is withdrawn from …'s registration; the mark stays on its sheet."; "{ref} declined: … keeps counting."; "{ref} cancelled: … keeps counting."; "{ref} undone: … is back on the registration as it stood."; refusals `RCR_OFFICE`, `RCR_DECIDER`, `RCR_REASON`, `RCR_NOT_COUNTED`, `RCR_OPEN`, `RCR_USE_DUPLICATES`, `RCR_SAME_PERSON`, `RCR_STALE`, `RCR_NOTE`, `RCR_STATE`. · **Security** The database re-checks the acting office; the officer who asked never decides (`RCR_SAME_PERSON`, whatever office they hold); a removal sticks — only its undo puts the course back (`RCR_REMOVED`).
 
 > **Screenshot Required:** Course Registration Correction — `/registration/corrections` — a student's registration with the Remove action and the take-off confirmation.
+
+#### 4.6.6 Summer Semester (office desk)
+
+```text
+Academic → Summer Semester → /summer   (academic, registrar, dregistrar, dvc, vc, hod, dean, ict, super)
+Students → Summer Semester → /summer   (bursar)
+```
+**URL** `/summer?view=&session=&…` · **Purpose** Run the Summer Semester: set the period, identify and tell the eligible, verify students' selections, read the roster and the figures, open the examinations (V735, V739 to V756, V779; `docs/summer-semester.md`). · **Who** setters and readers as in §3.58, each reader held to its scope. · **Layout** The session buttons; five views — **Verification** (the default for the offices that verify), **Students** (the default for the readers), **Reports**, **Courses**, **Period and acts**; the server renders only the view asked for. No page heading: the Shell title reads "Summer semester".
+
+| Field | Description | Required | Validation |
+|---|---|---|---|
+| Period: State, Registration opens, Registration closes, Examinations from, to, Results due | The Summer's window and dates | State; both registration dates to OPEN | Closes on or after opens; exams to on or after from; results due on or after exams to |
+| Categories | Three boxes: Final-year, Spillover (writes SPILLOVER and BEYOND_DURATION), Authorised | At least one | |
+| Programmes, Levels | Limit the Summer (blank: every programme, every level). A level limit is read against the Summer level | No | |
+| Course ceiling and its reason | The most courses a student may hold live in the Summer | No | 1 to 60 or none; a reason of ten characters or more (`SUMMER_CEILING_RANGE`, `SUMMER_REASON`) |
+| Verification filters | Faculty, Department, Programme, Level, Status, Evidence, Flag, Basis, Payment, search; "Select all N matching" | No | |
+| Reason (Not outstanding, Reject) and Staff note | The reason is shown to the student; the note is not | Reason | Ten characters or more (`SUMMER_REASON`) |
+| Ask the student | A question on one selection | Yes | 10 to 500 characters (`SUMMER_NOTE`) |
+| Override: Reason | Why the examinations may go ahead with paid courses unverified | Yes | Ten characters or more |
+| Roster filters | Faculty, Department, Programme, Level, Category, Payment, Registration, Scope | No | |
+
+| Action | What it does | Endpoint |
+|---|---|---|
+| Period and acts (opened) | The period, the live count of paid courses not yet verified and the overrides | `GET …/period` |
+| Save the period; Course ceiling | Sets the Summer; the ceiling | `PUT /summer/{s}/{y}`; `PUT …/ceiling` |
+| Identify the eligible | A tranche of up to 2,000 students; repeated until none is left | `POST …/identify` |
+| Authorise / withdraw; Retry | A student by an approved reason; a paid course the registration could not take. A withdrawal takes no course back: the next reconcile flags each selection the authorisation brought in (`EVIDENCE_CHANGED`) and sends one it confirmed back to Pending, for the Office to decide | `POST …/authorise`; `POST /summer/issues/{id}/retry` |
+| Tell | A tranche of OPEN, CLOSING or TIMETABLE notices; repeated with `after = next` | `POST …/tell` |
+| Reconcile with results | Reads the evidence again, a tranche at a time | `POST …/reconcile` |
+| Confirm / Not outstanding / Reject / Reopen | Up to 200 selections a call; refusals listed. The Not outstanding and Reject dialog previews the money held as Summer credit, from the rows ticked (`charge_amount`, `programme_fee_paid`, `courses_standing` of each queue row) | `POST …/selections/decide` |
+| Open (drawer), Ask the student | The evidence, the history, the student's other selections; a question | `GET …/selections/{id}`; `POST …/clarify` |
+| Open the examinations; Release the score sheets; Override | The examination session; refused while paid courses are unverified. Its session, semester, type and stream cannot be changed on Examination Sessions once it is opened or released (`SUMMER_EXAM_IDENTITY`) | `POST …/exams/{open\|release-sheets}`; `…/override` |
+| Export CSV | The queue, the roster, the report | `GET …/selections/export`, `…/students/export`, `…/report/export` |
+
+**Messages** "SUMMER_VERIFICATION_PENDING: N paid Summer course(s) are not verified yet; a student who sits a course they already passed gets a lower new attempt, and every attempt counts in the CGPA" (hint: "Verify them on the Summer desk, or record why the examinations may go ahead."); "SUMMER_REGISTRATION_OPEN: the Summer registration is still open; a payment after the examinations open would put an unverified course on the score sheets"; "SUMMER_DECIDED_PAID: the course was paid and has been taken off the registration; its fee is a Summer credit for the Bursary"; "SUMMER_HAS_RESULT: a mark is already on record for this course; the Director of ICT requests its removal on Course Registration Correction and the Registrar or Deputy Registrar confirms; then record this decision".
+
+> **Screenshot Required:** Summer Semester — `/summer` — the Verification queue with its bulk bar, and the Period and acts view with the live unverified count.
 
 ### 4.7 Undergraduate admissions
 
@@ -5068,6 +5147,25 @@ Staff → Appraisal → /hr/appraisal
 
 > **Screenshot Required:** Appraisal & promotion — `/hr/appraisal` — the candidates table and the form.
 
+#### 4.14.25 Summer Semester Fees
+
+```text
+Finance → Summer Semester Fees → /finance/summer-fees        (Bursar)
+School Fees → Summer Semester Fees → /finance/summer-fees    (Students Account Officer)
+Academic → Summer Semester Fees → /finance/summer-fees       (Super Administrator)
+```
+**URL** `/finance/summer-fees` · **Purpose** State, publish and withdraw the Summer's fees; read the collections; settle the Summer credits (V735, V739, V751, V779). · **Who** states and deletes a draft: bursar, studentaccounts, super; publishes, withdraws and settles: bursar, super; reads: those and academic, registrar, dregistrar, ict. · **Layout** Statements (session, programme or every programme, programme fee, course fee, state, effective from); Collections (programme fees and course fees apart); **Credits**, each with its source (payment or decision), reason, course and the selection's state.
+
+| Action | What it does | Endpoint |
+|---|---|---|
+| State a fee | A DRAFT, never charged | `POST /finance/summer-fees` |
+| Publish / Withdraw | Approve; withdraw with a reason | `POST …/{id}/publish`, `…/withdraw` |
+| Delete | A draft only | `DELETE …/{id}` |
+| Applied / Refunded | Record where a credit's money went | `POST /finance/summer-credits/{id}/settle` |
+| Reopen | A credit settled by hand in error, while its payment stands as the Summer payment; never a credit a reinstatement of the programme fee closed (`SUMMER_CREDIT_REINSTATED`) | `POST …/{id}/reopen` |
+
+**Messages** "SUMMER_CREDIT_MOVE_IT" (a credit that is the whole of its payment is applied by moving the payment on Payment Reallocation & Correction); "SUMMER_FEE_KEPT: a published Summer fee is not changed; state a new one and withdraw this".
+
 ### 4.15 Hostel accommodation
 
 #### 4.15.1 Accommodation desk (Hostel Dashboard)
@@ -5370,7 +5468,7 @@ Overview → Card Printing (library) ; Services → Card Collection / Lost & Rep
 ```text
 Start here → Dashboard → /student
 ```
-**URL** `/student` · **Purpose** Standing, fee gate, session steps, quick tiles, notices. · **Who** student (a postgraduate sees the PG dashboard). · **Layout** Banners for ADVISED_TO_WITHDRAW / PROBATION; fee gate ("You are cleared to register" / "Action required" with "Pay now" and "See breakdown" / "What a payment releases is not yet stated for this session"); identity card with passport; "This session" steps (On the register → Course registration → Examination card); Student details; quick tiles (My results, Fees & payments, Graduation or My documents, Deferment, Hostel, Course form — enabled only when APPROVED/LOCKED); carryover warning; "Notices sent to you". PG dashboard: coursework, research and documents summaries.
+**URL** `/student` · **Purpose** Standing, fee gate, session steps, quick tiles, notices. · **Who** student (a postgraduate sees the PG dashboard). · **Layout** Banners for ADVISED_TO_WITHDRAW / PROBATION; fee gate ("You are cleared to register" / "Action required" with "Pay now" and "See breakdown" / "What a payment releases is not yet stated for this session"); identity card with passport; "This session" steps (On the register → Course registration → Examination card); A **Summer Semester card** when the student is eligible or has selected a course (V779: category, next step, the counts of selected, pending, confirmed, not outstanding or rejected and registered courses, units and amount payable, **Print** once a course is selected, **Open**); Student details; quick tiles (My results, Fees & payments, Graduation or My documents, Deferment, Hostel, Course form — enabled only when APPROVED/LOCKED); carryover warning; "Notices sent to you". PG dashboard: coursework, research and documents summaries.
 
 > **Screenshot Required:** Student dashboard — `/student` — the fee gate and the session steps.
 
@@ -5561,6 +5659,27 @@ Academic → Course Registration & Results → /student/pg-courses ; Academic Pr
 
 > **Screenshot Required:** Research & Thesis — `/student/research` — the progress steps and the documents panel.
 
+#### 4.18.21 Summer Semester (student)
+
+```text
+Academic → Summer Semester → /student/summer         (only while the Summer is the student's)
+Summer card on /student → Open | Print
+```
+**URL** `/student/summer?session=` · **Purpose** Select the courses the student believes they still owe, pay, follow each one's verification, print the confirmation (V735, V779). · **Who** student (undergraduate, regular programme, final-year, spillover or authorised); the menu item is shown by `registration.summer_area`. · **Layout** Four tiles (Summer and period; You, a category pill; Selected "N courses · U units"; Owed now and paid); the next-step note; the note on earlier results where nothing is detected; the period; **Fees and itemised calculation** (the programme fee, a row for each course, the formula, the total, the Pay block); **Select your courses** (search; Level, Semester and Show filters; rows grouped under "NNN Level"; columns Course, Title with the course as taken, Units, Level, Semester, Result evidence, Status, Fee, reason); a sticky bar "N selected · U units · ₦formula" with **Select N courses**; **My selections** (code, title, units, original semester and session, registration category, registration status, verification status with its source, reason, the Office's question and a reply box, Remove, totals); the registration and its confirmation; payments.
+
+| Action | What it does | Endpoint |
+|---|---|---|
+| Select N courses | At most 30 different a call, each with an optional "Where did you owe it?" | `POST /me/summer/select` |
+| Remove | An unpaid course | `POST /me/summer/unselect` |
+| Pay | The reference for what is owed now | `POST /me/summer/reference` |
+| Reply | The student's note on a selection | `POST /me/summer/note` |
+| (after the page renders) | Read the evidence again; the page reads itself again only if something changed | `POST /me/summer/reconcile` |
+| Print | The Summer Semester Registration Confirmation / Selection Summary | `GET /me/summer/confirmation` and `/student/summer/confirmation/pdf` |
+
+**Messages** the next-step sentences ("Pay ₦70,000 to register the courses you selected."; "N course(s) registered, M waiting for the Academic Office to verify."; "Nothing more can be selected now."; "The Bursary has not published the Summer Semester fees yet."); "… is not a course you may register in the Summer Semester (it is not in your programme's structure, nor among your outstanding or authorised courses)"; "… cannot be registered (passed)"; "Select up to 30 at a time; select the rest afterwards".
+
+> **Screenshot Required:** Summer Semester — `/student/summer` — the picker, the itemised calculation and "My selections" with their verification pills.
+
 ### 4.19 Reports, registers and statistics
 
 #### 4.19.1 Reports & returns
@@ -5624,7 +5743,7 @@ Overview → Student Statistics → /stats → (any figure) → /stats/students?
 ```text
 (QR on the card / course form / statement) → /verify/exam ; /verify/registration ; /verify/results   (?m=&s=&sem=&c=)
 ```
-**URLs** as above · **Purpose** Genuine examination card (name, photo, programme, level, cleared, courses), course form (APPROVED/LOCKED registration with courses and units), statement of results (published grades, GPA, CGPA, class of standing, Senate minute). · **Who** Public with the SHA-256 check code. · **Layout** The shared card ("Genuine statement — this is the University's record" / "Not verified"). · **Endpoints** `GET /api/v1/verify/exam|registration|results`.
+**URLs** as above · **Purpose** Genuine examination card (name, photo, programme, level, cleared, courses), course form (APPROVED/LOCKED registration with courses and units; for semester 3 of a Summer student each course also carries its verification word, V779: "Pending verification" or "Confirmed outstanding", never "carry-over" for a pending one), statement of results (published grades, GPA, CGPA, class of standing, Senate minute). · **Who** Public with the SHA-256 check code. · **Layout** The shared card ("Genuine statement — this is the University's record" / "Not verified"). · **Endpoints** `GET /api/v1/verify/exam|registration|results`.
 
 > **Screenshot Required:** Results verification — `/verify/results?m=&s=&sem=&c=` — the genuine card with grades.
 
@@ -5847,6 +5966,7 @@ Every tile is computed on request from the modules' own tables (a *read model*);
 | Enrolment by faculty/programme/level | Reports | `ENROLMENT_READERS` (scope-cut) | session | Print | Branded workbook | — | Students by entry session, split M/F/unstated | No |
 | Registration cause | Reports | `ENROLMENT_READERS` | session, semester | Print | Branded workbook | — | expected, registered, not registered, fee-blocked, cleared idle per programme | No |
 | Carryovers | Reports | `ENROLMENT_READERS` | session (as at today) | Print | Branded workbook | — | Failed non-elective courses per faculty/programme/course | No |
+| Summer Semester verification queue, roster and report (V779) | Summer | `READERS` (hod, dean scope-cut) | faculty, department, programme, level, category, state, evidence, payment, registration, search | — | — | Server-made, UTF-8 with BOM, ≤ 100,000 rows, on the export log | Selections and their evidence; students by category, selection and payment; the figures by group | No (a server CSV) |
 | Staff–student ratio | Reports | `STAFF_RATIO_READERS` | — | Print | Branded workbook | — | academic staff by rank bucket, students, ratio per department | No |
 | Postgraduate return | Reports | `PG_READERS` | session | Print | Branded workbook | — | applications → offered → accepted → admitted; register; researching; awarded | No |
 | Revenue by category | Reports | `REVENUE_READERS` | session | Print | Branded workbook | — | confirmed references by purpose + applicant fees | No |
@@ -5915,6 +6035,7 @@ All PDFs are drawn by Next.js route handlers with `frontend/src/lib/pdf-write.ts
 | PG confirmation of offer of admission | `/pg/offer/pdf` | PG applicant | After the acceptance fee is confirmed (409 "Offer letter not available yet") | "(Office of the Registrar)", DATE, APPLICANT'S NAME, APPLICATION NUMBER, "CONFIRMATION OF OFFER OF ADMISSION", COURSE/PROGRAMME/FACULTY/LEVEL/DURATION, six notes, signed "Ajuma Isaac Ugbabe, Secretary, Postgraduate School" (hard-coded), QR text `MOAUM PG {applicationNo}` | **None** (QR is decorative) | None | — |
 | PG merged documents | `GET /api/v1/pg/applications/{id}/documents.pdf` | PG admissions desk | Once documents exist | Every uploaded PDF concatenated plus the passport page | None | None | `READERS` |
 | Course registration form | `/student/form/pdf` | Student | Registration APPROVED/LOCKED | Brand header, passport, name/matric/programme/level/session/semester/date, CODE · COURSE TITLE · UNIT · TYPE (carryovers red, first), total units, signature lines "Head of Department / Level Coordinator", "Dean of Faculty", registration id prefix | `/verify/registration?m&s&sem&c` (SHA-256 check code) | None | Public page only with the code |
+| Summer Semester Registration Confirmation / Selection Summary (registration pending) / Selection Summary (payment outstanding) | `/student/summer/confirmation/pdf?session` | Student | A live selection in the Summer (404 otherwise) | Brand header, the student with category, the period, courses (S/N, code, title, units, original semester, registration category, registration status, verification status; decided rows struck with their reason), totals and the itemised formula, payments with receipt numbers, the notice on pending courses; the QR only once registered | QR → `/verify/registration` for semester 3 (genuine only for an APPROVED/LOCKED registration; each course shows its verification word) | None | Student's own token |
 | Examination card | `/student/exams/card/pdf?session&semester` | Student | Approved registration and cleared for examinations (409 otherwise) | Crest watermark, matric watermarks, photo, candidate block, COURSE CODE · TITLE · UNIT · SIGN/INVIGILATOR, 8 instructions, 14 regulations | `/verify/exam?m&s&sem&c` | None | Check code |
 | Semester Results (statement) | `/student/results/{session}/{semester}/pdf` | Student | A published semester and results not withheld (409 "Withheld" / "Nothing published") | "Semester Results · Exams & Records", COURSE / UNIT / SCORE / GRADE / POINTS, totals, Semester GPA / Cumulative GPA / Class of standing, SUMMARY line, GRADING key (**hard-coded**), "Approved by Senate on … · minute X" | `/verify/results?m&s&sem&c` + "Check code" | None | Check code |
 | Result broadsheet (student) | `/student/broadsheet/pdf` | Student | Any published semester (409 "Withheld") | Per semester COURSE/TITLE/UNIT/CA/EXAM/TOTAL/GRADE/PT and the summary line | None | None | — |
@@ -5946,6 +6067,11 @@ Every notice is a `platform.notice` row queued by `platform.queue_notice` and di
 | Event | Trigger | Recipient | Channel | Subject | Module |
 |---|---|---|---|---|---|
 | Password reset requested | `PasswordResetService.forgot` | account holder | Email + SMS | "Reset your MOAUM password" | Sign-in |
+| Summer Semester open (V735, V779; priority LOW) | `registration.summer_tell` (OPEN) | the eligible, in tranches | Email + SMS | "The Summer Semester of {session} is open" | Summer Semester |
+| Summer Semester closing (priority LOW) | `registration.summer_tell` (CLOSING) | the eligible who have not paid | Email + SMS | "The Summer Semester registration of {session} closes on {date}" | Summer Semester |
+| Summer fees paid, courses registered | `registration.summer_materialize` | student | Email + SMS | "Your Summer Semester registration of {session}" | Summer Semester |
+| Summer Semester examinations dated | `registration.summer_tell` (TIMETABLE) | the registered | Email + SMS | "The Summer Semester examinations of {session}" | Summer Semester |
+| Summer courses reviewed (V779; one for each decision batch) | `registration.summer_verify`, a reconcile take-back, `summer_clarify` | student | Email + SMS | "Your Summer Semester courses of {session} were reviewed" | Summer Semester |
 | Applicant account created | `ApplicantService.register` | applicant | Email + SMS | "Your MOAUM applicant account" / "MOAUM applicant account" | Applicant portal |
 | Applicant password reset asked | `ApplicantService.forgot` | applicant | Email + SMS | "Reset your MOAUM application password" | Applicant portal |
 | Application / acceptance fee confirmed | `admissions.confirm_fee` | applicant | Email + SMS | "Your payment receipt · RCT-…" | Applicant portal |

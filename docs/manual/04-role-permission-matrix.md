@@ -47,6 +47,7 @@ This volume describes who may do what on the portal **as the code enforces it to
    6. [Postgraduate School and external examiners](#76-postgraduate-school-and-external-examiners)
    7. [Students and applicants](#77-students-and-applicants)
    8. [Services, housing, library, security, health](#78-services-housing-library-security-health)
+   9. [The Summer Semester](#79-the-summer-semester)
 8. [Appendix: guard constants referenced in this volume](#8-appendix-guard-constants-referenced-in-this-volume)
 
 ---
@@ -807,6 +808,21 @@ Public verification (`verify`): `/api/v1/verify/**` needs no sign-in; document l
 - Audit log (`OVERSIGHT`): ict, admin, super, audit, deputyaudit, vc.
 - API keys (`OPERATORS`): ict, admin, super. The register issues hashed keys, but **no request is authenticated by an API key** — scopes and quotas are stored, never enforced (NOT IMPLEMENTED).
 
+#### 3.3.28 Summer Semester (`summer`, V735 and V779)
+
+The Summer's endpoints are not in the generated matrix of §3.2, which predates them; this is their rule. The guards are in `summer/SummerController` (and, from V779, `SummerReviewController` and `SummerReportController`, which share one reader scope in `SummerAccess`). **Setters** (`SETTERS`) are academic, registrar, dregistrar and super. **Readers** (`READERS`) are those and hod, dean, bursar, studentaccounts, ict, vc and dvc. A reader's **active office** must be a reader office (the token's other offices do not widen it), and a department or faculty office is **held to its unit on every read**, by `OfficeScope`: its own department, faculty or College fills an absent value, a value outside it is refused with its own `SCOPE_*` 422, and a selection read by id outside it is 404.
+
+| Act | Offices | Rule |
+|---|---|---|
+| Set the period; the course ceiling; identify; authorise or withdraw a student; tell; retry a paid course; open the Summer's examinations and release its sheets; record an override | academic, registrar, dregistrar, super (`SETTERS`) | The database checks the acting office again (`SUMMER_OFFICE`, 403) for the ceiling, the override, identify, tell, a decision, a clarification and the reconcile tranche; setting the period, authorising and retrying refuse another office with the same code as a rule (422), as before V779 |
+| **Verify**: Confirm, Not outstanding, Reject, Reopen (at most 200 a call); ask a clarification; reconcile a tranche | the same | A reason of ten characters or more for Not outstanding and Reject (`SUMMER_REASON`), shown to the student. A decision on a paid course is final (`SUMMER_DECIDED_PAID`) |
+| Read the queue, the roster, the report, the classes, the period; CSV of the queue, the roster and the report | `READERS`, each held to its scope | HOD: the department. Dean: the faculty. A College office: its College's faculties. Bursary, ICT, VC, DVC and the setters: as they ask. Each CSV is recorded on the export log |
+| State, delete (a draft) a Summer fee statement | bursar, studentaccounts, super (`FEE_SETTERS`) | |
+| Publish or withdraw a statement; settle or reopen a Summer credit | bursar, super (`FEE_APPROVERS`) | The credits include those a decision made, and a paid programme fee's when the student's last course goes by any route (V779); settling is the Bursar's alone; a credit a reinstatement of the programme fee closed is not reopened (`SUMMER_CREDIT_REINSTATED`) |
+| Read the fee statements, collections and credits | bursar, studentaccounts, super, academic, registrar, dregistrar, ict (`FEE_READERS`) | |
+| Select, take back, pay, write a note, read the card, reconcile one's own selections, print the confirmation | student (own), `OFFICE_student` | The database checks that the selection is the student's own (`SUMMER_NOT_YOURS`). In ICT Support's read-only view of a student's portal the writes, including the reconcile, are refused 403 `SUPPORT_VIEW_READ_ONLY` |
+| Take a paid Summer course off the registration | ict, super (Course Registration Correction, §3.3.10) | Without a mark the selection is flagged `ENTRY_REMOVED` for the Academic Office; undoing a removal a Summer decision made is refused (`SUMMER_REMOVAL_HELD`) |
+
 ---
 
 ## 4 Known mismatches between menus and guards
@@ -856,6 +872,7 @@ The office menus are written by hand; the guards are the law. Comparing every me
 | Academic, Deputy Registrar, HOD, Lecturer, Registrar, super | Create or submit a registration for a student | `POST /registration/…` | `APPROVERS` | No screen | Backend only · D4 |
 | Any signed-in person | List and end own sessions | `GET /auth/sessions`, `POST /auth/sessions/{id}/end` | authenticated | No screen | Backend only · A1 |
 | Any signed-in person | Own notices | `/me/notices` | authenticated, non-student | Menu item only on the lecturer menu; other offices open `/me/notices` by URL | A2 |
+| Students Account Officer | Summer Semester (reading) | `/summer` | `SummerController.READERS` includes `studentaccounts` | Until V779 the office read the desk by URL only; V779 adds `t/summer` to its menu (one line in `lib/menus.ts`) | V779 |
 
 ### 4.3 Guard present, rule makes it inert
 
@@ -1080,6 +1097,12 @@ Each table lists what the group **may do**, what it may **read only**, and what 
 |---|---|---|
 | **Housing:** every hostel act; HOSTEL clearance unit; answer housing requests. **Support Services:** clinic (arrival, triage, visits, fitness, restrict); hostel acts; library circulation; own clearance unit; answer services requests. **Librarian:** circulation, fines waiver and rule, card printing, library clearance unit; answer library requests. **Chief Security Officer:** issue and replace identity cards; read security posture | Housing, Library, Security: Records & queries (student module). Services: none | Housing: `/staff` (403). Services: `/finance/requisitions`, `/finance/tenders`, `/stores`, `/alumni`, `/search` (all 403). Librarian: `/stores` (403). Security: verify a card (no page) |
 
+### 7.9 The Summer Semester (V779)
+
+| May do | Read only | May not |
+|---|---|---|
+| **Academic Office, Registrar, Deputy Registrar (AA), Super Administrator:** set the Summer's period and course ceiling; identify; authorise; tell; verify selections (Confirm, Not outstanding, Reject, Reopen), ask a student, reconcile with results; open the Summer's examinations and release its sheets, with an override where a paid course is unverified. **Bursar, Students Account Officer, Super Administrator:** state the Summer fees and delete a draft. **Bursar and Super Administrator only:** publish and withdraw the fees; settle the credits a decision makes (Refunded or Applied) and reopen one settled in error. **Student:** select courses from the pool, take back an unpaid course, pay, answer the Office's question, print the confirmation | **Head of Department** (the department's students, queue, report and classes), **Dean** (the faculty's), **Bursar, Students Account Officer, Director of ICT, VC, DVC** (the Summer desk, as they are scoped) | Anyone but the setters: verify, set the period, authorise or open the examinations. The Bursary: decide a selection. The Students Account Officer: publish or withdraw a fee, or settle or reopen a credit (403; the database refuses a credit settled in any other office as well, `SUMMER_CREDIT_OFFICE`). The Academic Office: publish a fee or settle a credit. A reader: see a selection outside its scope (404). The Director of ICT: undo a removal a Summer decision made (`SUMMER_REMOVAL_HELD`). A student: decide eligibility, or the pool |
+
 ---
 
 ## 8 Appendix: guard constants referenced in this volume
@@ -1104,6 +1127,8 @@ Each table lists what the group **may do**, what it may **read only**, and what 
 | `MatriculationController.RUNNERS` / `OFFICERS` / `MatricFormatController.CONFIG` | academic, registrar, dregistrar / + facultyofficer / academic, registrar, dregistrar, super |
 | `RegistrationController.HOD_APPROVES` | hod, super |
 | `RegistrationCorrectionController.READERS` / `CORRECTORS` / `DECIDERS` (V772) | ict, super, registrar, dregistrar / ict, super / registrar, dregistrar, super |
+| `SummerController.SETTERS` / `READERS` (V735, V779; the review and report controllers share them) | academic, registrar, dregistrar, super / those and hod, dean, bursar, studentaccounts, ict, vc, dvc |
+| `SummerController.FEE_SETTERS` / `FEE_APPROVERS` / `FEE_READERS` | bursar, studentaccounts, super / bursar, super / bursar, studentaccounts, super, academic, registrar, dregistrar, ict |
 | `DefermentsController.DESK` | hod, dean, facultyofficer, academic, registrar, dregistrar, records, pgschool, pgsecretary, provost, collegesecretary, super, admin |
 | `TransferController.APPROVERS` | hod, registrar, dregistrar, academic, super |
 | `ClearanceController.SIGNERS` | academic, registrar, dregistrar, dean, hod, bursar, library, services, housing |

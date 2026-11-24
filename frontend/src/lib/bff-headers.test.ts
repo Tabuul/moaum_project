@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { bffResponseHeaders, forbidsStore } from "./bff-headers.ts";
+import { bffResponseHeaders, forbidsStore, scriptRead } from "./bff-headers.ts";
 
 const reply = (h: Record<string, string>) => bffResponseHeaders(new Headers(h));
 
@@ -43,4 +43,21 @@ test("no-store is read as a directive, in any case and spacing, never as part of
   assert.equal(forbidsStore(""), false);
   assert.equal(forbidsStore(null), false);
   assert.equal(forbidsStore(undefined), false);
+});
+
+test("a download's file name reaches a page's own script, never a link the browser opens itself (V779)", () => {
+  const csv = { "content-type": "text/csv; charset=utf-8", "content-disposition": 'attachment; filename="summer-2025-2026-selections.csv"', "cache-control": "no-store" };
+  const asked = (h: Record<string, string>) => bffResponseHeaders(new Headers(csv), new Headers(h));
+  // fetch() from the Summer desk (saveFile): Sec-Fetch-Mode cors (same-origin is the other mode a script's read carries)
+  assert.deepEqual(asked({ "sec-fetch-mode": "cors", "sec-fetch-dest": "empty" }), [
+    ["content-type", "text/csv; charset=utf-8"], ["cache-control", "no-store"], ["content-disposition", 'attachment; filename="summer-2025-2026-selections.csv"'],
+  ]);
+  assert.ok(asked({ "sec-fetch-mode": "same-origin" }).some(([k]) => k === "content-disposition"));
+  // a document opened in a new tab, an <a download>, an image, an embedded frame: as before, no disposition, so each opens or saves as it always has
+  for (const mode of ["navigate", "no-cors", "websocket", ""]) {
+    assert.ok(!asked({ "sec-fetch-mode": mode }).some(([k]) => k === "content-disposition"), mode || "(no Fetch Metadata)");
+  }
+  assert.ok(!bffResponseHeaders(new Headers(csv)).some(([k]) => k === "content-disposition"), "no request given: as before");
+  assert.equal(scriptRead(new Headers({ "sec-fetch-mode": " CORS " })), true);
+  assert.equal(scriptRead(null), false);
 });

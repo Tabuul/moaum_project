@@ -14,7 +14,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import type { Problem } from "@/lib/api";
-import { humanTitle } from "@/lib/problem-title";
+import { CODE_WORDS, humanTitle, problemRemedy } from "@/lib/problem-title";
 
 export type Kind = "ok" | "bad" | "info" | "warn";
 export interface Toast { id: number; kind: Kind; title: string; detail?: string; ttl: number; sticky?: boolean; out?: boolean }
@@ -62,9 +62,11 @@ function clean(s: string | undefined | null): string | undefined {
 /** An API refusal as the error toast: the refusal's own title and remedy where it has them, or plain words for the status. */
 export function notifyProblem(problem: Problem | null | undefined, fallbackTitle = "That did not go through") {
   const status = problem?.status ?? 0;
-  const title = problem?.title ? clean(humanTitle(problem.title)) : undefined;
+  const coded = problem?.code ? CODE_WORDS[problem.code] : undefined;
+  const title = coded ? coded.title : problem?.title ? clean(humanTitle(problem.title)) : undefined;
   const detail = clean(problem?.detail);
-  const remedy = problem?.remedy?.message ? clean(problem.remedy.message) : undefined;
+  const rem = problemRemedy(problem);
+  const remedy = rem?.message ? clean(rem.message) : undefined;
   const line = [detail, remedy].filter(Boolean).join(" ");
   if (status === 503 && (problem?.code === "QUERY_TOO_LONG" || problem?.code === "QUERY_CANCELLED")) {
     // 11 Nov 2026: the server answered — the database stopped a statement; its own words say what stopped it, not "could not reach"

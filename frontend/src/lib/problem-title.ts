@@ -26,9 +26,26 @@ const KNOWN: Record<string, string> = {
   "IAM GRANT NEEDS INSTRUMENT": "An instrument is needed",
 };
 
+/** V779: refusals whose words a person reads by their code, whatever title the server sent (a code the API's own titles do not know
+ *  arrives as its bare words, "Credit reinstated", which says the opposite of what happened) — with the remedy to show when the
+ *  refusal carries none */
+export const CODE_WORDS: Record<string, { title: string; remedy?: { message: string; office: string } }> = {
+  // the Bursar's reopen of a credit the student's own new selection used to pay the programme fee again (B2)
+  SUMMER_CREDIT_REINSTATED: {
+    title: "This credit pays the programme fee again",
+    remedy: { message: "Nothing is reopened: the money pays the student's Summer programme fee. It is held as a credit again only if no Summer course of the student remains.", office: "Bursary" },
+  },
+  // the Summer Semester's examination session moved while open or released, or an open session moved into it (B4)
+  SUMMER_EXAM_IDENTITY: {
+    title: "The Summer's examination session keeps its place",
+    remedy: { message: "Move the dates only. The Summer's examinations open from the Summer desk once its paid courses are verified; for another sitting, create a new examination session.", office: "Directorate of ICT" },
+  },
+};
+
 const isCode = (t: string) => /^[A-Z][A-Z0-9 _]{2,}$/.test(t.trim()) && !/[a-z]/.test(t);
 
-export function humanTitle(title: string | null | undefined, fallback = "The request was refused"): string {
+export function humanTitle(title: string | null | undefined, fallback = "The request was refused", code?: string | null): string {
+  if (code && CODE_WORDS[code]) return CODE_WORDS[code].title;
   const t = (title ?? "").trim();
   if (!t) return fallback;
   if (!isCode(t)) return t;
@@ -50,4 +67,9 @@ export function humanTitle(title: string | null | undefined, fallback = "The req
 function sentence(s: string): string {
   const w = s.toLowerCase().trim();
   return w ? w.charAt(0).toUpperCase() + w.slice(1) : s;
+}
+
+/** the remedy a refusal shows: its own, or the one its code carries here */
+export function problemRemedy(problem: { code?: string | null; remedy?: { message: string; office: string } | null } | null | undefined): { message: string; office: string } | undefined {
+  return problem?.remedy ?? (problem?.code ? CODE_WORDS[problem.code]?.remedy : undefined);
 }

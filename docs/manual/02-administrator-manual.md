@@ -814,6 +814,8 @@ Academic
 - **Decline** (a note of ten characters or more, `RCR_NOTE`): the course keeps counting; the request stays on the record with the note.
 - **Old Portal Uploads** lists every confirmed upload of the old portal's course registration and past results. Its report names the **Senate-approved graduates** whose units a corrected file changed. Their approved CGPA and class of degree stay as approved: the graduation audit keeps an approved graduand's CGPA. The report shows the CGPA from the record now beside the one before, for the Registry to consider.
 
+**3.1.11 Summer Semester verification (V779).** Status: IMPLEMENTED. The Registrar and the Deputy Registrar (Academic Affairs) verify the courses final-year and spillover students select for the Summer Semester, beside the Academic Office, and may set the period, identify, tell, open the examinations and record an override. The screen, the queue and the rules are in §3.2.8.
+
 ### 3.2 Academic Office
 
 **Dashboard — `/` (AcademicDashboard, shared with the DR(AA), Exams and Records and the DVC).** A leading note on result sets and transcripts, the student statistics panel, tiles, "Committed admission list" (from the CAPS cycle), "Registration, by faculty" (the "Blocked at the Bursary" column shows "—"), and "Credentials in hand" whose "verification requests" row still says "Public verification arrives with its module" — stale text; public verification exists.
@@ -877,6 +879,36 @@ Public verification of a slip is at `/verify/putme/{token}` — genuine only for
 
 **3.2.7 Reports.** Owner of no return itself, but a reader and runner of enrolment, registration, carryovers, admissions and revenue returns, and a keeper of copies (§7).
 
+**3.2.8 Summer Semester (V735 to V756, V779).** Status: IMPLEMENTED. Summer Semester — `/summer` (Academic → **Summer Semester**; the Bursar finds it under Students). Full account: `docs/summer-semester.md`. Who may **set and decide**: the Academic Office, the Registrar, the Deputy Registrar and the Super Administrator (the database checks the office again: `SUMMER_OFFICE`). Who **reads**: those, the Head of Department (the department), the Dean (the faculty), the Bursar and the Students Account Officer (the latter's menu item is new in V779), the Director of ICT, the Vice-Chancellor and the Deputy Vice-Chancellor. A reader is held to the unit of the active office, whatever other offices the token carries, and a selection outside it is not found.
+
+```text
+Academic
+ → Summer Semester   (/summer?view=…)
+      Verification · Students · Reports · Courses · Period and acts
+```
+
+The Summer is open to every final-year student and every spillover student, by their academic status; it is no longer limited to students with a detected carry-over. A student selects the courses they believe they owe, pays, and is registered; the Office verifies each selection afterwards. The page opens on **Verification** for the offices that verify and on **Students** for the readers (`?view=`).
+
+1. **Period and acts** (once, before the window).
+   - Set the period: state, registration window, examination and results dates, the categories (three boxes: Final-year, Spillover, Authorised), programmes and levels where the Summer is to be limited (the Summer level of a student, the greater of the level on record and the engine's, is what a level limit reads), and a **course ceiling** (1 to 60, with a reason) if one is wanted. A ceiling never takes a course away from a student who holds more.
+   - **Identify the eligible**: in calls of 2,000 students until none is left. The desk shows the students read, those left and the eligible, and "with results counted", which is every student read (each one's published results are counted); how many hold no published result is the report's **Missing historical results**. An identification re-reads every student identified before it (the first after V779 reads them all). The roster's "As identified" date and the report's Missing historical results move only with an identification (or an authorisation, which re-reads that one student at once): a student's selection writes no candidate row.
+   - **Authorise** a student for an approved academic reason, with the courses it names; the authorisation list and the "Paid, not yet registered" panel (with **Retry**) are as before. **Withdrawing an authorisation** takes no course back by itself and is not silent: at the next reconcile (the student's Summer page, or **Reconcile with results**) each selection it brought in that is still selected or registered, and that the Office has not decided since, is flagged for the Office (`EVIDENCE_CHANGED`, worded on the queue "The authorisation it rested on no longer stands: decide"), one confirmed by the authorisation goes back to **Pending**, an unpaid one keeps its charge until the Office decides it, and the examination gate counts a paid one confirmed by the authorisation at once, before any reconcile, until the Office decides it.
+   - **Tell** the eligible (OPEN), those not registered (CLOSING) and the registered (TIMETABLE). Each call tells one tranche and the desk repeats until none remains. At the mailbox's pace (30 a minute, 10,000 a day: `docs/mail-sending.md`) the 18,588 eligible students of the live-shaped copy migrated to main take two days of e-mail.
+2. **Verification** (while the window is open and after).
+   - **Reconcile with results** first, whenever results have been uploaded since: it reads every selection's evidence again, confirms by results what failed, takes back an unpaid course whose pass is on record (and tells the student), and flags a paid one (`PASSED_ON_RECORD`). It is its own request, so a refusal of an examination act never undoes it.
+   - Filter the queue (faculty, department, programme, level, status, evidence, **Needs review**, **Clarification asked**, basis, payment) and read each row's evidence and basis. **Detected failures confirm themselves** (Academically confirmed outstanding, by results) and need no officer; the queue's work is the **Pending** selections and the **flagged** ones.
+   - Tick rows and press **Confirm**, **Not outstanding…**, **Reject…** or **Reopen**; or **Select all N matching** (up to 5,000), which decides in calls of 200 and shows what was refused. **Not outstanding** and **Reject** need a reason of ten characters or more: **the student reads it**. The dialog previews "N courses, M paid: ₦X will be held as Summer credit and the entries withdrawn". ₦X is summed from the rows ticked: the course fee of each paid one, and the student's paid programme fee as well when the rows ticked are all of that student's standing courses (the decision then credits the programme fee too). **Select all N matching** states the rule in words, without a figure. A staff note stays on the history and is never shown to the student.
+   - The detail drawer shows the evidence rows (the student's results of the course and of its twin), the history, the student's other selections and **Ask the student** (10 to 500 characters; the student answers with a note).
+   - What a decision does to money (§3.4.15): an unpaid selection loses its charge; a **paid** one has its entry withdrawn through the Director of ICT's removal route, its charge cancelled and its fee made a **Summer credit** for the Bursar. A decision on a paid course is **final** in V779 (`SUMMER_DECIDED_PAID`).
+   - Refusals per selection come back in the list of what was refused: `SUMMER_PASSED_CONFIRM` (a pass is on record: decide Not outstanding or Rejected, or leave it flagged), `SUMMER_ENTRY_REMOVED` (the Director of ICT took the course off: decide Not outstanding or Rejected, or ask the Director to undo the removal), `SUMMER_HAS_RESULT` (a mark is on record for the course: the Director of ICT requests its removal on Course Registration Correction (§3.11.10) and the Registrar or Deputy Registrar confirms it; then record the decision), `SUMMER_CHARGE_NO_PAYMENT` (the payment is not on the record: the Bursary checks it), `SUMMER_SELECTION_UNKNOWN` (no such selection).
+3. **Students** (the roster) and **Reports**: filters by faculty, department, programme, level, category, payment state and registration status; the roster's scope is **Selected** (the default), **Eligible** or **Everyone**. The report groups the figures by faculty, department, programme, level or category. Each downloads as CSV from the server (at most 100,000 rows) and **leaves a row on the export log** (§6), within the reader's scope.
+4. **Close the registration, then open the examinations.** The examinations cannot be opened while the registration window is open (`SUMMER_REGISTRATION_OPEN`: close it, or wait for its closing date). The desk shows the **live count of paid courses not yet verified** (Pending, flagged, or with a pass on record now) before each act. **Open the examinations** and **Release the score sheets** are refused while that count is above zero (`SUMMER_VERIFICATION_PENDING`): decide the courses, or press **Override** and record why the examinations may go ahead (ten characters or more). The override lets that act through while the count has not grown; a payment confirmed after the examinations open still registers its course, appears in the count and in the queue, and refuses the next act again. A warning band shows while the examinations are open. The gate cannot be stepped around on Examination Sessions (§3.3.1): the Summer's examination session keeps its session, semester, type and stream once it has been opened or its sheets released (`SUMMER_EXAM_IDENTITY`).
+5. Examinations, score sheets and results follow the existing chain (§3.3).
+
+A paid, unverified Summer course also holds the student off the graduation queue until it is decided or its result publishes (Graduands and the Senate list, §3.1.7).
+
+> **Screenshot Required:** Summer Semester — `/summer` — the Verification queue with its filter chips, the bulk bar and the Not outstanding dialog with the credit preview.
+
 ### 3.3 Exams and Records
 
 **Dashboard — `/`**: the AcademicDashboard (§3.2). Menu (records): Post-UTME CBT Schedule, Validation Desk, Result Pipeline, College of Health Sciences, Migrate from Old Portal, Broadsheets, Senate Schedule, Publication, Approval Chain, Graduation Records, Deferments (read), Documents Office, Transcripts, Certificates, Records & Queries, Reports.
@@ -885,7 +917,7 @@ Public verification of a slip is at `/verify/putme/{token}` — genuine only for
 
 1. **Create an examination session**: Academic session, Semester (First/Second/Third), Type (Main examination / Re-sit / Special), Examinations begin, Examinations end, Score sheets due. Rules: the examinations end after they begin; the sheets are due after the examinations end; one session per (academic session, semester, type).
 2. **Open the session** (or **Save as a draft** then **Open**): one score sheet is generated per offering of the session and semester **that already has a lecturer**; "N score sheets generated; M courses have no lecturer and generated none." A lecturer allocated later gets a sheet at once while the session is OPEN. For RESIT/SPECIAL a sheet is made only where the MAIN sheet is PUBLISHED.
-3. **Edit** — once sheets exist only the dates change.
+3. **Edit** — once sheets exist only the dates change. The Summer's examination session (semester 3, Main examination, regular stream, of a session with a Summer Semester) cannot have its academic session, semester, type or stream changed once it has been opened or its sheets released, and no other opened or released session can be changed into it (`SUMMER_EXAM_IDENTITY`): the Summer's examination gate (§3.2.8) binds that row.
 4. The **Submission monitor** (by faculty: expected, submitted, verified, past the Board, outstanding) and "The N sheets holding the Faculty of X" (Course, Lecturer, Days late, Escalated to HOD under six days late else Dean) with **Remind**.
 
 > **Note:** **Remind** and **Escalate** (V359) send for real: the reminder to the lecturer of record by email and text, the escalation — once the sheet is past its due date — to the Head of Department (first five days late), then the Dean (a GST or EPS course to its own office), the lecturer told. Each kind at most once a day on a sheet. The screen says who was reached; a person with no email or phone on record is told on their own lists when they sign in. Staff phone numbers and emails come from the person record, else the staff profile — keep them filled.
@@ -994,6 +1026,20 @@ The approval **pays no fees**: the credit stays on the student's wallet until th
 refund. A decision above what is paid (a charge that rose after it) is listed "Decided above the excess" and kept back from refunds; it
 is not paid back automatically. Overpayments are reconciled while the session is the students' current one: a past session is listed
 held. A hand credit of source OVERPAID on Sources & Wallets is refused, and so is a wallet reset over one.
+
+**3.4.15 Summer Semester fees and credits (V735, V739, V751, V779).** Status: IMPLEMENTED. Summer Semester Fees — `/finance/summer-fees` (Finance for the Bursar; School Fees for the Students Account Officer; read: the Academic Office, the Registry and ICT). Full account: `docs/summer-semester.md`.
+
+1. **State the fees** for a session (a programme fee once a student and a fee a course, for every programme or one; ₦50,000 and ₦5,000 are the defaults a statement starts from). A statement starts as a **DRAFT**, which is never charged. The Students Account Officer may state and delete drafts. Only the **Bursar** (or the Super Administrator) **publishes** it, and **withdraws** one with a reason. A published statement is never changed. A charge keeps the figure it was made at. **Until a statement is published no student can select a Summer course** (`SUMMER_FEE_NOT_PUBLISHED`).
+2. **Collections** for each session show the programme fees and the course fees apart. The student sees the charges itemised, with the formula the portal worked out (for example ₦50,000 + 4 × ₦5,000 = ₦70,000).
+3. **Credits.** A Summer credit is money a student has paid and the Summer no longer holds. Two kinds are listed, each with its **source**, the reason, the course and the state of its selection:
+   - **PAYMENT**: a payment confirmed after its course was passed, withdrawn or no longer offered, or a surplus over what was owed (V739 to V743);
+   - **DECISION** (V779): a paid course the Academic Office found **Not outstanding** or **Rejected**, made when the entry was withdrawn: one credit for each cancelled paid charge. **The programme fee** becomes one credit of its own whenever the student's last course goes, by a decision or by any other route (the student takes back an unpaid course, the window closes, the draw or the reconcile takes back a course whose pass is on record): a paid programme fee is never left standing with no course. It is listed with "Programme fee" as its course and **PROGRAMME FEE** as its source, with the note saying which course went last. **The portal never refunds automatically.** The Bursar settles it.
+4. **Settle a credit** on the credits panel:
+   - **Refunded**: at any time, through the existing refund process (the credit records it);
+   - **Applied**: by hand only while another paid charge still stands on the same payment (a part of it), else `SUMMER_CREDIT_MOVE_IT`: a credit that is the **whole** of its payment is applied by **moving the payment** on **Payment Reallocation & Correction**, which settles the credit as applied with the move as its note. Once the last paid charge of a payment has gone and its credit is still open, nothing holds the payment, so the correction may move it;
+   - **Reopen** (with a reason) a credit settled by hand in error, while its payment still stands as the Summer payment. A credit that a reinstatement of the programme fee closed (item 6) is not reopened (`SUMMER_CREDIT_REINSTATED`): its money pays the programme fee again, and the panel shows "Pays the programme fee: not reopened" in place of **Reopen**.
+5. **Applied to the next Summer is accounting, not a discount.** The next Summer's charges are not credit-aware: an applied credit records where the money went and does not by itself reduce the next Summer's fee (V739 and V751 did not either). The portal does not hold a payment that has only an open decision credit left against a correction; the University may ask for that hold after the merge.
+6. **A student who selects a course again** in the same Summer before the Bursar has settled the programme-fee credit has that programme fee put back from the same payment and is not charged twice; the credit is closed as applied ("Reinstated as the programme fee: …") and cannot be reopened. Once the Bursar has settled it, a new programme fee is charged. A programme fee put back this way and cancelled again (the student's last course goes once more) is credited again, as a new open credit. The money is never lost or counted twice: a student's paid Summer charges plus open Summer credits always equal their confirmed Summer payments.
 
 ### 3.5 Internal Audit
 
@@ -1258,6 +1304,8 @@ Academic
    (PENDING), still counting, until the Registrar or the Deputy Registrar confirms or declines it (§3.1.10). Two classes of one
    course both marked are decided on Duplicate Results instead (`RCR_USE_DUPLICATES`).
 5. **Undo** on *Corrections of this student*: cancels a held removal (CANCELLED) or puts an applied one back as it stood (UNDONE).
+
+**A paid Summer Semester course (V779).** It is a counted course like any other, with two differences. Taken off **without a result**, the removal is applied at once and the Summer selection is **flagged `ENTRY_REMOVED`** for the Academic Office, which decides it (Not outstanding or Reject adopts the removal and makes the Summer credit), so a paid course is never dropped silently. An undo of that removal does not clear the flag by itself: the next **Reconcile with results** (on the Summer desk, or the student's own Summer page) finds the entry live again and clears it, and until then the Summer's examination gate counts the course. A removal that a Summer decision made, or adopted, **cannot be undone or cancelled** (`SUMMER_REMOVAL_HELD`). **With a result**, the Academic Office's decision on the paid course is refused (`SUMMER_HAS_RESULT`) until the Director has asked for the removal and the Registry has confirmed it; the Office then records its decision on the withdrawn entry and the selection takes that removal's reference.
    Nothing else puts the course back. A student's save and an old-portal upload are refused (`RCR_REMOVED`, `REMOVED_ON_RECORD`).
 
 A course taken off no longer counts on the transcript, the CGPA, the broadsheet, the GST/EPS fee lists or the result monitor's
@@ -1376,6 +1424,19 @@ Reports & Returns — `/reports?session=`: the **Due register** lists every retu
 ### 4.9 NDPA return
 
 The Registrar dashboard's note that the NDPA Compliance Audit Return is due on 31 March is static text; the portal holds the material for it on `/governance` (the processing register with DPIA states and the DSR log with due dates) and on `/audit`. Complete outstanding DPIAs (**Mark done**), close data-subject requests (**Start** / **Complete**), and export nothing — the governance screen has no export beyond the table's Print button.
+
+### 4.10 The Summer Semester of a session (V779)
+
+| # | Act | Screen | Office | Notes |
+|---|---|---|---|---|
+| 1 | Set the period PLANNED (or OPEN) with its window, examination and results dates, categories, programmes and levels, and a ceiling if wanted | `/summer` → Period and acts | academic / registrar / dregistrar / super | Categories: Final-year, Spillover, Authorised. A programme limit is how the College programmes are kept out |
+| 2 | State and publish the fees | `/finance/summer-fees` | studentaccounts or bursar states; bursar publishes | Nothing can be selected until published |
+| 3 | Identify the eligible (calls of 2,000) | `/summer` → Period and acts | as 1 | Reads every final-year and spillover student; shows the students read, left and eligible ("with results counted" is every student read) |
+| 4 | Tell the eligible, set the period OPEN | `/summer` | as 1 | Tranches repeated until none remains; the mailbox's pace is the limit |
+| 5 | Allocate lecturers to the Summer classes | `/allocate` (semester: Summer) | hod / dean / academic / Registry | As for any class |
+| 6 | Reconcile with results, then verify | `/summer` → Verification | as 1 | Repeat the reconcile after each results upload |
+| 7 | Close the registration; settle the credits of decisions | `/summer`; `/finance/summer-fees` | as 1; bursar | The examinations cannot be opened while the window is open |
+| 8 | Date the examinations, tell the registered, open the examinations, release the sheets | `/summer` → Period and acts | as 1 | Refused while a paid course is unverified, unless an override is recorded |
 
 ---
 
@@ -1528,6 +1589,8 @@ Branded Excel and print exports put **S/N** as the first column, generated at ex
 | Fee schedule | finance | bursar (readers) | faculty, semester, spillover | print window | plain xlsx | `finance.fee_schedule` |
 | Hostel: Occupancy by Hall, Inventory, Bed list, Applications, Bed Board / Occupancy — Students, Clearance, Checkout requests, Transfer requests | hostel | hostel actors and readers | per screen | branded print | yes | `hostel.*` |
 | Hostel allocation letter, clearance certificate | hostel | student (own) | — | server PDF with QR | — | `hostel.allocation`, `clearance` |
+| Summer Semester verification queue, students roster and report (V779) | summer | academic, registrar, dregistrar, hod, dean, bursar, studentaccounts, ict, vc, dvc, super (scope-cut for hod and dean) | session; faculty, department, programme, level (the Summer level), category, state, evidence, payment, registration, search | — | CSV from the server (at most 100,000 rows), recorded on the export log | `registration.summer_queue`, `summer_roster`, `summer_report` |
+| Summer Semester registration confirmation (V779) | summer | student (own) | session | server PDF; QR once registered | — | `registration.summer_confirmation` |
 | Deferments desk list | deferments | desk offices (bound) | session, semester, type, status, faculty, department, programme, search | branded print | yes | `people.deferment` |
 | Deferment approval letter | deferments | student; desk in bound | — | server PDF (QR points to a route that does not exist) | — | — |
 | Matriculation number configuration | matriculation | readers | faculty, search | branded print | yes | `people.matric_config_rows()` |
@@ -1608,6 +1671,30 @@ Unknown username, an ended person, or a wrong password; the fifth failure locks 
 **HOD or Dean sees "not tied to a department / faculty yet".** The grant carries no scope and the person has no lecturer grant or staff record department. `/people` → **Grant an office** with "Which one" filled (end the unscoped grant with a reason).
 
 **A screen shows figures that are wrong by up to a minute.** Student statistics are cached 60 s per scope. Menu badges like "7" or "12" are prototype fixtures and never render; only live `waiting` counts show.
+
+**422 `SUMMER_VERIFICATION_PENDING` when opening the Summer's examinations or releasing its score sheets.**
+"N paid Summer course(s) are not verified yet; a student who sits a course they already passed gets a lower new attempt, and every attempt counts in the CGPA." N is live: Pending, flagged, or with a pass on record now. Remedy: **Reconcile with results**, then decide the selections on Verification (Confirm clears a flag of `EVIDENCE_CHANGED`; Not outstanding or Reject clears `PASSED_ON_RECORD` and `ENTRY_REMOVED`); or **Override** with a reason of ten characters or more. A payment confirmed after an override that adds a course makes the gate refuse again.
+
+**422 `SUMMER_REGISTRATION_OPEN` when opening the Summer's examinations.**
+The registration window is still open (the period OPEN and today between its dates): a payment after the examinations open would put an unverified course on the score sheets. Remedy: set the period CLOSED, or wait for its closing date.
+
+**422 `SUMMER_EXAM_IDENTITY` when editing an examination session.**
+The row is the Summer's examination session (semester 3, Main examination, regular stream, of a session with a Summer) and has been opened or has its sheets released, or the edit would make an opened or released row the Summer's. Its session, semester, type and stream stay as they are, so the Summer's examination gate cannot be stepped around. Remedy: change the dates only; a different sitting is a new examination session.
+
+**422 `SUMMER_CREDIT_REINSTATED` when reopening a Summer credit.**
+The credit was closed because the student selected a course again and its money now pays the reinstated programme fee. Reopening it would count the same payment twice. Remedy: none needed; if the student's courses go again, the programme fee is credited again as a new open credit.
+
+**A Summer decision refused for one student in a batch.**
+The rest of the batch stands. `SUMMER_PASSED_CONFIRM` (a pass is on record: decide Not outstanding or Reject), `SUMMER_ENTRY_REMOVED` (the Director of ICT removed the course), `SUMMER_HAS_RESULT` (a mark is on record: the removal goes through Course Registration Correction, §3.11.10), `SUMMER_DECIDED_PAID` (a paid course already decided is final), `SUMMER_CHARGE_NO_PAYMENT` (the payment is missing from the record: the Bursary checks), `SUMMER_REASON` (ten characters or more).
+
+**A student says there is no Summer Semester in the menu, or no course can be selected.**
+`registration.summer_area` shows it only to a student of an undergraduate regular programme whose status is active and who is in their final year or in spillover (or authorised), in a session that has a Summer; a student whom the engine puts at their final level but whose recorded level is lower is included. No course can be selected before the Bursary has published the fees, after the window closes, or when the programme or level limit of the period excludes the student (`PROGRAMME_NOT_IN_SUMMER`, `LEVEL_NOT_IN_SUMMER`; the level read is the Summer level). The Office may authorise a student for an approved academic reason.
+
+**A paid Summer course is not on the registration.**
+The registration could not take it (for example a course that ended after it was selected). A both-semesters course the student already holds in the First or Second Semester of the session is not a cause: its Summer entry registers. The payment stands, and the course is listed under "Paid, not yet registered": **Retry** after the cause is put right, or decide it (Not outstanding or Reject: the fee becomes a Summer credit).
+
+**The Summer's e-mails are slow to arrive.**
+The 18,588 eligible students of the live-shaped copy migrated to main take two days of e-mail at the mailbox's pace (30 a minute, 10,000 a day; the daily cap binds); the OPEN and CLOSING notices go at low priority so receipts and password resets are not queued behind them (`docs/mail-sending.md`).
 
 ---
 

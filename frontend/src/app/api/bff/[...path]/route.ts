@@ -44,8 +44,9 @@ async function forward(request: NextRequest, path: string[]): Promise<NextRespon
     cache: "no-store",
   });
 
-  // V749: nosniff always, and the API's caching word only when it is no-store (a private photograph); any other is dropped as before
-  const responseHeaders = new Headers(bffResponseHeaders(upstream.headers));
+  // V749: nosniff always, and the API's caching word only when it is no-store (a private photograph); any other is dropped as before.
+  // V779: a download's file name only to a page's own script (it saves the file under it); a link the browser opens never gets it
+  const responseHeaders = new Headers(bffResponseHeaders(upstream.headers, request.headers));
   return new NextResponse(await upstream.arrayBuffer(), { status: upstream.status, headers: responseHeaders });
 }
 

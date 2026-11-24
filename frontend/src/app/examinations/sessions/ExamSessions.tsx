@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
 import type { Scope } from "@/lib/scope";
 import { chaseWords, streamWords, type ExamSession, type Monitor } from "@/lib/results";
+import { summerSittingEdit } from "@/lib/summer";
 import { Btn, LinkBtn, Note, Panel, PBody, Pil, Tiles } from "@/components/proto/ui";
 import { DTable } from "@/components/proto/DTable";
 import { Bar, day, Field, Modal } from "@/components/proto/blocks";
@@ -25,6 +26,10 @@ export function ExamSessions({ sessions, scope, list, monitor, actingOffice }: {
   const [today] = useState(() => Date.now());
   const [edit, setEdit] = useState<ExamSession | null>(null);
   const [ed, setEd] = useState({ session: "", semester: "1", kind: "MAIN", stream: "REGULAR", examsFrom: "", examsTo: "", sheetsDue: "" });
+  // V779: the Summer Semester's examination session keeps its session, semester, type and students while it is open or its score sheets
+  // are released, and an open session is not moved into its place — the Summer's examination gate reads them (SUMMER_EXAM_IDENTITY)
+  const summerEdit = edit ? summerSittingEdit(edit, ed) : null;
+  const placeFixed = !!edit && (edit.sheets > 0 || summerEdit === "summer-fixed");
 
   function openEdit(e: ExamSession) {
     setEdit(e);
@@ -165,18 +170,25 @@ export function ExamSessions({ sessions, scope, list, monitor, actingOffice }: {
         <Modal title="Edit the examination session" sub={`${edit.session} · ${edit.semester === 1 ? "First" : edit.semester === 2 ? "Second" : "Third"} semester · ${edit.kind === "MAIN" ? "Main" : edit.kind === "RESIT" ? "Re-sit" : "Special"} · ${streamWords(edit.stream)}`} onClose={() => setEdit(null)}
           foot={<><Btn kind="ghost" onClick={() => setEdit(null)}>Cancel</Btn><span className="grow" />
             <Btn kind="primary" disabled={busy !== null || !ed.examsFrom || !ed.examsTo || !ed.sheetsDue} onClick={() => void saveDates()}>{busy === "edit" ? "Saving…" : "Save the dates"}</Btn></>}>
-          <Note kind={edit.sheets > 0 ? "info" : "info"} title={edit.sheets > 0 ? "Only the dates can change" : "Session, semester, type and dates can all change"}>
+          <Note kind="info" title={placeFixed ? "Only the dates can change" : "Session, semester, type and dates can all change"}>
             {edit.sheets > 0
               ? `This session already has ${edit.sheets} score sheet${edit.sheets === 1 ? "" : "s"} generated, so its academic session, semester and type are fixed — those score sheets belong to them. You can still move the dates.`
-              : "No score sheet has been generated yet, so you can move it to another academic session, semester or type as well as change the dates."}
+              : summerEdit === "summer-fixed"
+                ? `This is the Summer Semester's examination session and it is ${edit.state === "OPEN" ? "open" : "past the release of its score sheets"}, so its academic session, semester, type and students are fixed: the Summer's examination gate, which holds the examinations while paid Summer courses are unverified, reads them. You can still move the dates.`
+                : "No score sheet has been generated yet, so you can move it to another academic session, semester or type as well as change the dates."}
             {edit.state === "OPEN" && edit.sheets > 0 ? " The generated sheets are not affected by a date change." : ""} Score sheets must be due on or after the examinations end.
           </Note>
+          {summerEdit === "into-summer" ? (
+            <Note kind="bad" title="This would make it the Summer's examination session">
+              The third semester&rsquo;s main, full-time sitting is the Summer Semester&rsquo;s examination session. An open session is not moved into it when {ed.session} has a Summer: the Summer&rsquo;s examinations open from the Summer desk, once its paid courses are verified. Choose another semester, type or students.
+            </Note>
+          ) : null}
           {problem ? <ProblemNotice problem={problem} /> : null}
           <div className="grid grid--3">
-            <Field id="ee-s" label="Academic session"><select id="ee-s" className="ctl" value={ed.session} disabled={edit.sheets > 0} onChange={(e) => setEd({ ...ed, session: e.target.value })}>{sessions.map((s) => <option key={s}>{s}</option>)}</select></Field>
-            <Field id="ee-m" label="Semester"><select id="ee-m" className="ctl" value={ed.semester} disabled={edit.sheets > 0} onChange={(e) => setEd({ ...ed, semester: e.target.value })}><option value="1">First</option><option value="2">Second</option><option value="3">Third</option></select></Field>
-            <Field id="ee-t" label="Type"><select id="ee-t" className="ctl" value={ed.kind} disabled={edit.sheets > 0} onChange={(e) => setEd({ ...ed, kind: e.target.value })}><option value="MAIN">Main examination</option><option value="RESIT">Re-sit</option><option value="SPECIAL">Special</option></select></Field>
-            <Field id="ee-w" label="Students"><select id="ee-w" className="ctl" value={ed.stream} disabled={edit.sheets > 0} onChange={(e) => setEd({ ...ed, stream: e.target.value })}><option value="REGULAR">Full-time</option><option value="CCE">CCE (part-time)</option><option value="PG">Postgraduate</option></select></Field>
+            <Field id="ee-s" label="Academic session"><select id="ee-s" className="ctl" value={ed.session} disabled={placeFixed} onChange={(e) => setEd({ ...ed, session: e.target.value })}>{sessions.map((s) => <option key={s}>{s}</option>)}</select></Field>
+            <Field id="ee-m" label="Semester"><select id="ee-m" className="ctl" value={ed.semester} disabled={placeFixed} onChange={(e) => setEd({ ...ed, semester: e.target.value })}><option value="1">First</option><option value="2">Second</option><option value="3">Third</option></select></Field>
+            <Field id="ee-t" label="Type"><select id="ee-t" className="ctl" value={ed.kind} disabled={placeFixed} onChange={(e) => setEd({ ...ed, kind: e.target.value })}><option value="MAIN">Main examination</option><option value="RESIT">Re-sit</option><option value="SPECIAL">Special</option></select></Field>
+            <Field id="ee-w" label="Students"><select id="ee-w" className="ctl" value={ed.stream} disabled={placeFixed} onChange={(e) => setEd({ ...ed, stream: e.target.value })}><option value="REGULAR">Full-time</option><option value="CCE">CCE (part-time)</option><option value="PG">Postgraduate</option></select></Field>
             <Field id="ee-f" label="Examinations begin"><input id="ee-f" className="ctl" type="date" value={ed.examsFrom} onChange={(e) => setEd({ ...ed, examsFrom: e.target.value })} /></Field>
             <Field id="ee-e" label="Examinations end"><input id="ee-e" className="ctl" type="date" value={ed.examsTo} onChange={(e) => setEd({ ...ed, examsTo: e.target.value })} /></Field>
             <Field id="ee-d" label="Score sheets due"><input id="ee-d" className="ctl" type="date" value={ed.sheetsDue} onChange={(e) => setEd({ ...ed, sheetsDue: e.target.value })} /></Field>

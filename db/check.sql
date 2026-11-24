@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 784
+\set EXPECTED 846
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -33157,7 +33157,7 @@ END $$;
 
 -- ── V735: the Summer Semester. In 9752/9753 (its Summer), a programme of four-year length: A at 400 Level failed ZZS 401 and 403 (first
 --          semester) and ZZS 402 and 404 (second) in 9751/9752 — eligible, final year, four outstanding courses of both semesters; B at 400
---          Level passed all — not eligible; C at 200 Level with a failure — not final or spillover; D at 200 Level authorised by the
+--          Level passed all — eligible all the same (V779: a missing or complete result is no condition; final year is the category); C at 200 Level with a failure — not final or spillover; D at 200 Level authorised by the
 --          Academic Office for ZZS 401. A draft fee charges nothing; published (₦50,000 + ₦5,000 a course), A selects a first- and a
 --          second-semester course: ₦60,000 owed, nothing registered until paid; paid: a Summer registration (semester 3) of both, approved;
 --          a third course later: ₦5,000 only; a fourth selected then taken back closes its reference; the same course twice refused; the
@@ -33296,7 +33296,7 @@ BEGIN
     BEGIN PERFORM registration.summer_reference(a, S); closed := 'drawn';
     EXCEPTION WHEN check_violation THEN closed := split_part(SQLERRM, ':', 1); END;
 
-    msg := 'A ' || eA.eligible || '/' || eA.category || '/' || eA.outstanding || ' B ' || eB.eligible || '/' || eB.reason
+    msg := 'A ' || eA.eligible || '/' || eA.category || '/' || eA.outstanding || ' B ' || eB.eligible || '/' || eB.category || '/' || eB.outstanding
         || ' C ' || eC.eligible || '/' || eC.reason || ' D ' || eD.eligible || '/' || eD.category
         || ' | courses ' || courses || ' | draft ' || draft
         || ' | owed ' || (acct ->> 'due') || ' ref ' || ref1_amt || ' registered before ' || reg_before || ' after ' || coalesce(reg_after, '-')
@@ -33311,7 +33311,7 @@ BEGIN
     IF v_err <> 'the V735 check undoes its writes' THEN RAISE; END IF;
   END;
   PERFORM pg_temp.assert('V735: the Summer Semester — eligibility, outstanding courses of both semesters, the published fees charged once and a course at a time, the registration made by the payment, the regular door shut, the result released by the Summer''s payment and clearing the carry-over, a reference paid only for what is owed while the Summer is open, the examination card issued by the Summer''s payment',
-      coalesce(msg = 'A true/FINAL_YEAR/4 B false/NO_OUTSTANDING_COURSE C false/NOT_FINAL_OR_SPILLOVER D true/AUTHORISED'
+      coalesce(msg = 'A true/FINAL_YEAR/4 B true/FINAL_YEAR/0 C false/NOT_FINAL_OR_SPILLOVER D true/AUTHORISED'
                      || ' | courses ZZS 401/1/9751/9752/yes,ZZS 402/2/9751/9752/yes,ZZS 403/1/9751/9752/yes,ZZS 404/2/9751/9752/yes'
                      || ' | draft SUMMER_FEE_NOT_PUBLISHED'
                      || ' | owed 60000.00 ref 60000.00 registered before 0 after APPROVED/ZZS 401:3:CARRYOVER:APPROVED,ZZS 402:3:CARRYOVER:APPROVED'
@@ -34081,7 +34081,7 @@ BEGIN
     IF v_err <> 'the V742 check undoes its writes' THEN RAISE; END IF;
   END;
   PERFORM pg_temp.assert('V742: a Summer-only spillover student owes no school-fee semester, a reference holding a course passed since is not payable and its payment pays no such course, a Summer credit follows its payment',
-      coalesce(msg = 'A BEYOND_DURATION spill true/{} registered 3 agree true'
+      coalesce(msg = 'A SPILLOVER spill true/{} registered 3 agree true'
                      || ' | payable false/false'
                      || ' | B PROGRAMME:PAID,ZZW 401:CANCELLED,ZZW 402:PAID credit 5000.00 registered ZZW 402'
                      || ' | C PROGRAMME:CANCELLED,ZZW 401:CANCELLED credit 55000.00 registered none'
@@ -45477,6 +45477,1893 @@ BEGIN
     PERFORM pg_temp.assert('V782: the overpaid school fees reading runs with jit = off — each of the 26 functions named is there once and carries it, the six reads that work out a session for the students asked for keep their custom plans',
         coalesce(n_names = cardinality(v_names) AND n_fn = n_names AND n_off = n_fn AND n_leaf = 6 AND n_leaf_kept = 6, false),
         format('names %s of %s | functions %s | jit off %s | leaf reads %s keeping custom plans %s', n_names, cardinality(v_names), n_fn, n_off, n_leaf, n_leaf_kept));
+END $$;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- V779: the Summer Semester open to every final-year and spillover student, the
+-- courses they select verified by the Academic Office. Fifteen blocks, each with its
+-- own made-up calendar (9905/9906 to 9938/9939), programme (C979xx), courses
+-- (ZZV …) and students (ZZSUMMER), each undoing its writes.
+-- ═══════════════════════════════════════════════════════════════════════════
+-- fixtures shared by the V779 properties (temp functions: they live as long as the session)
+-- a result of a student on a class: the offering, the approved registration, the entry, the sheet and the score, published (or not)
+CREATE OR REPLACE FUNCTION pg_temp.v779_result(p_student uuid, p_course text, p_session text, p_semester integer, p_ca integer, p_exam integer,
+                                               p_outcome text DEFAULT 'GRADED', p_publish boolean DEFAULT true, p_registration_status text DEFAULT 'APPROVED') RETURNS void
+LANGUAGE plpgsql AS $$
+DECLARE v_off uuid; v_reg uuid; v_sheet uuid; v_level int;
+BEGIN
+    SELECT o.id INTO v_off FROM catalogue.offering o WHERE o.course_code = p_course AND o.session = p_session AND o.semester = p_semester AND o.stream = 'REGULAR';
+    IF v_off IS NULL THEN
+        v_off := gen_random_uuid();
+        INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (v_off, p_course, p_session, p_semester);
+    END IF;
+    SELECT r.id INTO v_reg FROM registration.course_registration r WHERE r.student_id = p_student AND r.session = p_session AND r.semester = p_semester;
+    IF v_reg IS NULL THEN
+        v_reg := gen_random_uuid();
+        SELECT s.current_level INTO v_level FROM people.student s WHERE s.id = p_student;
+        INSERT INTO registration.course_registration (id, student_id, session, semester, level, status, submitted_at, approved_at)
+        VALUES (v_reg, p_student, p_session, p_semester, v_level, p_registration_status, now(), now());
+    END IF;
+    INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status)
+    VALUES (v_reg, v_off, 3, 'CURRENT', CASE WHEN p_registration_status IN ('APPROVED', 'LOCKED') THEN 'APPROVED' ELSE 'REGISTERED' END) ON CONFLICT DO NOTHING;
+    SELECT sh.id INTO v_sheet FROM assessment.score_sheet sh WHERE sh.offering_id = v_off AND sh.exam_session_id IS NULL;
+    IF v_sheet IS NULL THEN
+        v_sheet := gen_random_uuid();
+        INSERT INTO assessment.score_sheet (id, offering_id) VALUES (v_sheet, v_off);
+    END IF;
+    IF p_outcome = 'GRADED' THEN
+        INSERT INTO assessment.score (sheet_id, student_id, ca, exam) VALUES (v_sheet, p_student, p_ca, p_exam);
+    ELSE
+        INSERT INTO assessment.score (sheet_id, student_id, outcome) VALUES (v_sheet, p_student, p_outcome);
+    END IF;
+    IF p_publish THEN
+        PERFORM set_config('moaum.maintenance', 'on', true);
+        UPDATE assessment.score_sheet SET stage = 'PUBLISHED', published_at = now(), senate_minute = 'CHECK V779' WHERE id = v_sheet AND stage <> 'PUBLISHED';
+        PERFORM set_config('moaum.maintenance', '', true);
+    END IF;
+END $$;
+
+-- one world: a calendar (SP closed, S current), a four-year programme with a structure over every level, its courses, the Summer of S open, the fee published
+CREATE OR REPLACE FUNCTION pg_temp.v779_world(p_sp text, p_s text, p_prog text, p_open boolean DEFAULT true) RETURNS text
+LANGUAGE plpgsql AS $$
+DECLARE dept text; fac text; who uuid := nullif(current_setting('moaum.actor_id', true), '')::uuid;
+BEGIN
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    SELECT p.dept_code, p.faculty_code INTO dept, fac FROM ref.programme p JOIN ref.faculty f ON f.code = p.faculty_code
+     WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND coalesce(f.college_code, '') <> 'CHS' AND p.dept_code IS NOT NULL ORDER BY p.code LIMIT 1;
+    UPDATE policy.academic_session SET state = 'CLOSED', completed_at = now() WHERE state = 'CURRENT';
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES
+        (gen_random_uuid(), p_sp, (substr(p_sp, 1, 4) || '-10-01')::date, (substr(p_s, 1, 4) || '-08-31')::date, 'CLOSED'),
+        (gen_random_uuid(), p_s, (substr(p_s, 1, 4) || '-10-01')::date, (substr(p_s, 6, 4) || '-08-31')::date, 'PLANNED') ON CONFLICT (name) DO NOTHING;
+    UPDATE policy.academic_session SET state = 'CURRENT', made_current_at = now(), senate_minute = 'SEN/' || p_s || '/779' WHERE name = p_s;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years, matric_code)
+    VALUES (p_prog, 'B.Sc. Summer Check 779', dept, fac, 'UNDER GRADUATE', 0, 400, 4, 'ZSX');
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state, both_semesters) VALUES
+        ('ZZV 101', 'Check one-oh-one', 3, 1, 100, dept, 'Core', 'LIVE', false), ('ZZV 102', 'Check one-oh-two', 2, 2, 100, dept, 'Core', 'LIVE', false),
+        ('ZZV 201', 'Check two-oh-one', 3, 1, 200, dept, 'Core', 'LIVE', true),  ('ZZV 202', 'Check two-oh-two', 2, 2, 200, dept, 'Core', 'LIVE', false),
+        ('ZZV 301', 'Check three-oh-one', 3, 1, 300, dept, 'Core', 'LIVE', false), ('ZZV 302', 'Check three-oh-two', 2, 2, 300, dept, 'Elective', 'LIVE', false),
+        ('ZZV 303', 'Check three-oh-three', 2, 2, 300, dept, 'Core', 'LIVE', false),
+        ('ZZV 401', 'Check four-oh-one', 3, 1, 400, dept, 'Core', 'LIVE', false), ('ZZV 402', 'Check four-oh-two', 2, 2, 400, dept, 'Core', 'LIVE', false),
+        ('ZZV 403', 'Check four-oh-three', 2, 2, 400, dept, 'Core', 'LIVE', false),
+        ('ZZV 390', 'Industrial Training check', 3, 2, 300, dept, 'Core', 'LIVE', false),
+        ('ZZV 410', 'Check outside the structure', 3, 1, 400, dept, 'Core', 'LIVE', false);
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES
+        ('ZZV 101', p_prog, 100, 'Core'), ('ZZV 102', p_prog, 100, 'Core'), ('ZZV 201', p_prog, 200, 'Core'), ('ZZV 202', p_prog, 200, 'Core'),
+        ('ZZV 301', p_prog, 300, 'Core'), ('ZZV 302', p_prog, 300, 'Elective'), ('ZZV 303', p_prog, 300, 'Deficiency'),
+        ('ZZV 401', p_prog, 400, 'Core'), ('ZZV 402', p_prog, 400, 'Core'), ('ZZV 403', p_prog, 400, 'Core'), ('ZZV 390', p_prog, 300, 'Core');
+    UPDATE catalogue.course SET state = 'ENDED', ended_on = current_date WHERE code = 'ZZV 403';
+    PERFORM registration.summer_set_period(p_s, CASE WHEN p_open THEN 'OPEN' ELSE 'PLANNED' END, current_date - 1, current_date + 10, current_date + 20, current_date + 25, current_date + 30,
+                                           NULL, NULL, NULL, 'check V779');
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    INSERT INTO finance.summer_fee (id, session, programme_fee, course_fee, effective_from, state, stated_by, stated_office, published_by, published_office, published_at)
+    VALUES (gen_random_uuid(), p_s, 50000, 5000, current_date - 1, 'PUBLISHED', who, 'bursar', who, 'bursar', now());
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    RETURN dept;
+END $$;
+
+-- a student of that programme at a level, the engine's position refreshed; spillover (the engine's state) optional
+CREATE OR REPLACE FUNCTION pg_temp.v779_student(p_tag text, p_prog text, p_entry_session text, p_level integer, p_spill boolean DEFAULT false, p_mode text DEFAULT 'UTME') RETURNS uuid
+LANGUAGE plpgsql AS $$
+DECLARE v uuid := gen_random_uuid();
+BEGIN
+    INSERT INTO people.student (id, admission_no, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at, study_mode)
+    VALUES (v, 'MOAUM/ADM/97/' || p_tag, 'MOAU/ZSX/97/' || p_tag, 'ZZSUMMER', 'Check ' || p_tag, p_prog, p_mode, p_entry_session, 100, p_level, 'ACTIVE', now(),
+            CASE WHEN p_mode = 'CCE' THEN 'PART_TIME' ELSE 'FULL_TIME' END);
+    PERFORM people.refresh_academic_position(v);
+    IF p_spill THEN UPDATE people.academic_position SET spillover_years = 1, spillover_state = 'SPILLOVER_YEAR_1' WHERE student_id = v; END IF;
+    RETURN v;
+END $$;
+-- ── V779 (1): who takes the Summer. In 9906/9907 (its Summer, results of 9905/9906), a four-year programme of ZZV courses: A at 400 Level with no result at all is
+--          a final-year student and eligible; E recorded at 300 whom the engine places at 400 is too; F at 200 is neither final nor spillover; a CCE student,
+--          a postgraduate student, a graduand and a student not studying keep their own reasons; S1 recorded at 100 whom the engine places in spillover is eligible as
+--          SPILLOVER and may select a 400 Level course of the programme; a period limited to 400 Level reads the Summer level (S1 whom the engine has at 400 is
+--          admitted, S3 at 100 is not); {FINAL_YEAR, SPILLOVER, AUTHORISED} admits a spillover student below the final level, {FINAL_YEAR} alone refuses
+--          them CATEGORY_NOT_IN_SUMMER, BEYOND_DURATION alone admits them; the Summer's menu entry reaches the engine-final student and not a CCE or postgraduate one;
+--          eligibility reads no result (neither reader's text names the results or the carry-overs) and the set reader agrees with the one-student reader. ──
+DO $$
+DECLARE
+    SP text := '9905/9906'; S text := '9906/9907'; who uuid := gen_random_uuid(); prog text := 'C97911'; pgprog text; dept text;
+    a uuid; e uuid; f uuid; g uuid; h uuid; i uuid; pg uuid; s1 uuid; s2 uuid; s3 uuid; x1 uuid;
+    m1 text; m2 text; m3 text; m4 text; m5 text; m6 text; m7 text; v_cat text; msg text; v_err text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check V779', true);
+    dept := pg_temp.v779_world(SP, S, prog);
+    SELECT p.code INTO pgprog FROM ref.programme p WHERE p.category = 'POST GRADUATE' AND NOT coalesce(p.archived, false) ORDER BY p.code LIMIT 1;
+    a := pg_temp.v779_student('991101', prog, SP, 400);
+    e := pg_temp.v779_student('991102', prog, SP, 300);
+    UPDATE people.academic_position SET computed_level = 400 WHERE student_id = e;
+    f := pg_temp.v779_student('991103', prog, SP, 200);
+    g := pg_temp.v779_student('991104', prog, SP, 400, false, 'CCE');
+    h := pg_temp.v779_student('991105', prog, SP, 400);
+    INSERT INTO records.graduand (id, student_id, session, cgpa, award, unmet, senate_state, senate_minute) VALUES (gen_random_uuid(), h, S, 3.5, 'B.Sc. CHECK V779', NULL, 'APPROVED', 'SEN/9907/779');
+    i := pg_temp.v779_student('991106', prog, SP, 400);
+    UPDATE people.student SET status = 'SUSPENDED' WHERE id = i;
+    pg := pg_temp.v779_student('991107', pgprog, SP, 100, false, 'POSTGRADUATE');
+    -- spillover students: S1 recorded at 100 (the engine at 400), S2 at the final level, S3 at 100 (the engine at 100)
+    s1 := pg_temp.v779_student('991108', prog, SP, 100, true);
+    UPDATE people.academic_position SET computed_level = 400 WHERE student_id = s1;
+    s2 := pg_temp.v779_student('991109', prog, SP, 400, true);
+    s3 := pg_temp.v779_student('991110', prog, SP, 100, true);
+    UPDATE people.academic_position SET computed_level = 100 WHERE student_id = s3;
+    x1 := pg_temp.v779_student('991111', prog, SP, 200, true);
+    UPDATE people.academic_position SET computed_level = 200 WHERE student_id = x1;
+
+    SELECT string_agg(CASE x.student_id WHEN a THEN 'A' WHEN e THEN 'E' WHEN f THEN 'F' WHEN g THEN 'G' WHEN h THEN 'H' WHEN i THEN 'I' WHEN pg THEN 'PG' END
+                      || ' ' || x.eligible || '/' || coalesce(x.category, '-') || '/' || coalesce(x.reason, '-'), ' ' ORDER BY coalesce(array_position(ARRAY[a, e, f, g, h, i, pg], x.student_id), 9))
+      INTO m1 FROM registration.summer_eligibility_of(S, ARRAY[a, e, f, g, h, i, pg]) x;
+    SELECT string_agg(CASE x.student_id WHEN s1 THEN 'S1' WHEN s2 THEN 'S2' WHEN s3 THEN 'S3' END || ' ' || x.eligible || '/' || coalesce(x.category, '-') || '/' || coalesce(x.reason, '-'),
+                      ' ' ORDER BY array_position(ARRAY[s1, s2, s3], x.student_id))
+      INTO m2 FROM registration.summer_eligibility_of(S, ARRAY[s1, s2, s3]) x;
+    -- S1 may select a 400 Level course of the programme (the pool is never bounded by the level on record)
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM set_config('moaum.actor_id', s1::text, true);
+    m3 := (SELECT x.selectable::text || '/' || x.level FROM registration.summer_selectable(s1, S) x WHERE x.course_code = 'ZZV 401');
+    -- a period limited to 400 Level reads the Summer level
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM registration.summer_set_period(S, 'OPEN', current_date - 1, current_date + 10, current_date + 20, current_date + 25, current_date + 30, NULL, NULL, ARRAY[400], 'check V779');
+    SELECT string_agg(CASE x.student_id WHEN s1 THEN 'S1' WHEN s3 THEN 'S3' END || ' ' || x.eligible || '/' || coalesce(x.reason, '-'), ' ' ORDER BY array_position(ARRAY[s1, s3], x.student_id))
+      INTO m4 FROM registration.summer_eligibility_of(S, ARRAY[s1, s3]) x;
+    -- the period's categories
+    PERFORM registration.summer_set_period(S, 'OPEN', current_date - 1, current_date + 10, current_date + 20, current_date + 25, current_date + 30,
+                                           ARRAY['FINAL_YEAR', 'SPILLOVER', 'AUTHORISED'], NULL, NULL, 'check V779');
+    m5 := (SELECT x.eligible || '/' || x.category FROM registration.summer_eligibility_of(S, ARRAY[x1]) x);
+    PERFORM registration.summer_set_period(S, 'OPEN', current_date - 1, current_date + 10, current_date + 20, current_date + 25, current_date + 30,
+                                           ARRAY['FINAL_YEAR'], NULL, NULL, 'check V779');
+    m5 := m5 || ' | ' || (SELECT x.eligible || '/' || coalesce(x.category, '-') || '/' || coalesce(x.reason, '-') FROM registration.summer_eligibility_of(S, ARRAY[x1]) x);
+    PERFORM registration.summer_set_period(S, 'OPEN', current_date - 1, current_date + 10, current_date + 20, current_date + 25, current_date + 30,
+                                           ARRAY['BEYOND_DURATION'], NULL, NULL, 'check V779');
+    m5 := m5 || ' | ' || (SELECT x.eligible || '/' || x.category FROM registration.summer_eligibility_of(S, ARRAY[x1]) x);
+    -- the menu entry
+    m6 := registration.summer_area(a) || '/' || registration.summer_area(e) || '/' || registration.summer_area(f) || '/' || registration.summer_area(g) || '/' || registration.summer_area(pg);
+    -- the readers agree, and neither names the results
+    m7 := (SELECT string_agg(w.id::text, ',') FROM (SELECT x.id FROM unnest(ARRAY[a, e, f, g, h, i, pg, s1, s2, s3, x1]) x(id)
+              WHERE (SELECT (e1.eligible, e1.category, e1.reason) FROM registration.summer_eligibility(x.id, S) e1)
+                    IS DISTINCT FROM (SELECT (e2.eligible, e2.category, e2.reason) FROM registration.summer_eligibility_of(S, ARRAY[x.id]) e2)) w);
+    v_cat := (SELECT (position('carryover' IN lower(prosrc)) > 0 OR position('student_results' IN prosrc) > 0)::text FROM pg_proc WHERE oid = 'registration.summer_eligibility_of(text,uuid[])'::regprocedure)
+          || '/' || (SELECT (position('carryovers(' IN prosrc) > 0)::text FROM pg_proc WHERE oid = 'registration.summer_identify(text,timestamptz,integer)'::regprocedure)
+          || '/' || (SELECT (position('carryovers(' IN prosrc) > 0)::text FROM pg_proc WHERE oid = 'registration.summer_students(text)'::regprocedure);
+    msg := 'done';
+    RAISE EXCEPTION 'the V779 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V779 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V779: a final-year student with no result at all is eligible, so is one the engine places at the final level though the record says lower, and a student below the final level who is not in spillover is NOT_FINAL_OR_SPILLOVER; CCE, postgraduate, a graduand and a student not studying keep their reasons',
+      coalesce(m1 = 'A true/FINAL_YEAR/- E true/FINAL_YEAR/- F false/-/NOT_FINAL_OR_SPILLOVER G false/-/NOT_UNDERGRADUATE H false/-/GRADUATED I false/-/NOT_STUDYING PG false/-/NOT_UNDERGRADUATE', false), m1);
+  PERFORM pg_temp.assert('V779: a spillover student recorded at 100 Level is eligible as SPILLOVER and may select a 400 Level course of the programme; one at the final level is SPILLOVER; a period limited to 400 Level reads the Summer level, admitting the student the engine has at 400 and refusing the one at 100',
+      coalesce(m2 = 'S1 true/SPILLOVER/- S2 true/SPILLOVER/- S3 true/SPILLOVER/-' AND m3 = 'true/400' AND m4 = 'S1 true/- S3 false/LEVEL_NOT_IN_SUMMER', false), m2 || ' | ' || m3 || ' | ' || m4);
+  PERFORM pg_temp.assert('V779: a period of {FINAL_YEAR, SPILLOVER, AUTHORISED} admits a spillover student below the final level, {FINAL_YEAR} alone refuses them CATEGORY_NOT_IN_SUMMER, and BEYOND_DURATION alone admits them',
+      coalesce(m5 = 'true/SPILLOVER | false/SPILLOVER/CATEGORY_NOT_IN_SUMMER | true/SPILLOVER', false), m5);
+  PERFORM pg_temp.assert('V779: the Summer''s menu entry reaches a student the engine places at the final level though recorded lower, and not a student at 200 Level, a CCE or a postgraduate one',
+      coalesce(m6 = 'true/true/false/false/false', false), m6);
+  PERFORM pg_temp.assert('V779: eligibility reads no result (the set reader names neither the results nor the carry-overs, identify and the desk''s students read no carry-over a student) and the set reader agrees with the one-student reader on every fixture',
+      coalesce(m7 IS NULL AND v_cat = 'false/false/false', false), coalesce(m7, 'agree') || ' | ' || v_cat);
+END $$;
+
+-- ── V779 (2): what a student may select and what it costs. In 9908/9909 (its Summer, results of 9907/9908), a four-year programme: A at 400 Level, whose results are one
+--          failed course of the structure (ZZV 401), one passed (ZZV 402), one failed outside the structure (ZZV 410), a pass of BSU-ZZV 420, the twin of a course of the
+--          structure, and a course awaiting its result this session (ZZV 202) — the pool lists the structure of both semesters and every level to the final one, never an
+--          elective, a deficiency course, an ended or a SIWES course, and a failed course outside the structure; the courses the results settle are not selectable. A
+--          selects a course no result confirms (pending the Academic Office, charged as STUDENT_SELECTED), the failures (confirmed by the results); a code outside the pool,
+--          a passed one, the same twice, 31 in a call, the ceiling and a wrong origin are each refused; ₦50,000 + 3 × ₦5,000 owed and the server's own formula says so; paid,
+--          the entries are CURRENT while pending and CARRYOVER once confirmed; a course added after payment costs its fee alone and the programme fee is never charged twice;
+--          the Bursary's own figures (₦60,000 and ₦4,000) are the next student's. The block undoes its writes. ──
+DO $$
+DECLARE
+    SP text := '9907/9908'; S text := '9908/9909'; who uuid := gen_random_uuid(); prog text := 'C97912'; dept text;
+    a uuid; b uuid; bs uuid; ref1 text; ref2 text; j jsonb; v_err text; msg text;
+    m_pool text; m_sel text; m_refuse text; m_money text; m_after text; m_entries text; m_fee text; m_norm text; m_siwes text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check V779', true);
+    dept := pg_temp.v779_world(SP, S, prog);
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('MOAU-ZZV 420', 'Check twin of four-two-oh', 3, 1, 400, dept, 'Core', 'LIVE'), ('BSU-ZZV 420', 'Check BSU four-two-oh', 3, 1, 400, dept, 'Core', 'LIVE'),
+        ('MOAU-ZZV 421', 'Check twin of four-two-one', 3, 1, 400, dept, 'Core', 'LIVE'), ('BSU-ZZV 421', 'Check BSU four-two-one', 3, 1, 400, dept, 'Core', 'LIVE');
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('MOAU-ZZV 420', prog, 400, 'Core'), ('MOAU-ZZV 421', prog, 400, 'Core');
+    INSERT INTO catalogue.course_twin (bsu_code, moau_code) VALUES ('BSU-ZZV 420', 'MOAU-ZZV 420'), ('BSU-ZZV 421', 'MOAU-ZZV 421');
+    a := pg_temp.v779_student('991201', prog, SP, 400);
+    PERFORM pg_temp.v779_result(a, 'ZZV 401', SP, 1, 10, 15);
+    PERFORM pg_temp.v779_result(a, 'ZZV 402', SP, 2, 25, 40);
+    PERFORM pg_temp.v779_result(a, 'ZZV 410', SP, 1, 10, 15);
+    PERFORM pg_temp.v779_result(a, 'BSU-ZZV 420', SP, 1, 25, 40);
+    PERFORM pg_temp.v779_result(a, 'ZZV 202', S, 1, 10, 10, 'GRADED', false);
+    SELECT string_agg(x.course_code || ' ' || coalesce(x.level::text, '-') || ' ' || x.source || ' ' || x.evidence || ' ' || CASE WHEN x.selectable THEN 'yes' ELSE x.reason END, ', ')
+      INTO m_pool FROM registration.summer_selectable(a, S) x;
+    -- the student selects
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM set_config('moaum.actor_id', a::text, true);
+    m_refuse := '';
+    BEGIN PERFORM registration.summer_select(a, S, ARRAY['ZZV 999']); EXCEPTION WHEN check_violation THEN m_refuse := m_refuse || split_part(SQLERRM, ':', 1) || ','; END;
+    BEGIN PERFORM registration.summer_select(a, S, ARRAY['ZZV 402']); EXCEPTION WHEN check_violation THEN m_refuse := m_refuse || split_part(SQLERRM, ':', 1) || ' ' || split_part(SQLERRM, '(', 2) || ','; END;
+    BEGIN PERFORM registration.summer_select(a, S, ARRAY['MOAU-ZZV 420']); EXCEPTION WHEN check_violation THEN m_refuse := m_refuse || split_part(SQLERRM, ':', 1) || ' ' || split_part(SQLERRM, '(', 2) || ','; END;
+    BEGIN PERFORM registration.summer_select(a, S, ARRAY['ZZV 202']); EXCEPTION WHEN check_violation THEN m_refuse := m_refuse || split_part(SQLERRM, ':', 1) || ' ' || split_part(SQLERRM, '(', 2) || ','; END;
+    BEGIN PERFORM registration.summer_select(a, S, (SELECT array_agg('ZZX ' || n) FROM generate_series(1, 31) n)); EXCEPTION WHEN check_violation THEN m_refuse := m_refuse || split_part(SQLERRM, ':', 1) || ','; END;
+    BEGIN PERFORM registration.summer_select(a, S, ARRAY['ZZV 301'], '[{"course":"ZZV 301","session":"1900/1901","semester":1}]'::jsonb); EXCEPTION WHEN check_violation THEN m_refuse := m_refuse || split_part(SQLERRM, ':', 1) || ','; END;
+    BEGIN PERFORM registration.summer_select(a, S, ARRAY['ZZV 301'], '[{"course":"ZZV 301","session":"9907/9908","semester":3}]'::jsonb); EXCEPTION WHEN check_violation THEN m_refuse := m_refuse || split_part(SQLERRM, ':', 1) || ','; END;
+    -- two spellings of one code are one selection; a first-semester and a second-semester course, one no result confirms and the two failures the results do
+    j := registration.summer_select(a, S, ARRAY['ZZV 301', 'zzv  301', 'ZZV 401', 'ZZV 410'], '[{"course":"ZZV 301","session":"9907/9908","semester":2}]'::jsonb);
+    m_norm := (j ->> 'selected') || ' of ' || (SELECT count(*) FROM registration.summer_selection WHERE student_id = a);
+    BEGIN PERFORM registration.summer_select(a, S, ARRAY['ZZV 301']); EXCEPTION WHEN check_violation THEN m_refuse := m_refuse || split_part(SQLERRM, ':', 1) || ' ' || split_part(SQLERRM, '(', 2) || ','; END;
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM registration.summer_set_ceiling(S, 3, 'a ceiling of three courses for the check');
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM set_config('moaum.actor_id', a::text, true);
+    BEGIN PERFORM registration.summer_select(a, S, ARRAY['ZZV 101']); EXCEPTION WHEN check_violation THEN m_refuse := m_refuse || split_part(SQLERRM, ':', 1) || ','; END;
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM registration.summer_set_ceiling(S, NULL, 'no ceiling again for the check');
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM set_config('moaum.actor_id', a::text, true);
+    SELECT string_agg(x.course_code || ' ' || x.basis || ' ' || x.state || ' ' || coalesce(x.verified_via, '-') || ' ' || coalesce(x.original_session || '/' || x.original_semester || '/' || x.original_source, '-'), ', ' ORDER BY x.course_code)
+      INTO m_sel FROM registration.summer_selection x WHERE x.student_id = a;
+    j := registration.summer_account(a, S);
+    m_money := (j ->> 'due') || ' formula ' || (registration.summer_summary(a, S) -> 'formula' ->> 'total') || ' programme ' || (j ->> 'programmeFeeState');
+    -- a draw twice leaves the self-selected charge; paid, the registration is made
+    ref1 := registration.summer_reference(a, S);
+    ref2 := registration.summer_reference(a, S);
+    m_money := m_money || ' | drawn twice ' || (ref1 = ref2) || ' payable ' || registration.summer_reference_payable(ref1) || ' charges '
+        || (SELECT string_agg(coalesce(course_code, 'PROGRAMME') || ':' || state, ',' ORDER BY course_code NULLS FIRST) FROM registration.summer_charge WHERE student_id = a);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(ref1, 'Bank transfer', 'check V779');
+    m_entries := (SELECT string_agg(o.course_code || ' ' || e.entry_type || ' ' || e.units || ' ' || e.status, ', ' ORDER BY o.course_code)
+                    FROM registration.course_registration cr JOIN registration.entry e ON e.registration_id = cr.id JOIN catalogue.offering o ON o.id = e.offering_id
+                   WHERE cr.student_id = a AND cr.session = S AND cr.semester = 3)
+                 || ' level ' || (SELECT cr.level FROM registration.course_registration cr WHERE cr.student_id = a AND cr.session = S AND cr.semester = 3);
+    -- a course added after payment costs its fee alone; the programme fee is not charged again
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM set_config('moaum.actor_id', a::text, true);
+    j := registration.summer_select(a, S, ARRAY['ZZV 101']);
+    m_after := (j ->> 'due') || ' paid ' || (j ->> 'paid') || ' programme charges '
+        || (SELECT count(*) FROM registration.summer_charge WHERE student_id = a AND kind = 'PROGRAMME' AND state <> 'CANCELLED') || ' formula '
+        || (registration.summer_summary(a, S) -> 'formula' ->> 'total');
+    -- the Bursary's own figures: a statement of the programme's own, ₦60,000 and ₦4,000
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    INSERT INTO finance.summer_fee (id, session, programme_code, programme_fee, course_fee, effective_from, state, stated_by, stated_office, published_by, published_office, published_at)
+    VALUES (gen_random_uuid(), S, prog, 60000, 4000, current_date - 1, 'PUBLISHED', who, 'bursar', who, 'bursar', now());
+    b := pg_temp.v779_student('991202', prog, SP, 400);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM set_config('moaum.actor_id', b::text, true);
+    j := registration.summer_select(b, S, ARRAY['ZZV 101', 'ZZV 201', 'ZZV 301']);
+    m_fee := (j ->> 'due') || ' formula ' || (registration.summer_summary(b, S) -> 'formula' ->> 'total') || ' ' || (registration.summer_summary(b, S) -> 'formula' ->> 'perCourse');
+    -- a SIWES course is on its own page whatever brings it into the pool: a failure the results show and a course the Office named are not offered either
+    bs := pg_temp.v779_student('991203', prog, SP, 400);
+    PERFORM pg_temp.v779_result(bs, 'ZZV 390', SP, 2, 5, 5);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM registration.summer_authorise(S, bs, ARRAY['ZZV 390'], 'The Senate approved a SIWES re-sit before graduation', false);
+    m_siwes := (SELECT x.source || ' ' || x.evidence || ' ' || coalesce(x.reason, 'yes') FROM registration.summer_selectable(bs, S) x WHERE x.course_code = 'ZZV 390');
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM set_config('moaum.actor_id', bs::text, true);
+    BEGIN PERFORM registration.summer_select(bs, S, ARRAY['ZZV 390']); m_siwes := m_siwes || ' | selected';
+    EXCEPTION WHEN check_violation THEN m_siwes := m_siwes || ' | ' || split_part(SQLERRM, ':', 1) || ' ' || split_part(SQLERRM, '(', 2); END;
+    msg := 'done';
+    RAISE EXCEPTION 'the V779 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V779 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V779: with no history a student reads the programme''s structure of both semesters to the final level, never an elective, a deficiency course, an ended or a SIWES course, with a failed course outside the structure; a passed course, one passed through its twin and one awaiting its result are not selectable',
+      coalesce(m_pool || ' | siwes ' || m_siwes = 'ZZV 101 100 STRUCTURE NO_RESULT yes, ZZV 102 100 STRUCTURE NO_RESULT yes, ZZV 201 200 STRUCTURE NO_RESULT yes, ZZV 202 200 STRUCTURE RESULT_AWAITED RESULT_AWAITED, '
+                   || 'ZZV 301 300 STRUCTURE NO_RESULT yes, MOAU-ZZV 420 400 STRUCTURE RESULT_PASSED PASSED, MOAU-ZZV 421 400 STRUCTURE NO_RESULT yes, '
+                   || 'ZZV 401 400 CARRY_OVER RESULT_FAILED yes, ZZV 402 400 STRUCTURE RESULT_PASSED PASSED, ZZV 410 - CARRY_OVER RESULT_FAILED yes '
+                   || '| siwes CARRY_OVER RESULT_FAILED SIWES_OWN_PAGE | SUMMER_COURSE_REFUSED siwes own page)', false),
+      m_pool || ' | siwes ' || m_siwes);
+  PERFORM pg_temp.assert('V779: a course no result confirms is a pending selection charged as STUDENT_SELECTED, a detected failure is confirmed by the results, and the origin the student gives is kept; two spellings of one code are one selection',
+      coalesce(m_sel = 'ZZV 301 STUDENT_SELECTED PENDING_VERIFICATION - 9907/9908/2/STUDENT, ZZV 401 CARRY_OVER CONFIRMED_OUTSTANDING RESULTS 9907/9908/1/RESULTS, '
+                   || 'ZZV 410 CARRY_OVER CONFIRMED_OUTSTANDING RESULTS 9907/9908/1/RESULTS' AND m_norm = '3 of 3', false), m_sel || ' | ' || m_norm);
+  PERFORM pg_temp.assert('V779: a code outside the pool, a passed course, one passed through its twin, one awaiting its result, 31 in a call, a wrong origin, the same course again and a fourth course under a ceiling of three are each refused with their own code',
+      coalesce(m_refuse = 'SUMMER_COURSE_NOT_AVAILABLE,SUMMER_COURSE_REFUSED passed),SUMMER_COURSE_REFUSED passed),SUMMER_COURSE_REFUSED result awaited),SUMMER_TOO_MANY,'
+                   || 'SUMMER_ORIGIN_INVALID,SUMMER_ORIGIN_INVALID,SUMMER_COURSE_REFUSED already selected),SUMMER_CEILING,', false), m_refuse);
+  PERFORM pg_temp.assert('V779: ₦50,000 + 3 × ₦5,000 is owed and the server''s own formula says so; a reference drawn twice leaves the self-selected course payable; paid, the pending course is registered as CURRENT, the confirmed as CARRYOVER at the programme''s units; a course added after payment costs its fee alone and the programme fee is never charged twice; the Bursary''s own figures are the next student''s',
+      coalesce(m_money = '65000.00 formula 65000.00 programme DUE | drawn twice true payable true charges PROGRAMME:DUE,ZZV 301:DUE,ZZV 401:DUE,ZZV 410:DUE'
+                   AND m_entries = 'ZZV 301 CURRENT 3 APPROVED, ZZV 401 CARRYOVER 3 APPROVED, ZZV 410 CARRYOVER 3 APPROVED level 400'
+                   AND m_after = '5000.00 paid 65000.00 programme charges 1 formula 70000.00' AND m_fee = '72000.00 formula 72000.00 4000.00', false),
+        m_money || ' | ' || m_entries || ' | ' || m_after || ' | ' || m_fee);
+END $$;
+
+-- ── V779 (3): a selection stands until a pass or a decision ends it. In 9910/9911 (its Summer, results of 9909/9910): a draw of a reference leaves a self-selected, a
+--          carry-over and an authorised selection owed whatever the pool says of them afterwards (the authorisation revoked, the failure no longer published); a pass
+--          published before payment takes the course back at the draw (the selection reads NOT_OUTSTANDING by the results, V741's NULL return stands), so does a pass of
+--          the course's twin, and a payment confirmed after the pass takes it back and holds its money as a credit; the Summer's own class never counts for or against a
+--          selection; one registration with one entry a course for both semesters, a later payment adding nothing twice; summer_course_outstanding cell by cell. ──
+DO $$
+DECLARE
+    SP text := '9909/9910'; S text := '9910/9911'; who uuid := gen_random_uuid(); prog text := 'C97913'; dept text;
+    c uuid; d uuid; e uuid; h uuid; i uuid; j uuid; k uuid; f uuid; ref1 text; ref2 text; refe text; refh text; refi text; v_err text;
+    m_auth text; m_carry text; m_pass text; m_twin text; m_paid text; m_sat text; m_regs text; m_out text; m_agree text; m_text text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check V779', true);
+    dept := pg_temp.v779_world(SP, S, prog);
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('MOAU-ZZV 421', 'Check twin of four-two-one', 3, 1, 400, dept, 'Core', 'LIVE'), ('BSU-ZZV 421', 'Check BSU four-two-one', 3, 1, 400, dept, 'Core', 'LIVE');
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('MOAU-ZZV 421', prog, 400, 'Core');
+    INSERT INTO catalogue.course_twin (bsu_code, moau_code) VALUES ('BSU-ZZV 421', 'MOAU-ZZV 421');
+
+    -- the authorised selection survives a draw after the authorisation is revoked
+    c := pg_temp.v779_student('991301', prog, SP, 200);
+    PERFORM registration.summer_authorise(S, c, ARRAY['ZZV 410'], 'The Senate approved a deficiency course before graduation', false);
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', c::text, true);
+    PERFORM registration.summer_select(c, S, ARRAY['ZZV 410']);
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM registration.summer_authorise(S, c, NULL, NULL, true);
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', c::text, true);
+    ref1 := registration.summer_reference(c, S);
+    m_auth := (SELECT x.basis || '/' || x.state || '/' || x.verified_via FROM registration.summer_selection x WHERE x.student_id = c)
+           || ' draw ' || (ref1 IS NOT NULL) || ' payable ' || registration.summer_reference_payable(ref1) || ' ' || (SELECT string_agg(coalesce(course_code, 'PROGRAMME') || ':' || state, ',' ORDER BY course_code NULLS FIRST) FROM registration.summer_charge WHERE student_id = c);
+
+    -- the carry-over survives a draw after its failure is no longer published
+    d := pg_temp.v779_student('991302', prog, SP, 400);
+    PERFORM pg_temp.v779_result(d, 'ZZV 401', SP, 1, 10, 15);
+    PERFORM set_config('moaum.actor_id', d::text, true);
+    PERFORM registration.summer_select(d, S, ARRAY['ZZV 401']);
+    PERFORM set_config('moaum.maintenance', 'on', true);
+    UPDATE assessment.score_sheet sh SET stage = 'ENTRY', published_at = NULL, senate_minute = NULL FROM catalogue.offering o WHERE o.id = sh.offering_id AND o.course_code = 'ZZV 401' AND o.session = SP;
+    PERFORM set_config('moaum.maintenance', '', true);
+    ref2 := registration.summer_reference(d, S);
+    m_carry := (SELECT x.basis || '/' || x.state || '/' || x.verified_via FROM registration.summer_selection x WHERE x.student_id = d)
+            || ' draw ' || (ref2 IS NOT NULL) || ' ' || (SELECT string_agg(coalesce(course_code, 'PROGRAMME') || ':' || state, ',' ORDER BY course_code NULLS FIRST) FROM registration.summer_charge WHERE student_id = d);
+
+    -- a pass published before payment: taken back at the draw, nothing left to pay
+    e := pg_temp.v779_student('991303', prog, SP, 400);
+    PERFORM set_config('moaum.actor_id', e::text, true);
+    PERFORM registration.summer_select(e, S, ARRAY['ZZV 301']);
+    PERFORM pg_temp.v779_result(e, 'ZZV 301', SP, 1, 30, 40);
+    refe := registration.summer_reference(e, S);
+    m_pass := coalesce(refe, 'NULL') || ' ' || (SELECT x.state || '/' || x.verified_via || '/' || x.decision_reason FROM registration.summer_selection x WHERE x.student_id = e)
+           || ' ' || (SELECT string_agg(coalesce(course_code, 'PROGRAMME') || ':' || state, ',' ORDER BY course_code NULLS FIRST) FROM registration.summer_charge WHERE student_id = e)
+           || ' ' || (SELECT string_agg(v.action || '/' || v.via || '/' || v.money_effect, ',' ORDER BY v.at) FROM registration.summer_selection_review v JOIN registration.summer_selection x ON x.id = v.selection_id WHERE x.student_id = e)
+           ;
+    BEGIN PERFORM registration.summer_reference(e, S); m_pass := m_pass || ' again drawn';
+    EXCEPTION WHEN check_violation THEN m_pass := m_pass || ' again ' || split_part(SQLERRM, ':', 1); END;
+
+    -- the pass of the course's twin: taken back at the draw (h), and a payment made after the pass takes it back and holds the money (i)
+    h := pg_temp.v779_student('991304', prog, SP, 400);
+    PERFORM set_config('moaum.actor_id', h::text, true);
+    PERFORM registration.summer_select(h, S, ARRAY['MOAU-ZZV 421']);
+    i := pg_temp.v779_student('991305', prog, SP, 400);
+    PERFORM set_config('moaum.actor_id', i::text, true);
+    PERFORM registration.summer_select(i, S, ARRAY['MOAU-ZZV 421', 'ZZV 301']);
+    refi := registration.summer_reference(i, S);
+    PERFORM pg_temp.v779_result(h, 'BSU-ZZV 421', SP, 1, 30, 40);
+    PERFORM pg_temp.v779_result(i, 'BSU-ZZV 421', SP, 1, 30, 40);
+    PERFORM set_config('moaum.actor_id', h::text, true);
+    refh := registration.summer_reference(h, S);
+    m_twin := coalesce(refh, 'NULL') || ' ' || (SELECT x.state || '/' || x.verified_via FROM registration.summer_selection x WHERE x.student_id = h)
+           || ' | payable ' || registration.summer_reference_payable(refi);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(refi, 'Bank transfer', 'check V779 twin');
+    m_paid := (SELECT string_agg(coalesce(course_code, 'PROGRAMME') || ':' || state, ',' ORDER BY course_code NULLS FIRST) FROM registration.summer_charge WHERE student_id = i)
+           || ' credit ' || coalesce((SELECT string_agg(x.source || '/' || x.amount || '/' || x.state, ',') FROM registration.summer_credit x WHERE x.student_id = i), '-')
+           || ' registered ' || coalesce((SELECT string_agg(o.course_code, ',' ORDER BY o.course_code) FROM registration.course_registration cr JOIN registration.entry en ON en.registration_id = cr.id JOIN catalogue.offering o ON o.id = en.offering_id WHERE cr.student_id = i AND cr.semester = 3), '-');
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', i::text, true);
+    m_paid := m_paid || ' | before ' || (SELECT x.state || '/' || coalesce(x.verified_via, '-') FROM registration.summer_selection x WHERE x.student_id = i AND x.course_code = 'MOAU-ZZV 421');
+    m_paid := m_paid || ' reconcile ' || (registration.summer_reconcile_student(i, S) ->> 'changed');
+    m_paid := m_paid || ' now ' || (SELECT x.state || '/' || x.verified_via || '/' || (SELECT string_agg(v.money_effect, ',') FROM registration.summer_selection_review v WHERE v.selection_id = x.id AND v.action = 'NOT_OUTSTANDING')
+                                      FROM registration.summer_selection x WHERE x.student_id = i AND x.course_code = 'MOAU-ZZV 421');
+    m_paid := m_paid || ' again ' || (registration.summer_reconcile_student(i, S) ->> 'changed');
+
+    -- the Summer's own class: a pass of the selection's own Summer changes nothing for it
+    j := pg_temp.v779_student('991306', prog, SP, 400);
+    PERFORM set_config('moaum.actor_id', j::text, true);
+    PERFORM registration.summer_select(j, S, ARRAY['ZZV 301']);
+    PERFORM pg_temp.v779_result(j, 'ZZV 301', S, 3, 30, 40);
+    m_sat := registration.summer_passed(j, 'ZZV 301', S)::text || ' evidence '
+          || coalesce((SELECT string_agg(x.evidence, ',') FROM registration.summer_evidence(S, ARRAY[j]) x), 'skipped') || ' reconcile ' || (registration.summer_reconcile_student(j, S) ->> 'changed')
+          || ' ' || (SELECT x.state FROM registration.summer_selection x WHERE x.student_id = j) || ' the next Summer would read it passed '
+          || registration.summer_passed(j, 'ZZV 301', '9911/9912');
+
+    -- both semesters, one registration, one entry a course, a later payment adding nothing twice
+    k := pg_temp.v779_student('991307', prog, SP, 400);
+    PERFORM set_config('moaum.actor_id', k::text, true);
+    PERFORM registration.summer_select(k, S, ARRAY['ZZV 301', 'ZZV 402', 'ZZV 201']);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(registration.summer_reference(k, S), 'Bank transfer', 'check V779 k');
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM registration.summer_select(k, S, ARRAY['ZZV 101']);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(registration.summer_reference(k, S), 'Bank transfer', 'check V779 k2');
+    PERFORM registration.summer_materialize(k, S); PERFORM registration.summer_materialize(k, S);
+    m_regs := (SELECT count(*) FROM registration.course_registration WHERE student_id = k AND session = S AND semester = 3) || ' registration, '
+           || (SELECT string_agg(o.course_code || ':' || o.semester, ',' ORDER BY o.course_code) FROM registration.course_registration cr JOIN registration.entry en ON en.registration_id = cr.id JOIN catalogue.offering o ON o.id = en.offering_id WHERE cr.student_id = k AND cr.semester = 3)
+           || ' paid ' || (SELECT sum(amount) FROM registration.summer_charge WHERE student_id = k AND state = 'PAID') || ' programme charges ' || (SELECT count(*) FROM registration.summer_charge WHERE student_id = k AND kind = 'PROGRAMME');
+
+    -- summer_course_outstanding, cell by cell: decided against false, passed false, pending true, a carry-over true, an authorised one true, an ended one not passed true; the pool alone
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    f := pg_temp.v779_student('991308', prog, SP, 400);
+    PERFORM pg_temp.v779_result(f, 'ZZV 401', SP, 1, 30, 40);     -- passed (with a selection on it)
+    PERFORM pg_temp.v779_result(f, 'ZZV 402', SP, 2, 10, 15);     -- failed, in the pool, no selection
+    PERFORM pg_temp.v779_result(f, 'ZZV 301', SP, 1, 30, 40);     -- passed, in the pool, no selection
+    INSERT INTO registration.summer_selection (student_id, session, course_code, basis, state, verified_via, decision_reason, units, decided_by, decided_office, decided_at) VALUES
+        (f, S, 'ZZV 101', 'STUDENT_SELECTED', 'NOT_OUTSTANDING', 'OFFICER', 'The student passed it on the old portal', 3, who, 'academic', now()),
+        (f, S, 'ZZV 102', 'STUDENT_SELECTED', 'REJECTED', 'OFFICER', 'The course is not in the programme of study', 2, who, 'academic', now());
+    INSERT INTO registration.summer_selection (student_id, session, course_code, basis, state, units) VALUES (f, S, 'ZZV 201', 'STUDENT_SELECTED', 'PENDING_VERIFICATION', 3), (f, S, 'ZZV 403', 'STUDENT_SELECTED', 'PENDING_VERIFICATION', 2);
+    INSERT INTO registration.summer_selection (student_id, session, course_code, basis, state, verified_via, units) VALUES
+        (f, S, 'ZZV 202', 'CARRY_OVER', 'CONFIRMED_OUTSTANDING', 'RESULTS', 2), (f, S, 'ZZV 410', 'AUTHORISED', 'CONFIRMED_OUTSTANDING', 'AUTHORISATION', 3), (f, S, 'ZZV 401', 'STUDENT_SELECTED', 'CONFIRMED_OUTSTANDING', 'OFFICER', 3);
+    m_out := (SELECT string_agg(x.code || '=' || registration.summer_course_outstanding(f, S, x.code), ' ' ORDER BY x.code)
+                FROM unnest(ARRAY['ZZV 101', 'ZZV 102', 'ZZV 201', 'ZZV 202', 'ZZV 301', 'ZZV 401', 'ZZV 402', 'ZZV 403', 'ZZV 410']) x(code));
+    m_text := (SELECT (position('summer_selection' IN prosrc) > 0 AND position('PENDING_VERIFICATION' IN prosrc) > 0 AND position('summer_passed' IN prosrc) > 0)::text FROM pg_proc WHERE oid = 'registration.summer_course_outstanding(uuid,text,text)'::regprocedure);
+    -- the predicate of passed and the set reader agree (the course or its live twin; the Summer's own class never)
+    m_agree := (SELECT string_agg(z.code || '/' || z.who, ',') FROM (
+                  SELECT x.code, x.who FROM (VALUES ('ZZV 301', 'e'), ('MOAU-ZZV 421', 'h'), ('MOAU-ZZV 421', 'f'), ('ZZV 401', 'f'), ('ZZV 402', 'f'), ('ZZV 301', 'j')) x(code, who)
+                   WHERE registration.summer_passed(CASE x.who WHEN 'e' THEN e WHEN 'h' THEN h WHEN 'f' THEN f WHEN 'j' THEN j END, x.code, S)
+                         IS DISTINCT FROM coalesce((SELECT bool_or(r.passes > 0) FROM registration.summer_results_of(S, ARRAY[CASE x.who WHEN 'e' THEN e WHEN 'h' THEN h WHEN 'f' THEN f WHEN 'j' THEN j END]) r
+                                                     WHERE r.course_code = x.code OR r.course_code IN (SELECT CASE WHEN t.bsu_code = x.code THEN t.moau_code ELSE t.bsu_code END FROM catalogue.course_twin t WHERE t.unlinked_at IS NULL AND x.code IN (t.bsu_code, t.moau_code))), false)) z);
+    RAISE EXCEPTION 'the V779 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V779 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V779: a draw of a reference leaves an authorised selection owed after its authorisation is revoked and a carry-over owed after its failure is no longer published: an undecided selection stands whatever its basis',
+      coalesce(m_auth = 'AUTHORISED/CONFIRMED_OUTSTANDING/AUTHORISATION draw true payable true PROGRAMME:DUE,ZZV 410:DUE'
+                   AND m_carry = 'CARRY_OVER/CONFIRMED_OUTSTANDING/RESULTS draw true PROGRAMME:DUE,ZZV 401:DUE', false), m_auth || ' | ' || m_carry);
+  PERFORM pg_temp.assert('V779: a pass published before payment takes a self-selected course back at the draw (NOT_OUTSTANDING by the results, one row of history, V741''s NULL return, nothing owed), and the same for the pass of its twin; a payment confirmed after the pass takes it back, holds its money as a credit and registers nothing, and the next reconcile closes its selection with no money to move',
+      coalesce(m_pass = 'NULL NOT_OUTSTANDING/RESULTS/A pass is on record: 9909/9910 first semester PROGRAMME:CANCELLED,ZZV 301:CANCELLED NOT_OUTSTANDING/RESULTS/CHARGE_CANCELLED again SUMMER_NOTHING_DUE'
+                   AND m_twin = 'NULL NOT_OUTSTANDING/RESULTS | payable false'
+                   AND m_paid = 'PROGRAMME:PAID,MOAU-ZZV 421:CANCELLED,ZZV 301:PAID credit PAYMENT/5000.00/OPEN registered ZZV 301 | before PENDING_VERIFICATION/- reconcile 1 now NOT_OUTSTANDING/RESULTS/NONE again 0', false),
+        m_pass || ' | ' || m_twin || ' | ' || m_paid);
+  PERFORM pg_temp.assert('V779: one predicate of passed serves the selection, the draw, the payment and the evidence, and equals the set reader''s on every fixture; a result of the selection''s own Summer class is neither evidence for nor against it and changes nothing',
+      coalesce(m_agree IS NULL AND m_sat = 'false evidence skipped reconcile 0 PENDING_VERIFICATION the next Summer would read it passed true', false), coalesce(m_agree, 'agree') || ' | ' || m_sat);
+  PERFORM pg_temp.assert('V779: both semesters in one Summer are one registration with one entry a course, and a later payment adds nothing twice',
+      coalesce(m_regs = '1 registration, ZZV 101:3,ZZV 201:3,ZZV 301:3,ZZV 402:3 paid 70000.00 programme charges 1', false), m_regs);
+  PERFORM pg_temp.assert('V779: summer_course_outstanding reads false for a decided selection and a passed course, true for a pending selection, a carry-over, an authorised course, an ended course not passed and a course in the pool alone',
+      coalesce(m_out = 'ZZV 101=false ZZV 102=false ZZV 201=true ZZV 202=true ZZV 301=false ZZV 401=false ZZV 402=true ZZV 403=true ZZV 410=true' AND m_text = 'true', false), m_out || ' | ' || m_text);
+END $$;
+
+-- ── V779 (4): the Academic Office verifies. In 9912/9913 (its Summer, results of 9911/9912): a bursar is refused, a reason of nine characters, an unknown decision and
+--          201 ids are refused; from each of the four states each of the four decisions does what the table says (CONFIRM, NOT_OUTSTANDING, REJECT, REOPEN), a decision
+--          already made is idempotent (nothing written, no second row of history, no second notice); one notice a student for a batch, however many courses; a bulk of
+--          three with a refusal returns it and applies the rest; a confirmation of a course with a pass on record is refused, a flag EVIDENCE_CHANGED is cleared by
+--          CONFIRM and ENTRY_REMOVED accepts only NOT_OUTSTANDING and REJECT; a decided unpaid course is never charged and cannot be selected again. ──
+DO $$
+DECLARE
+    SP text := '9911/9912'; S text := '9912/9913'; who uuid := gen_random_uuid(); prog text := 'C97914'; dept text;
+    u uuid; w uuid; sel uuid; sel2 uuid; sel3 uuid; j jsonb; v_err text; st text; dc text; init text; cell text; v_rows int; v_notes int; v_hist int;
+    m_offices text; m_cells text := ''; m_idem text; m_bulk text; m_flags text; m_decided text; m_batch text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check V779', true);
+    dept := pg_temp.v779_world(SP, S, prog);
+    u := pg_temp.v779_student('991401', prog, SP, 400);
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', u::text, true);
+    PERFORM registration.summer_select(u, S, ARRAY['ZZV 101']);
+    SELECT id INTO sel FROM registration.summer_selection WHERE student_id = u AND course_code = 'ZZV 101';
+    PERFORM set_config('moaum.actor_office', 'bursar', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    m_offices := '';
+    BEGIN PERFORM registration.summer_verify(ARRAY[sel], 'CONFIRM', NULL, NULL); m_offices := m_offices || 'bursar allowed,'; EXCEPTION WHEN insufficient_privilege THEN m_offices := m_offices || split_part(SQLERRM, ':', 1) || ','; END;
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    BEGIN PERFORM registration.summer_verify(ARRAY[sel], 'REJECT', 'too short', NULL); m_offices := m_offices || 'short allowed,'; EXCEPTION WHEN check_violation THEN m_offices := m_offices || split_part(SQLERRM, ':', 1) || ','; END;
+    BEGIN PERFORM registration.summer_verify(ARRAY[sel], 'APPROVE', NULL, NULL); m_offices := m_offices || 'approve allowed,'; EXCEPTION WHEN check_violation THEN m_offices := m_offices || split_part(SQLERRM, ':', 1) || ','; END;
+    BEGIN PERFORM registration.summer_verify((SELECT array_agg(gen_random_uuid()) FROM generate_series(1, 201)), 'CONFIRM', NULL, NULL); m_offices := m_offices || '201 allowed,'; EXCEPTION WHEN check_violation THEN m_offices := m_offices || split_part(SQLERRM, ':', 1) || ','; END;
+    j := registration.summer_verify(ARRAY[gen_random_uuid()], 'CONFIRM', NULL, NULL);
+    m_offices := m_offices || 'unknown id refused ' || (j -> 'refused' -> 0 ->> 'code');
+    -- every cell of the table, on one unpaid selection put in each starting state
+    FOREACH init IN ARRAY ARRAY['PENDING_VERIFICATION', 'CONFIRMED_OUTSTANDING', 'NOT_OUTSTANDING', 'REJECTED'] LOOP
+        FOREACH dc IN ARRAY ARRAY['CONFIRM', 'NOT_OUTSTANDING', 'REJECT', 'REOPEN'] LOOP
+            UPDATE registration.summer_selection SET state = init, verified_via = CASE init WHEN 'PENDING_VERIFICATION' THEN NULL WHEN 'REJECTED' THEN 'OFFICER' ELSE 'OFFICER' END,
+                   decision_reason = CASE WHEN init IN ('NOT_OUTSTANDING', 'REJECTED') THEN 'a reason of ten characters at least' END,
+                   needs_review = false, review_flag = NULL, removal_ref = NULL WHERE id = sel;
+            j := registration.summer_verify(ARRAY[sel], dc, 'The Academic Office found it so', NULL);
+            SELECT x.state INTO st FROM registration.summer_selection x WHERE x.id = sel;
+            m_cells := m_cells || substr(init, 1, 4) || ':' || substr(dc, 1, 4) || '=' || substr(st, 1, 4) || '/' || (j ->> 'decided') || (j ->> 'unchanged') || ' ';
+        END LOOP;
+    END LOOP;
+    -- idempotence: the same decision again writes nothing, tells nobody twice
+    UPDATE registration.summer_selection SET state = 'PENDING_VERIFICATION', verified_via = NULL, decision_reason = NULL WHERE id = sel;
+    PERFORM registration.summer_verify(ARRAY[sel], 'REJECT', 'The Academic Office found it so', NULL);
+    SELECT count(*) INTO v_hist FROM registration.summer_selection_review WHERE selection_id = sel AND action = 'REJECTED';
+    SELECT count(*) INTO v_notes FROM platform.notice WHERE about_id = u AND template_key = 'SUMMER_COURSE_REVIEWED';
+    j := registration.summer_verify(ARRAY[sel], 'REJECT', 'The Academic Office found it so', NULL);
+    m_idem := 'second call decided ' || (j ->> 'decided') || ' unchanged ' || (j ->> 'unchanged') || ' | history rows ' || v_hist || ' then '
+           || (SELECT count(*) FROM registration.summer_selection_review WHERE selection_id = sel AND action = 'REJECTED') || ' | notices ' || v_notes || ' then '
+           || (SELECT count(*) FROM platform.notice WHERE about_id = u AND template_key = 'SUMMER_COURSE_REVIEWED')
+           || ' | reason shown ' || (SELECT x.decision_reason FROM registration.summer_selection x WHERE x.id = sel);
+    -- a decided unpaid course is not charged and cannot be selected again
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', u::text, true);
+    m_decided := (SELECT count(*) FROM registration.summer_charge WHERE student_id = u AND state <> 'CANCELLED') || ' charges live ';
+    BEGIN PERFORM registration.summer_select(u, S, ARRAY['ZZV 101']); m_decided := m_decided || 'selected again'; EXCEPTION WHEN check_violation THEN m_decided := m_decided || split_part(SQLERRM, ':', 1) || ' ' || split_part(SQLERRM, '(', 2); END;
+    m_decided := m_decided || ' | page ' || (SELECT x.status || '/' || x.verification || '/' || x.reason || '/' || x.decision_reason FROM registration.summer_selectable(u, S) x WHERE x.course_code = 'ZZV 101');
+    -- three at once, a pass on record among them: the refusal is returned and the rest applied; a batch tells a student once
+    w := pg_temp.v779_student('991402', prog, SP, 400);
+    PERFORM set_config('moaum.actor_id', w::text, true);
+    PERFORM registration.summer_select(w, S, ARRAY['ZZV 102', 'ZZV 201', 'ZZV 301']);
+    PERFORM pg_temp.v779_result(w, 'ZZV 301', SP, 1, 30, 40);
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    j := registration.summer_verify(ARRAY(SELECT x.id FROM registration.summer_selection x WHERE x.student_id = w), 'CONFIRM', NULL, NULL);
+    m_bulk := (j ->> 'decided') || ' decided, refused ' || (j -> 'refused' -> 0 ->> 'code') || ' of ' || (SELECT x.course_code FROM registration.summer_selection x WHERE x.id = ((j -> 'refused' -> 0 ->> 'id')::uuid))
+           || ' | states ' || (SELECT string_agg(x.course_code || '=' || substr(x.state, 1, 4), ',' ORDER BY x.course_code) FROM registration.summer_selection x WHERE x.student_id = w);
+    j := registration.summer_verify(ARRAY(SELECT x.id FROM registration.summer_selection x WHERE x.student_id = w AND x.course_code <> 'ZZV 301'), 'NOT_OUTSTANDING', 'These two are not owed by the student', NULL);
+    m_batch := (SELECT count(*) FROM platform.notice x WHERE x.about_id = w AND x.template_key = 'SUMMER_COURSE_REVIEWED' AND x.channel = 'PORTAL' AND x.event_key LIKE '%' || (j ->> 'batch'))
+            || ' notice for ' || (j ->> 'decided') || ' courses, of '
+            || (SELECT array_length(string_to_array(x.body, E'\n'), 1) FROM platform.notice x WHERE x.about_id = w AND x.template_key = 'SUMMER_COURSE_REVIEWED' AND x.channel = 'PORTAL' AND x.event_key LIKE '%' || (j ->> 'batch') LIMIT 1) || ' lines';
+    -- flags: EVIDENCE_CHANGED is cleared by CONFIRM; ENTRY_REMOVED accepts only NOT_OUTSTANDING and REJECT
+    SELECT id INTO sel2 FROM registration.summer_selection WHERE student_id = w AND course_code = 'ZZV 301';
+    UPDATE registration.summer_selection SET state = 'CONFIRMED_OUTSTANDING', verified_via = 'RESULTS' WHERE id = sel2;
+    SELECT id INTO sel3 FROM registration.summer_selection WHERE student_id = w AND course_code = 'ZZV 102';
+    UPDATE registration.summer_selection SET state = 'CONFIRMED_OUTSTANDING', verified_via = 'RESULTS', decision_reason = NULL WHERE id = sel3;
+    UPDATE registration.summer_selection SET needs_review = true, review_flag = 'EVIDENCE_CHANGED' WHERE id = sel3;
+    j := registration.summer_verify(ARRAY[sel3], 'CONFIRM', NULL, NULL);
+    m_flags := 'EVIDENCE_CHANGED then CONFIRM: decided ' || (j ->> 'decided') || ' flag ' || coalesce((SELECT review_flag FROM registration.summer_selection WHERE id = sel3), 'none')
+            || ' history ' || (SELECT string_agg(action, ',' ORDER BY at) FROM registration.summer_selection_review WHERE selection_id = sel3 AND action IN ('FLAG_CLEARED'));
+    UPDATE registration.summer_selection SET needs_review = true, review_flag = 'ENTRY_REMOVED' WHERE id = sel3;
+    j := registration.summer_verify(ARRAY[sel3], 'CONFIRM', NULL, NULL);
+    m_flags := m_flags || ' | ENTRY_REMOVED then CONFIRM: ' || (j -> 'refused' -> 0 ->> 'code');
+    j := registration.summer_verify(ARRAY[sel3], 'REOPEN', NULL, NULL);
+    m_flags := m_flags || ', REOPEN: ' || (j -> 'refused' -> 0 ->> 'code');
+    j := registration.summer_verify(ARRAY[sel3], 'REJECT', 'The course was taken off by the Director of ICT', NULL);
+    m_flags := m_flags || ', REJECT decided ' || (j ->> 'decided') || ' state ' || (SELECT state FROM registration.summer_selection WHERE id = sel3);
+    RAISE EXCEPTION 'the V779 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V779 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V779: only the Academic Office or the Registry decides; a reason of nine characters, an unknown decision, 201 ids at once and an unknown id are each refused with their code',
+      coalesce(m_offices = 'SUMMER_OFFICE,SUMMER_REASON,SUMMER_DECISION,SUMMER_BATCH_TOO_BIG,unknown id refused SUMMER_SELECTION_UNKNOWN', false), m_offices);
+  PERFORM pg_temp.assert('V779: each decision from each state does what the table says, cell by cell (a decision already the state is unchanged, nothing written)',
+      coalesce(m_cells = 'PEND:CONF=CONF/10 PEND:NOT_=NOT_/10 PEND:REJE=REJE/10 PEND:REOP=PEND/01 CONF:CONF=CONF/01 CONF:NOT_=NOT_/10 CONF:REJE=REJE/10 CONF:REOP=PEND/10 '
+                    || 'NOT_:CONF=CONF/10 NOT_:NOT_=NOT_/01 NOT_:REJE=REJE/10 NOT_:REOP=PEND/10 REJE:CONF=CONF/10 REJE:NOT_=NOT_/10 REJE:REJE=REJE/01 REJE:REOP=PEND/10 ', false), m_cells);
+  PERFORM pg_temp.assert('V779: a decision made again is idempotent — nothing decided, no second row of history, no second notice — and the student reads the reason in the Office''s words',
+      coalesce(m_idem = 'second call decided 0 unchanged 1 | history rows 4 then 4 | notices 10 then 10 | reason shown The Academic Office found it so', false), m_idem);
+  PERFORM pg_temp.assert('V779: a decided unpaid course is never charged, is not selected again (DECIDED_REJECTED) and stays on the student''s page with its reason',
+      coalesce(m_decided = '0 charges live SUMMER_COURSE_REFUSED decided rejected) | page OUTSTANDING/REJECTED/DECIDED_REJECTED/The Academic Office found it so', false), m_decided);
+  PERFORM pg_temp.assert('V779: in a bulk of three one with a pass on record is refused and returned, the rest applied; a batch tells a student once, however many courses',
+      coalesce(m_bulk = '2 decided, refused SUMMER_PASSED_CONFIRM of ZZV 301 | states ZZV 102=CONF,ZZV 201=CONF,ZZV 301=PEND' AND m_batch = '1 notice for 2 courses, of 2 lines', false), m_bulk || ' | ' || m_batch);
+  PERFORM pg_temp.assert('V779: a flag EVIDENCE_CHANGED is cleared by CONFIRM; a selection flagged ENTRY_REMOVED accepts only NOT_OUTSTANDING and REJECT',
+      coalesce(m_flags = 'EVIDENCE_CHANGED then CONFIRM: decided 1 flag none history FLAG_CLEARED | ENTRY_REMOVED then CONFIRM: SUMMER_ENTRY_REMOVED, REOPEN: SUMMER_ENTRY_REMOVED, REJECT decided 1 state REJECTED', false), m_flags);
+END $$;
+
+-- ── V779 (5): the money of a decision. In 9914/9915 (its Summer): Q paid two pending courses and the Academic Office finds one not outstanding — its entry is withdrawn by the
+--          removal route (RCR-…), its charge cancelled with no payment left on it, ₦5,000 held as a Summer credit that is the Bursar's, the programme fee still paid, the
+--          same decision again writes no second credit, nothing registers it again, the Director of ICT cannot undo the removal; R's reference is confirmed late after
+--          the Office decided against its only course — nothing is revived and every naira stands as credit; S's only course rejected credits the course and the
+--          programme fee, and selecting again in the same window reinstates the programme fee instead of charging it twice, while T, whose credit the Bursar had refunded,
+--          is charged it anew; a mark on the class (SUMMER_HAS_RESULT) and a paid charge with no payment (SUMMER_CHARGE_NO_PAYMENT) are refused with nothing changed; at
+--          every step the paid charges and the open credits are the confirmed payments. ──
+DO $$
+DECLARE
+    SP text := '9913/9914'; S text := '9914/9915'; who uuid := gen_random_uuid(); prog text := 'C97915'; dept text;
+    q uuid; r uuid; sx uuid; t uuid; w uuid; selq uuid; sel uuid; refq text; refr text; refs text; reft text; refw text; j jsonb; j2 jsonb; v_err text; v_id uuid; v_id2 uuid; cr uuid; cr2 uuid;
+    m_q text; m_late text; m_s text; m_t text; m_marks text; m_cons text := ''; m_inv text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check V779', true);
+    dept := pg_temp.v779_world(SP, S, prog);
+    -- Q pays ZZV 301 and ZZV 401; the Office finds ZZV 301 not outstanding
+    q := pg_temp.v779_student('991501', prog, SP, 400);
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', q::text, true);
+    PERFORM registration.summer_select(q, S, ARRAY['ZZV 301', 'ZZV 401']);
+    refq := registration.summer_reference(q, S);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(refq, 'Bank transfer', 'check V779 q');
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    SELECT id INTO selq FROM registration.summer_selection WHERE student_id = q AND course_code = 'ZZV 301';
+    j := registration.summer_verify(ARRAY[selq], 'NOT_OUTSTANDING', 'The student passed it on the old portal', 'staff only');
+    m_q := (j ->> 'decided') || '/' || (j ->> 'credited') || '/' || (j ->> 'withdrawn')
+        || ' | entry ' || (SELECT e.status FROM registration.course_registration cr JOIN registration.entry e ON e.registration_id = cr.id JOIN catalogue.offering o ON o.id = e.offering_id WHERE cr.student_id = q AND cr.semester = 3 AND o.course_code = 'ZZV 301')
+        || ' removal ' || (SELECT x.state || '/' || (x.ref ~ '^RCR-[0-9]{4}-[0-9]{5}$') || '/' || (x.ref = s2.removal_ref) FROM registration.entry_removal x, registration.summer_selection s2 WHERE s2.id = selq AND x.student_id = q AND x.course_code = 'ZZV 301')
+        || ' | charges ' || (SELECT string_agg(coalesce(course_code, 'PROGRAMME') || ':' || state || ':' || (paid_reference_id IS NOT NULL), ',' ORDER BY course_code NULLS FIRST) FROM registration.summer_charge WHERE student_id = q)
+        || ' | credit ' || (SELECT string_agg(x.source || '/' || x.amount || '/' || x.state, ',') FROM registration.summer_credit x WHERE x.student_id = q)
+        || ' on the payment ' || (SELECT bool_and(x.reference_id = (SELECT id FROM finance.payment_reference WHERE reference = refq)) FROM registration.summer_credit x WHERE x.student_id = q)
+        || ' | in the account ' || (registration.summer_account(q, S) ->> 'credit');
+    m_cons := m_cons || 'Q ' || ((SELECT coalesce(sum(amount), 0) FROM registration.summer_charge WHERE student_id = q AND state = 'PAID') + (SELECT coalesce(sum(amount), 0) FROM registration.summer_credit WHERE student_id = q AND state = 'OPEN')
+                                   = (SELECT sum(amount) FROM finance.payment_reference WHERE student_id = q AND confirmed_at IS NOT NULL AND purpose LIKE 'Summer semester fees%')) || ' ';
+    -- the same decision again: no second credit; the registration made again does not bring the course back; one credit for a charge however often asked
+    j2 := registration.summer_verify(ARRAY[selq], 'NOT_OUTSTANDING', 'The student passed it on the old portal', NULL);
+    PERFORM registration.summer_materialize(q, S);
+    SELECT x.id INTO cr FROM registration.summer_credit x WHERE x.student_id = q;
+    v_id := registration.summer_credit_for_charge((SELECT c.id FROM registration.summer_charge c WHERE c.student_id = q AND c.course_code = 'ZZV 301'),
+                                                  (SELECT id FROM finance.payment_reference WHERE reference = refq), 'asked again');
+    m_q := m_q || ' | again ' || (j2 ->> 'decided') || '/' || (j2 ->> 'unchanged') || ' credits ' || (SELECT count(*) FROM registration.summer_credit WHERE student_id = q)
+        || ' same id ' || (v_id = cr) || ' | registered again ' || (SELECT string_agg(e.status, ',') FROM registration.course_registration cr2 JOIN registration.entry e ON e.registration_id = cr2.id JOIN catalogue.offering o ON o.id = e.offering_id WHERE cr2.student_id = q AND cr2.semester = 3 AND o.course_code = 'ZZV 301')
+        || ' issues ' || (SELECT count(*) FROM registration.summer_issue WHERE student_id = q);
+    -- the Director of ICT cannot undo what the Summer decision made
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    SELECT x.id INTO v_id2 FROM registration.entry_removal x WHERE x.student_id = q AND x.course_code = 'ZZV 301';
+    BEGIN PERFORM registration.undo_entry_removal(v_id2, 'The Director wants the course back'); m_q := m_q || ' | undo allowed';
+    EXCEPTION WHEN check_violation THEN m_q := m_q || ' | undo ' || split_part(SQLERRM, ':', 1); END;
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+
+    -- R: the reference drawn for the one course, the Office decides, the bank confirms late
+    r := pg_temp.v779_student('991502', prog, SP, 400);
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', r::text, true);
+    PERFORM registration.summer_select(r, S, ARRAY['ZZV 301']);
+    refr := registration.summer_reference(r, S);
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    j := registration.summer_verify(ARRAY(SELECT id FROM registration.summer_selection WHERE student_id = r), 'REJECT', 'This course is not in the programme of study', NULL);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(refr, 'Bank transfer', 'check V779 r late');
+    m_late := 'rejected unpaid ' || (j ->> 'decided') || '/' || (j ->> 'credited') || ' | charges ' || (SELECT string_agg(coalesce(course_code, 'PROGRAMME') || ':' || state, ',' ORDER BY course_code NULLS FIRST) FROM registration.summer_charge WHERE student_id = r)
+           || ' | credit ' || (SELECT string_agg(x.source || '/' || x.amount || '/' || x.state, ',') FROM registration.summer_credit x WHERE x.student_id = r)
+           || ' | registered ' || (SELECT count(*) FROM registration.course_registration WHERE student_id = r AND semester = 3);
+    m_cons := m_cons || 'R ' || ((SELECT coalesce(sum(amount), 0) FROM registration.summer_charge WHERE student_id = r AND state = 'PAID') + (SELECT coalesce(sum(amount), 0) FROM registration.summer_credit WHERE student_id = r AND state = 'OPEN')
+                                   = (SELECT sum(amount) FROM finance.payment_reference WHERE student_id = r AND confirmed_at IS NOT NULL AND purpose LIKE 'Summer semester fees%')) || ' ';
+
+    -- S: the only course rejected: the course and the programme fee credited; selecting again reinstates the programme fee; T: the Bursar refunded the credit first
+    sx := pg_temp.v779_student('991503', prog, SP, 400);
+    t := pg_temp.v779_student('991504', prog, SP, 400);
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', sx::text, true);
+    PERFORM registration.summer_select(sx, S, ARRAY['ZZV 301']);
+    refs := registration.summer_reference(sx, S);
+    PERFORM set_config('moaum.actor_id', t::text, true);
+    PERFORM registration.summer_select(t, S, ARRAY['ZZV 301']);
+    reft := registration.summer_reference(t, S);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(refs, 'Bank transfer', 'check V779 s');
+    PERFORM finance.confirm_payment(reft, 'Bank transfer', 'check V779 t');
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    j := registration.summer_verify(ARRAY(SELECT id FROM registration.summer_selection WHERE student_id IN (sx, t)), 'REJECT', 'The course is not part of this programme', NULL);
+    m_s := 'rejected ' || (j ->> 'decided') || '/' || (j ->> 'credited') || '/' || (j ->> 'withdrawn') || ' | S charges '
+        || (SELECT string_agg(coalesce(course_code, 'PROGRAMME') || ':' || state, ',' ORDER BY course_code NULLS FIRST) FROM registration.summer_charge WHERE student_id = sx)
+        || ' credits ' || (SELECT string_agg(x.amount || '/' || x.state, ',' ORDER BY x.amount) FROM registration.summer_credit x WHERE x.student_id = sx)
+        || ' | reason shown ' || (SELECT x.decision_reason FROM registration.summer_selection x WHERE x.student_id = sx)
+        || ' | told ' || (SELECT count(*) FROM platform.notice x WHERE x.about_id = sx AND x.template_key = 'SUMMER_COURSE_REVIEWED' AND x.channel = 'PORTAL' AND x.body LIKE '%not part of this programme%');
+    -- T's programme-fee credit is refunded by the Bursar
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    SELECT x.id INTO v_id FROM registration.summer_credit x WHERE x.student_id = t AND x.amount = 50000;
+    PERFORM registration.summer_credit_settle(v_id, 'REFUNDED', 'Refunded through the refund desk, reference RFD-CHECK');
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', sx::text, true);
+    -- both select a course again in the same Summer window
+    j := registration.summer_select(sx, S, ARRAY['ZZV 401']);
+    m_s := m_s || ' | S again due ' || (j ->> 'due') || ' programme ' || (j ->> 'programmeFeeState') || ' credits ' || (SELECT string_agg(x.amount || '/' || x.state, ',' ORDER BY x.amount) FROM registration.summer_credit x WHERE x.student_id = sx)
+        || ' note ' || (SELECT x.settled_note FROM registration.summer_credit x WHERE x.student_id = sx AND x.state = 'APPLIED');
+    m_cons := m_cons || 'S ' || ((SELECT coalesce(sum(amount), 0) FROM registration.summer_charge WHERE student_id = sx AND state = 'PAID') + (SELECT coalesce(sum(amount), 0) FROM registration.summer_credit WHERE student_id = sx AND state = 'OPEN')
+                                   = (SELECT sum(amount) FROM finance.payment_reference WHERE student_id = sx AND confirmed_at IS NOT NULL AND purpose LIKE 'Summer semester fees%')) || ' ';
+    PERFORM set_config('moaum.actor_id', t::text, true);
+    j := registration.summer_select(t, S, ARRAY['ZZV 401']);
+    m_t := 'T again due ' || (j ->> 'due') || ' programme ' || (j ->> 'programmeFeeState') || ' credits ' || (SELECT string_agg(x.amount || '/' || x.state, ',' ORDER BY x.amount) FROM registration.summer_credit x WHERE x.student_id = t);
+
+    -- W: a mark on the class, a paid charge with no payment on the record: refused, nothing changed
+    w := pg_temp.v779_student('991505', prog, SP, 400);
+    PERFORM set_config('moaum.actor_id', w::text, true);
+    PERFORM registration.summer_select(w, S, ARRAY['ZZV 301', 'ZZV 401']);
+    refw := registration.summer_reference(w, S);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(refw, 'Bank transfer', 'check V779 w');
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM pg_temp.v779_result(w, 'ZZV 301', S, 3, 30, 40);
+    UPDATE registration.summer_charge SET paid_reference_id = NULL WHERE student_id = w AND course_code = 'ZZV 401';
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    j := registration.summer_verify(ARRAY(SELECT id FROM registration.summer_selection WHERE student_id = w), 'NOT_OUTSTANDING', 'These courses are not owed by the student', NULL);
+    m_marks := (j ->> 'decided') || ' decided | ' || (SELECT string_agg(x.course_code || ' ' || (e ->> 'code'), ', ' ORDER BY x.course_code)
+                                                       FROM jsonb_array_elements(j -> 'refused') e JOIN registration.summer_selection x ON x.id = (e ->> 'id')::uuid)
+            || ' | charges ' || (SELECT string_agg(coalesce(course_code, 'PROGRAMME') || ':' || state, ',' ORDER BY course_code NULLS FIRST) FROM registration.summer_charge WHERE student_id = w)
+            || ' credits ' || (SELECT count(*) FROM registration.summer_credit WHERE student_id = w)
+            || ' states ' || (SELECT string_agg(x.course_code || '=' || substr(x.state, 1, 4), ',' ORDER BY x.course_code) FROM registration.summer_selection x WHERE x.student_id = w);
+    -- the invariants of the money and the registration, over every student of the block
+    m_inv := 'paid without an entry ' || (SELECT count(*) FROM registration.summer_charge c WHERE c.student_id IN (q, r, sx, t, w) AND c.kind = 'COURSE' AND c.state = 'PAID'
+                 AND NOT EXISTS (SELECT 1 FROM registration.course_registration cr JOIN registration.entry e ON e.registration_id = cr.id AND e.status NOT IN ('DROPPED', 'WITHDRAWN') JOIN catalogue.offering o ON o.id = e.offering_id
+                                  WHERE cr.student_id = c.student_id AND cr.session = c.session AND cr.semester = 3 AND o.course_code = c.course_code))
+          || ' | withdrawn with the charge paid ' || (SELECT count(*) FROM registration.summer_charge c JOIN registration.course_registration cr ON cr.student_id = c.student_id AND cr.session = c.session AND cr.semester = 3
+                 JOIN registration.entry e ON e.registration_id = cr.id AND e.status = 'WITHDRAWN' JOIN catalogue.offering o ON o.id = e.offering_id AND o.course_code = c.course_code
+                WHERE c.student_id IN (q, r, sx, t, w) AND c.kind = 'COURSE' AND c.state = 'PAID')
+          || ' | programme fee paid with no course standing ' || (SELECT count(*) FROM registration.summer_charge c WHERE c.student_id IN (q, r, sx, t, w) AND c.kind = 'PROGRAMME' AND c.state = 'PAID'
+                 AND NOT EXISTS (SELECT 1 FROM registration.summer_charge x WHERE x.student_id = c.student_id AND x.session = c.session AND x.kind = 'COURSE' AND x.state IN ('DUE', 'PAID')))
+          || ' | a course paid with the programme fee not ' || (SELECT count(*) FROM registration.summer_charge c WHERE c.student_id IN (q, r, sx, t, w) AND c.kind = 'COURSE' AND c.state = 'PAID'
+                 AND NOT EXISTS (SELECT 1 FROM registration.summer_charge x WHERE x.student_id = c.student_id AND x.session = c.session AND x.kind = 'PROGRAMME' AND x.state = 'PAID'))
+          || ' | a paid charge with no payment on it ' || (SELECT count(*) FROM registration.summer_charge c WHERE c.student_id IN (q, r, sx, t, w) AND c.state = 'PAID' AND c.paid_reference_id IS NULL AND c.student_id <> w);
+    RAISE EXCEPTION 'the V779 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V779 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V779: a paid course found not outstanding is withdrawn by the removal route (an applied RCR-… removal, never deleted), its charge cancelled with no payment left on it, its money held as one Summer credit on the payment for the Bursar, the programme fee still paid; asked again it writes no second credit and nothing registers it again, and the Director of ICT cannot undo the removal',
+      coalesce(m_q = '1/5000.00/1 | entry WITHDRAWN removal APPLIED/true/true | charges PROGRAMME:PAID:true,ZZV 301:CANCELLED:false,ZZV 401:PAID:true | credit DECISION/5000.00/OPEN on the payment true | in the account 5000.00'
+                    || ' | again 0/1 credits 1 same id true | registered again WITHDRAWN issues 0 | undo SUMMER_REMOVAL_HELD', false), m_q);
+  PERFORM pg_temp.assert('V779: a reference confirmed late after the Office decided against its only course revives nothing: every charge stays cancelled, the whole payment stands as a credit and nothing is registered',
+      coalesce(m_late = 'rejected unpaid 1/0 | charges PROGRAMME:CANCELLED,ZZV 301:CANCELLED | credit PAYMENT/55000.00/OPEN | registered 0', false), m_late);
+  PERFORM pg_temp.assert('V779: the only course of a student rejected after payment credits the course and the programme fee, the reason is shown and the student told with the money named; selecting again in the same window reinstates the programme fee instead of charging it twice, unless the Bursar had settled its credit — then it is charged anew',
+      coalesce(m_s = 'rejected 2/110000.00/2 | S charges PROGRAMME:CANCELLED,ZZV 301:CANCELLED credits 5000.00/OPEN,50000.00/OPEN | reason shown The course is not part of this programme | told 1'
+                      || ' | S again due 5000.00 programme PAID credits 5000.00/OPEN,50000.00/APPLIED note Reinstated as the programme fee: the student selected a course again in the same Summer'
+                   AND m_t = 'T again due 55000.00 programme DUE credits 5000.00/OPEN,50000.00/REFUNDED', false), m_s || ' | ' || m_t);
+  PERFORM pg_temp.assert('V779: a mark already on the class (SUMMER_HAS_RESULT) and a paid charge with no payment on the record (SUMMER_CHARGE_NO_PAYMENT) are refused for that course with its charges, entry and selection as they were',
+      coalesce(m_marks = '0 decided | ZZV 301 SUMMER_HAS_RESULT, ZZV 401 SUMMER_CHARGE_NO_PAYMENT | charges PROGRAMME:PAID,ZZV 301:PAID,ZZV 401:PAID credits 0 states ZZV 301=PEND,ZZV 401=PEND', false), m_marks);
+  PERFORM pg_temp.assert('V779: the paid charges and the open credits are the confirmed payments of the student after each decision',
+      coalesce(m_cons = 'Q true R true S true ', false), m_cons);
+  PERFORM pg_temp.assert('V779: after the decisions no course is paid without its entry, no entry is withdrawn with its charge paid, the programme fee is paid exactly while a course stands, and every paid charge names the payment that paid it',
+      coalesce(m_inv = 'paid without an entry 0 | withdrawn with the charge paid 0 | programme fee paid with no course standing 0 | a course paid with the programme fee not 0 | a paid charge with no payment on it 0', false), m_inv);
+END $$;
+
+-- ── V779 (6): the examinations wait for the verification, and the Director of ICT's removal is not lost. In 9916/9917 (its Summer, exams dated): the Summer's examinations
+--          are not opened while its registration is open; with the window closed a paid pending entry stops them (opened or released through the general functions as
+--          well), an unpaid pending selection and a withdrawn entry do not; an override with a reason lets the act through while the count has not grown and no longer
+--          once a late payment grew it; verifying clears the count; a confirmed paid course with a pass on record not yet reconciled is counted from the results at the
+--          moment of the act; a payment confirmed after the gate registers and shows in the count; an examination session of another semester is untouched. A paid course
+--          the Director of ICT removes without a mark is flagged for the Academic Office, never dropped: CONFIRM is refused, NOT_OUTSTANDING credits the money and takes the
+--          Director's removal as its own, which the Director cannot then undo; if the Director undoes it first the reconcile clears the flag. ──
+DO $$
+DECLARE
+    SP text := '9915/9916'; S text := '9916/9917'; who uuid := gen_random_uuid(); prog text := 'C97916'; dept text; ex uuid;
+    g1 uuid; g2 uuid; g3 uuid; g4 uuid; g5 uuid; v uuid; v2 uuid; refg1 text; refg2 text; refg5 text; refv text; refv2 text; j jsonb; v_err text; v_reg uuid; v_off uuid; v_rem text; v_remid uuid;
+    m_gate text := ''; m_flag text; m_adopt text; m_undone text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check V779', true);
+    dept := pg_temp.v779_world(SP, S, prog);
+    SELECT id INTO ex FROM assessment.exam_session WHERE session = S AND semester = 3 AND kind = 'MAIN' AND stream = 'REGULAR';
+    g1 := pg_temp.v779_student('991601', prog, SP, 400); g2 := pg_temp.v779_student('991602', prog, SP, 400); g3 := pg_temp.v779_student('991603', prog, SP, 400);
+    g4 := pg_temp.v779_student('991604', prog, SP, 400); g5 := pg_temp.v779_student('991605', prog, SP, 400);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM set_config('moaum.actor_id', g1::text, true); PERFORM registration.summer_select(g1, S, ARRAY['ZZV 301']); refg1 := registration.summer_reference(g1, S);
+    PERFORM set_config('moaum.actor_id', g2::text, true); PERFORM registration.summer_select(g2, S, ARRAY['ZZV 301']); refg2 := registration.summer_reference(g2, S);
+    PERFORM set_config('moaum.actor_id', g5::text, true); PERFORM registration.summer_select(g5, S, ARRAY['ZZV 301']); refg5 := registration.summer_reference(g5, S);
+    PERFORM set_config('moaum.actor_id', g4::text, true); PERFORM registration.summer_select(g4, S, ARRAY['ZZV 301']);       -- unpaid, pending
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(refg1, 'Bank transfer', 'check V779 g1');
+    m_gate := 'unverified ' || registration.summer_unverified(S);
+    -- the window is open: the examinations are not
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    BEGIN PERFORM assessment.open_exam_session(ex); m_gate := m_gate || ' | open while registering allowed';
+    EXCEPTION WHEN check_violation THEN m_gate := m_gate || ' | ' || split_part(SQLERRM, ':', 1); END;
+    -- the closing date passes
+    PERFORM registration.summer_set_period(S, 'OPEN', current_date - 10, current_date - 1, current_date + 20, current_date + 25, current_date + 30, NULL, NULL, NULL, 'check V779 closed');
+    BEGIN PERFORM assessment.open_exam_session(ex); m_gate := m_gate || ' | open with a paid pending entry allowed';
+    EXCEPTION WHEN check_violation THEN m_gate := m_gate || ' | ' || split_part(SQLERRM, ':', 1) || ' ' || split_part(SQLERRM, ' ', 2); END;
+    -- another semester's examination session is untouched
+    INSERT INTO assessment.exam_session (id, session, semester, kind, exams_from, exams_to, sheets_due, stream) VALUES (gen_random_uuid(), S, 1, 'MAIN', current_date, current_date + 3, current_date + 5, 'REGULAR');
+    PERFORM assessment.open_exam_session((SELECT id FROM assessment.exam_session WHERE session = S AND semester = 1));
+    m_gate := m_gate || ' | semester 1 ' || (SELECT state FROM assessment.exam_session WHERE session = S AND semester = 1);
+    -- an override with a reason for the opening, while the count is one; a late payment grows it
+    PERFORM registration.summer_exam_override_set(S, 'OPEN', 'The Senate has fixed the examinations for this week');
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(refg2, 'Bank transfer', 'check V779 g2 late');
+    m_gate := m_gate || ' | late payment, unverified ' || registration.summer_unverified(S)
+           || ' registered ' || (SELECT count(*) FROM registration.course_registration cr JOIN registration.entry e ON e.registration_id = cr.id WHERE cr.student_id = g2 AND cr.semester = 3);
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    BEGIN PERFORM assessment.open_exam_session(ex); m_gate := m_gate || ' | open after the count grew allowed';
+    EXCEPTION WHEN check_violation THEN m_gate := m_gate || ' | ' || split_part(SQLERRM, ':', 1) || ' ' || (regexp_match(SQLERRM, '\((\d+) when'))[1]; END;
+    -- the unpaid pending selection is not counted; verifying the two paid ones clears the count and the examinations open
+    j := registration.summer_verify(ARRAY(SELECT x.id FROM registration.summer_selection x WHERE x.student_id IN (g1, g2)), 'CONFIRM', NULL, NULL);
+    m_gate := m_gate || ' | verified ' || (j ->> 'decided') || ' unverified ' || registration.summer_unverified(S);
+    PERFORM assessment.open_exam_session(ex);
+    m_gate := m_gate || ' | opened ' || (SELECT state FROM assessment.exam_session WHERE id = ex);
+    -- a payment confirmed after the gate registers the course and is counted
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(refg5, 'Bank transfer', 'check V779 g5 after the gate');
+    m_gate := m_gate || ' | after the gate unverified ' || registration.summer_unverified(S) || ' registered '
+           || (SELECT count(*) FROM registration.course_registration cr JOIN registration.entry e ON e.registration_id = cr.id WHERE cr.student_id = g5 AND cr.semester = 3 AND e.status = 'APPROVED');
+    -- a confirmed paid course with a pass on record, not reconciled: counted from the results now, so the sheets wait
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM registration.summer_verify(ARRAY(SELECT x.id FROM registration.summer_selection x WHERE x.student_id = g5), 'CONFIRM', NULL, NULL);
+    m_gate := m_gate || ' | g5 confirmed ' || registration.summer_unverified(S);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM pg_temp.v779_result(g1, 'ZZV 301', SP, 1, 30, 40);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    m_gate := m_gate || ' | a pass published for g1 ' || registration.summer_unverified(S) || ' cache ' || coalesce((SELECT e.evidence FROM registration.summer_selection x JOIN registration.summer_selection_evidence e ON e.selection_id = x.id WHERE x.student_id = g1), 'none');
+    BEGIN PERFORM assessment.release_exam_sheets(ex); m_gate := m_gate || ' | release allowed';
+    EXCEPTION WHEN check_violation THEN m_gate := m_gate || ' | ' || split_part(SQLERRM, ':', 1); END;
+    PERFORM registration.summer_verify(ARRAY(SELECT x.id FROM registration.summer_selection x WHERE x.student_id = g1), 'NOT_OUTSTANDING', 'A pass of the course is on record', NULL);
+    m_gate := m_gate || ' | decided ' || registration.summer_unverified(S);
+    PERFORM assessment.release_exam_sheets(ex);
+    m_gate := m_gate || ' | released ' || (SELECT (sheets_released_at IS NOT NULL)::text FROM assessment.exam_session WHERE id = ex);
+
+    -- the Director of ICT removes a paid course without a mark: flagged, never dropped silently; the Office decides, the removal is adopted
+    v := pg_temp.v779_student('991606', prog, SP, 400); v2 := pg_temp.v779_student('991607', prog, SP, 400);
+    PERFORM registration.summer_set_period(S, 'OPEN', current_date - 1, current_date + 10, current_date + 20, current_date + 25, current_date + 30, NULL, NULL, NULL, 'check V779 reopened');
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM set_config('moaum.actor_id', v::text, true); PERFORM registration.summer_select(v, S, ARRAY['ZZV 301', 'ZZV 401']);
+    refv := registration.summer_reference(v, S);
+    PERFORM set_config('moaum.actor_id', v2::text, true); PERFORM registration.summer_select(v2, S, ARRAY['ZZV 301']); refv2 := registration.summer_reference(v2, S);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(refv, 'Bank transfer', 'check V779 v'); PERFORM finance.confirm_payment(refv2, 'Bank transfer', 'check V779 v2');
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    FOR v_reg, v_off IN SELECT cr.id, o.id FROM registration.course_registration cr JOIN registration.entry e ON e.registration_id = cr.id JOIN catalogue.offering o ON o.id = e.offering_id
+                         WHERE cr.student_id = v AND cr.semester = 3 AND o.course_code = 'ZZV 301' LOOP
+        PERFORM registration.request_entry_removal(v, jsonb_build_array(jsonb_build_object('registrationId', v_reg, 'offeringId', v_off)), 'The course was counted by mistake');
+    END LOOP;
+    FOR v_reg, v_off IN SELECT cr.id, o.id FROM registration.course_registration cr JOIN registration.entry e ON e.registration_id = cr.id JOIN catalogue.offering o ON o.id = e.offering_id
+                         WHERE cr.student_id = v2 AND cr.semester = 3 AND o.course_code = 'ZZV 301' LOOP
+        PERFORM registration.request_entry_removal(v2, jsonb_build_array(jsonb_build_object('registrationId', v_reg, 'offeringId', v_off)), 'The course was counted by mistake');
+    END LOOP;
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    m_flag := (SELECT x.review_flag || '/' || x.state FROM registration.summer_selection x WHERE x.student_id = v AND x.course_code = 'ZZV 301')
+           || ' entry ' || (SELECT e.status FROM registration.course_registration cr JOIN registration.entry e ON e.registration_id = cr.id JOIN catalogue.offering o ON o.id = e.offering_id WHERE cr.student_id = v AND cr.semester = 3 AND o.course_code = 'ZZV 301')
+           || ' charge ' || (SELECT c.state FROM registration.summer_charge c WHERE c.student_id = v AND c.course_code = 'ZZV 301');
+    j := registration.summer_verify(ARRAY(SELECT x.id FROM registration.summer_selection x WHERE x.student_id = v AND x.course_code = 'ZZV 301'), 'CONFIRM', NULL, NULL);
+    m_flag := m_flag || ' | confirm ' || (j -> 'refused' -> 0 ->> 'code');
+    SELECT x.ref, x.id INTO v_rem, v_remid FROM registration.entry_removal x WHERE x.student_id = v AND x.course_code = 'ZZV 301';
+    j := registration.summer_verify(ARRAY(SELECT x.id FROM registration.summer_selection x WHERE x.student_id = v AND x.course_code = 'ZZV 301'), 'NOT_OUTSTANDING', 'The course was taken off by the Director of ICT', NULL);
+    m_adopt := (j ->> 'decided') || '/' || (j ->> 'credited') || '/' || (j ->> 'withdrawn') || ' removal adopted ' || (SELECT x.removal_ref = v_rem FROM registration.summer_selection x WHERE x.student_id = v AND x.course_code = 'ZZV 301')
+            || ' removals ' || (SELECT count(*) FROM registration.entry_removal WHERE student_id = v) || ' credit ' || (SELECT string_agg(x.amount || '/' || x.state, ',') FROM registration.summer_credit x WHERE x.student_id = v);
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    BEGIN PERFORM registration.undo_entry_removal(v_remid, 'The Director wants the course back'); m_adopt := m_adopt || ' | undo allowed';
+    EXCEPTION WHEN check_violation THEN m_adopt := m_adopt || ' | undo ' || split_part(SQLERRM, ':', 1); END;
+    -- the Director undoes the other removal first: the reconcile clears the flag
+    SELECT x.id INTO v_remid FROM registration.entry_removal x WHERE x.student_id = v2 AND x.course_code = 'ZZV 301';
+    PERFORM registration.undo_entry_removal(v_remid, 'The course was counted rightly after all');
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    m_undone := (SELECT x.review_flag FROM registration.summer_selection x WHERE x.student_id = v2) || ' -> ';
+    m_undone := m_undone || (registration.summer_reconcile_student(v2, S) ->> 'changed');
+    m_undone := m_undone || ' ' || coalesce((SELECT x.review_flag FROM registration.summer_selection x WHERE x.student_id = v2), 'cleared')
+             || ' entry ' || (SELECT e.status FROM registration.course_registration cr JOIN registration.entry e ON e.registration_id = cr.id JOIN catalogue.offering o ON o.id = e.offering_id WHERE cr.student_id = v2 AND cr.semester = 3 AND o.course_code = 'ZZV 301');
+    RAISE EXCEPTION 'the V779 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V779 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V779: the Summer''s examinations are not opened while registration is open, and with the window closed a paid pending entry stops them whichever desk starts the act, an unpaid pending selection does not, an override with a reason lets the act through only while the count has not grown, verifying clears the count, a payment confirmed after the gate registers and is counted, a confirmed paid course with a pass on record is counted from the results at the moment of the act, and an examination session of another semester is untouched',
+      coalesce(m_gate = 'unverified 1 | SUMMER_REGISTRATION_OPEN | SUMMER_VERIFICATION_PENDING 1 | semester 1 OPEN | late payment, unverified 2 registered 1 | SUMMER_VERIFICATION_PENDING 1 | verified 2 unverified 0 | opened OPEN'
+                    || ' | after the gate unverified 1 registered 1 | g5 confirmed 0 | a pass published for g1 1 cache NO_RESULT | SUMMER_VERIFICATION_PENDING | decided 0 | released true', false), m_gate);
+  PERFORM pg_temp.assert('V779: a paid course the Director of ICT removed without a mark is flagged ENTRY_REMOVED for the Academic Office, never dropped silently, and CONFIRM is refused',
+      coalesce(m_flag = 'ENTRY_REMOVED/PENDING_VERIFICATION entry WITHDRAWN charge PAID | confirm SUMMER_ENTRY_REMOVED', false), m_flag);
+  PERFORM pg_temp.assert('V779: NOT_OUTSTANDING on such a course credits its money and takes the Director''s removal as its own (no second removal), which the Director cannot then undo; where the Director undoes the removal first the reconcile clears the flag',
+      coalesce(m_adopt = '1/5000.00/0 removal adopted true removals 1 credit 5000.00/OPEN | undo SUMMER_REMOVAL_HELD' AND m_undone = 'ENTRY_REMOVED -> 1 cleared entry APPROVED', false), m_adopt || ' | ' || m_undone);
+END $$;
+
+-- ── V779 (7): results published after a selection are reconciled against it. In 9918/9919 (its Summer, results of 9917/9918): K1 holds three selections when a pass of one paid course,
+--          a failure of another paid one and a pass of an unpaid one are published — the unpaid pass is taken back and the student told once, the paid pass is flagged and
+--          kept (never withdrawn), the failure confirms by the results and its entry becomes a carry-over; the desk reconciles in tranches of one student until nothing is left,
+--          a second run changes nothing and writes no row of history; K2's confirmation by results goes back to the Office, flagged, when the result it rested on is rolled
+--          back (the entry typed CURRENT again) — through the student's own form; K3's unselected course with a pass closes without money or a notice; a result of a
+--          selection's own Summer class is never read. The set readers equal the one-student readers on a student with every kind of result (a fail then a pass, a pass
+--          then a fail, an absence, an unpublished sheet, a re-sit, an elective failure). Identify and reconcile write no audit row when they move only their own heartbeat. ──
+DO $$
+DECLARE
+    SP text := '9917/9918'; SP2 text := '9916/9917'; S text := '9918/9919'; who uuid := gen_random_uuid(); prog text := 'C97917'; dept text; exs uuid; shid uuid;
+    k1 uuid; k2 uuid; k3 uuid; k4 uuid; k5 uuid; refk5 text; z uuid; refk1 text; refk2 text; j jsonb; v_err text; since timestamptz; n int; rounds int := 0; left_n int := 1; tot_conf int := 0; tot_back int := 0; tot_flag int := 0;
+    a0 bigint; a1 bigint; hist0 int; hist1 int;
+    m_k1 text; m_desk text; m_again text; m_k2 text; m_k3 text; m_owed_set text; m_owed_ref text; m_pass_set text; m_pass_ref text; m_aud text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check V779', true);
+    dept := pg_temp.v779_world(SP, S, prog);
+    INSERT INTO policy.academic_session (id, name, starts_on, ends_on, state) VALUES (gen_random_uuid(), SP2, DATE '9916-10-01', DATE '9917-08-31', 'CLOSED') ON CONFLICT (name) DO NOTHING;
+    -- K1
+    k1 := pg_temp.v779_student('991701', prog, SP, 400);
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', k1::text, true);
+    PERFORM registration.summer_select(k1, S, ARRAY['ZZV 301', 'ZZV 401']);
+    refk1 := registration.summer_reference(k1, S);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(refk1, 'Bank transfer', 'check V779 k1');
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM registration.summer_select(k1, S, ARRAY['ZZV 102']);
+    -- K2: confirmed by a published failure, paid, then the failure is rolled back
+    k2 := pg_temp.v779_student('991702', prog, SP, 400);
+    PERFORM pg_temp.v779_result(k2, 'ZZV 402', SP, 2, 10, 15);
+    PERFORM set_config('moaum.actor_id', k2::text, true);
+    PERFORM registration.summer_select(k2, S, ARRAY['ZZV 402']);
+    refk2 := registration.summer_reference(k2, S);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(refk2, 'Bank transfer', 'check V779 k2');
+    -- K3: selected, unselected
+    k3 := pg_temp.v779_student('991703', prog, SP, 400);
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', k3::text, true);
+    PERFORM registration.summer_select(k3, S, ARRAY['ZZV 301']);
+    PERFORM registration.summer_unselect(k3, S, 'ZZV 301');
+    -- the results published afterwards
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM pg_temp.v779_result(k1, 'ZZV 301', SP, 1, 30, 40);
+    PERFORM pg_temp.v779_result(k1, 'ZZV 401', SP, 1, 10, 10);
+    PERFORM pg_temp.v779_result(k1, 'ZZV 102', SP, 2, 30, 40);
+    PERFORM pg_temp.v779_result(k3, 'ZZV 301', SP, 1, 30, 40);
+    PERFORM set_config('moaum.maintenance', 'on', true);
+    UPDATE assessment.score_sheet sh SET stage = 'ENTRY', published_at = NULL, senate_minute = NULL FROM catalogue.offering o
+     WHERE o.id = sh.offering_id AND o.course_code = 'ZZV 402' AND o.session = SP;
+    PERFORM set_config('moaum.maintenance', '', true);
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    since := clock_timestamp();
+    -- the desk reconciles, a student at a time, until nothing is left
+    WHILE left_n > 0 AND rounds < 12 LOOP
+        j := registration.summer_reconcile(S, since, 1);
+        rounds := rounds + 1; left_n := (j ->> 'left')::int;
+        tot_conf := tot_conf + (j ->> 'confirmed')::int; tot_back := tot_back + (j ->> 'takenBack')::int; tot_flag := tot_flag + (j ->> 'flagged')::int;
+    END LOOP;
+    m_desk := rounds || ' rounds, confirmed ' || tot_conf || ' taken back ' || tot_back || ' flagged ' || tot_flag || ' reverted ' || (SELECT count(*) FROM registration.summer_selection WHERE student_id = k2 AND review_flag = 'EVIDENCE_CHANGED')
+           || ' left ' || left_n;
+    m_k1 := (SELECT string_agg(x.course_code || '=' || substr(x.state, 1, 4) || '/' || coalesce(x.verified_via, '-') || '/' || coalesce(x.review_flag, '-'), ', ' ORDER BY x.course_code) FROM registration.summer_selection x WHERE x.student_id = k1)
+         || ' | charges ' || (SELECT string_agg(coalesce(course_code, 'PROGRAMME') || ':' || state, ',' ORDER BY course_code NULLS FIRST) FROM registration.summer_charge WHERE student_id = k1)
+         || ' | entries ' || (SELECT string_agg(o.course_code || ':' || e.entry_type || ':' || e.status, ',' ORDER BY o.course_code) FROM registration.course_registration cr JOIN registration.entry e ON e.registration_id = cr.id JOIN catalogue.offering o ON o.id = e.offering_id WHERE cr.student_id = k1 AND cr.semester = 3)
+         || ' | told ' || (SELECT count(*) FROM platform.notice x WHERE x.about_id = k1 AND x.template_key = 'SUMMER_COURSE_REVIEWED' AND x.channel = 'PORTAL');
+    -- a second run changes nothing and writes no row of history
+    SELECT count(*) INTO hist0 FROM registration.summer_selection_review;
+    j := registration.summer_reconcile(S, clock_timestamp(), 50);
+    SELECT count(*) INTO hist1 FROM registration.summer_selection_review;
+    m_again := 'second run confirmed ' || (j ->> 'confirmed') || ' taken back ' || (j ->> 'takenBack') || ' flagged ' || (j ->> 'flagged') || ' reverted ' || (j ->> 'reverted') || ' cleared ' || (j ->> 'cleared')
+            || ' history rows ' || (hist1 - hist0);
+    m_k2 := (SELECT x.state || '/' || coalesce(x.verified_via, '-') || '/' || coalesce(x.review_flag, '-') FROM registration.summer_selection x WHERE x.student_id = k2)
+         || ' entry ' || (SELECT e.entry_type FROM registration.course_registration cr JOIN registration.entry e ON e.registration_id = cr.id WHERE cr.student_id = k2 AND cr.semester = 3);
+    -- K4: the Summer's own class is read for nothing; K5: the same reversal through the student's own form
+    k4 := pg_temp.v779_student('991705', prog, SP, 400);
+    k5 := pg_temp.v779_student('991706', prog, SP, 400);
+    PERFORM pg_temp.v779_result(k5, 'ZZV 202', SP, 2, 10, 15);
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', k4::text, true);
+    PERFORM registration.summer_select(k4, S, ARRAY['ZZV 301']);
+    PERFORM set_config('moaum.actor_id', k5::text, true);
+    PERFORM registration.summer_select(k5, S, ARRAY['ZZV 202']);
+    refk5 := registration.summer_reference(k5, S);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(refk5, 'Bank transfer', 'check V779 k5');
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM pg_temp.v779_result(k4, 'ZZV 301', S, 3, 30, 40);      -- the pass of the selection's own Summer class
+    PERFORM set_config('moaum.maintenance', 'on', true);
+    UPDATE assessment.score_sheet sh SET stage = 'ENTRY', published_at = NULL, senate_minute = NULL FROM catalogue.offering o
+     WHERE o.id = sh.offering_id AND o.course_code = 'ZZV 202' AND o.session = SP;
+    PERFORM set_config('moaum.maintenance', '', true);
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', k5::text, true);
+    m_k2 := m_k2 || ' | K5 ' || (SELECT x.state || '/' || x.verified_via FROM registration.summer_selection x WHERE x.student_id = k5);
+    j := registration.summer_reconcile_student(k5, S);
+    m_k2 := m_k2 || ' -> ' || (j ->> 'changed') || ' ' || (SELECT substr(x.state, 1, 4) || '/' || coalesce(x.verified_via, '-') || '/' || coalesce(x.review_flag, '-') FROM registration.summer_selection x WHERE x.student_id = k5)
+         || ' entry ' || (SELECT e.entry_type FROM registration.course_registration cr JOIN registration.entry e ON e.registration_id = cr.id WHERE cr.student_id = k5 AND cr.semester = 3);
+    j := registration.summer_reconcile_student(k4, S);
+    m_k3 := (SELECT x.state || '/' || x.verified_via || '/' || (SELECT string_agg(v.money_effect, ',') FROM registration.summer_selection_review v WHERE v.selection_id = x.id AND v.action = 'NOT_OUTSTANDING') FROM registration.summer_selection x WHERE x.student_id = k3)
+         || ' charges ' || (SELECT count(*) FROM registration.summer_charge WHERE student_id = k3 AND state <> 'CANCELLED') || ' credits ' || (SELECT count(*) FROM registration.summer_credit WHERE student_id = k3)
+         || ' told ' || (SELECT count(*) FROM platform.notice x WHERE x.about_id = k3 AND x.template_key = 'SUMMER_COURSE_REVIEWED' AND x.channel = 'PORTAL')
+         || ' | K4 sat: changed ' || (j ->> 'changed') || ' ' || (SELECT x.state FROM registration.summer_selection x WHERE x.student_id = k4)
+         || ' evidence ' || coalesce((SELECT string_agg(e.evidence, ',') FROM registration.summer_evidence(S, ARRAY[k4]) e), 'not read');
+
+    -- the readers agree on a student with every kind of result
+    z := pg_temp.v779_student('991704', prog, SP, 400);
+    PERFORM set_config('moaum.actor_office', 'ict', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM pg_temp.v779_result(z, 'ZZV 101', SP2, 1, 10, 15);   -- fail then pass: not owed
+    PERFORM pg_temp.v779_result(z, 'ZZV 101', SP, 1, 30, 40);
+    PERFORM pg_temp.v779_result(z, 'ZZV 102', SP2, 2, 30, 40);   -- pass then fail: owed
+    PERFORM pg_temp.v779_result(z, 'ZZV 102', SP, 2, 10, 15);
+    PERFORM pg_temp.v779_result(z, 'ZZV 201', SP, 1, NULL, NULL, 'ABSENT');    -- an absence: a failure
+    PERFORM pg_temp.v779_result(z, 'ZZV 202', SP, 2, 10, 15, 'GRADED', false); -- an unpublished sheet: neither
+    PERFORM pg_temp.v779_result(z, 'ZZV 302', SP, 2, 10, 15);                  -- an elective's failure: never owed
+    PERFORM pg_temp.v779_result(z, 'ZZV 301', SP, 1, 10, 15);                  -- a failed main, then a published re-sit pass: not owed
+    INSERT INTO assessment.exam_session (id, session, semester, kind, exams_from, exams_to, sheets_due, stream) VALUES (gen_random_uuid(), SP, 1, 'RESIT', current_date, current_date + 3, current_date + 5, 'REGULAR') RETURNING id INTO exs;
+    SELECT sh.id INTO shid FROM assessment.score_sheet sh JOIN catalogue.offering o ON o.id = sh.offering_id WHERE o.course_code = 'ZZV 301' AND o.session = SP AND sh.exam_session_id IS NULL;
+    DECLARE v_off uuid; v_sheet uuid := gen_random_uuid(); BEGIN
+        SELECT offering_id INTO v_off FROM assessment.score_sheet WHERE id = shid;
+        INSERT INTO assessment.score_sheet (id, offering_id, exam_session_id) VALUES (v_sheet, v_off, exs);
+        INSERT INTO assessment.score (sheet_id, student_id, ca, exam) VALUES (v_sheet, z, 30, 40);
+        PERFORM set_config('moaum.maintenance', 'on', true);
+        UPDATE assessment.score_sheet SET stage = 'PUBLISHED', published_at = now(), senate_minute = 'CHECK V779' WHERE id = v_sheet;
+        PERFORM set_config('moaum.maintenance', '', true);
+    END;
+    m_owed_set := (SELECT string_agg(x.course_code, ',' ORDER BY x.course_code) FROM registration.summer_results_of(S, ARRAY[z]) x
+                    WHERE x.fails > 0 AND (x.passes = 0 OR (x.last_pass_session, x.last_pass_semester) <= (x.last_fail_session, x.last_fail_semester)) AND NOT registration.is_elective_for(z, x.course_code));
+    m_owed_ref := (SELECT string_agg(DISTINCT a.course_code, ',' ORDER BY a.course_code) FROM registration.carryover_attempts(z) a);
+    m_pass_set := (SELECT string_agg(x.course_code, ',' ORDER BY x.course_code) FROM registration.summer_results_of(S, ARRAY[z]) x WHERE x.passes > 0);
+    m_pass_ref := (SELECT string_agg(DISTINCT r.course_code, ',' ORDER BY r.course_code) FROM assessment.student_results(z) r WHERE r.published AND r.outcome = 'GRADED' AND r.points > 0);
+
+    -- audit volume: a repeat identify, a repeat reconcile write no audit row; a change of the category is audited; the evidence cache is exempt
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM registration.summer_identify(S, clock_timestamp(), 5000);
+    SELECT count(*) INTO a0 FROM audit.entries;
+    PERFORM registration.summer_identify(S, clock_timestamp(), 5000);
+    PERFORM registration.summer_reconcile(S, clock_timestamp(), 5000);
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', k1::text, true);
+    PERFORM registration.summer_reconcile_student(k1, S);
+    SELECT count(*) INTO a1 FROM audit.entries;
+    m_aud := 'repeats wrote ' || (a1 - a0) || ' audit rows';
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    UPDATE registration.summer_candidate SET category = 'AUTHORISED' WHERE session = S AND student_id = k1;
+    SELECT count(*) INTO n FROM audit.entries;
+    m_aud := m_aud || ' | a category changed wrote ' || (n - a1) || ' | cache exempt ' || EXISTS (SELECT 1 FROM audit.exemption WHERE relid = 'registration.summer_selection_evidence'::regclass)
+          || ' selection attached ' || EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid = 'registration.summer_selection'::regclass AND tgname = 'trg_audit_registration_summer_selection');
+    RAISE EXCEPTION 'the V779 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V779 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V779: results published after selection are reconciled: an unpaid course with a pass is taken back and the student told once, a paid one with a pass is flagged PASSED_ON_RECORD and kept, a failure confirms a pending selection by the results and its entry becomes a carry-over; the desk reads a student a tranche until nothing is left',
+      coalesce(m_desk = '3 rounds, confirmed 1 taken back 2 flagged 1 reverted 1 left 0'
+                   AND m_k1 = 'ZZV 102=NOT_/RESULTS/-, ZZV 301=PEND/-/PASSED_ON_RECORD, ZZV 401=CONF/RESULTS/- | charges PROGRAMME:PAID,ZZV 102:CANCELLED,ZZV 301:PAID,ZZV 401:PAID | entries ZZV 301:CURRENT:APPROVED,ZZV 401:CARRYOVER:APPROVED | told 1', false), m_desk || ' | ' || m_k1);
+  PERFORM pg_temp.assert('V779: a second reconcile changes nothing and writes no row of history',
+      coalesce(m_again = 'second run confirmed 0 taken back 0 flagged 0 reverted 0 cleared 0 history rows 0', false), m_again);
+  PERFORM pg_temp.assert('V779: a confirmation by results whose result was rolled back goes back to pending flagged EVIDENCE_CHANGED with its entry typed CURRENT again, through the student''s own form; an unselected course with a pass closes without money or a notice, and a result of the selection''s own Summer class is not read',
+      coalesce(m_k2 = 'PENDING_VERIFICATION/-/EVIDENCE_CHANGED entry CURRENT | K5 CONFIRMED_OUTSTANDING/RESULTS -> 1 PEND/-/EVIDENCE_CHANGED entry CURRENT'
+                   AND m_k3 = 'NOT_OUTSTANDING/RESULTS/NONE charges 0 credits 0 told 0 | K4 sat: changed 0 PENDING_VERIFICATION evidence not read', false), m_k2 || ' | ' || m_k3);
+  PERFORM pg_temp.assert('V779: the set readers equal the one-student readers on every kind of result: the courses still owed, and the courses passed (a fail then a pass, a pass then a fail, an absence, an unpublished sheet, a re-sit, an elective failure)',
+      coalesce(m_owed_set IS NOT NULL AND m_owed_set = m_owed_ref AND m_pass_set = m_pass_ref, false), 'owed ' || coalesce(m_owed_set, '-') || ' / ' || coalesce(m_owed_ref, '-') || ' passed ' || coalesce(m_pass_set, '-') || ' / ' || coalesce(m_pass_ref, '-'));
+  PERFORM pg_temp.assert('V779: a repeat identify, a repeat reconcile and a student''s own reconcile write no audit row; a change of a candidate other than its heartbeat is audited; the evidence cache is exempt from the audit spine and the selection is attached',
+      coalesce(m_aud = 'repeats wrote 0 audit rows | a category changed wrote 1 | cache exempt true selection attached true', false), m_aud);
+END $$;
+
+-- ── V779 (8): the entry's type, a course of both semesters, the new tables. In 9920/9921 (its Summer): a spillover student's Summer entry is typed by its verification — CURRENT while pending,
+--          CARRYOVER once confirmed, CURRENT again on REOPEN, kept in step by the reconcile — and never forced to a declared carry-over by V674's trigger, which still forces the
+--          same student's first or second semester and a CCE spillover student's third; a course of both semesters failed in the first semester of the session is taken again in the Summer and
+--          registers (V735's exemption of semester 3, which V386's rule of one registration a session otherwise refuses); the three new tables are on the audit spine, the history of a verification is
+--          write-once but goes with its student, a course merged into another carries its selection and a student holding both blocks the merge; every function that reads sets or results runs with jit off. ──
+DO $$
+DECLARE
+    SP text := '9919/9920'; S text := '9920/9921'; who uuid := gen_random_uuid(); prog text := 'C97918'; dept text;
+    sp1 uuid; sp2 uuid; del uuid; cc uuid; bo uuid; ma uuid; mb uuid; refs text; v_reg uuid; v_off uuid; v_err text; j jsonb; mid uuid;
+    m_type text; m_forced text; m_both text; m_tables text; m_merge text; m_jit text; v_n int;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check V779', true);
+    dept := pg_temp.v779_world(SP, S, prog);
+    -- a spillover student: pays a pending course, then the Office confirms, reopens; a second one is confirmed by a failure published after payment and sent back by its rollback
+    sp1 := pg_temp.v779_student('991801', prog, SP, 500);
+    sp2 := pg_temp.v779_student('991802', prog, SP, 500);
+    m_type := 'is_spillover ' || finance.is_spillover(sp1);
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', sp1::text, true);
+    PERFORM registration.summer_select(sp1, S, ARRAY['ZZV 301']);
+    refs := registration.summer_reference(sp1, S);
+    PERFORM set_config('moaum.actor_id', sp2::text, true);
+    PERFORM registration.summer_select(sp2, S, ARRAY['ZZV 402']);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(refs, 'Bank transfer', 'check V779 sp1');
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM finance.confirm_payment(registration.summer_reference(sp2, S), 'Bank transfer', 'check V779 sp2');
+    m_type := m_type || ' | paid pending ' || (SELECT e.entry_type || '/' || coalesce(e.added_as, '-') FROM registration.course_registration cr JOIN registration.entry e ON e.registration_id = cr.id WHERE cr.student_id = sp1 AND cr.semester = 3);
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM registration.summer_verify(ARRAY(SELECT id FROM registration.summer_selection WHERE student_id = sp1), 'CONFIRM', NULL, NULL);
+    m_type := m_type || ' | confirmed ' || (SELECT e.entry_type || '/' || coalesce(e.added_as, '-') FROM registration.course_registration cr JOIN registration.entry e ON e.registration_id = cr.id WHERE cr.student_id = sp1 AND cr.semester = 3);
+    PERFORM registration.summer_verify(ARRAY(SELECT id FROM registration.summer_selection WHERE student_id = sp1), 'REOPEN', NULL, NULL);
+    m_type := m_type || ' | reopened ' || (SELECT e.entry_type || '/' || coalesce(e.added_as, '-') FROM registration.course_registration cr JOIN registration.entry e ON e.registration_id = cr.id WHERE cr.student_id = sp1 AND cr.semester = 3);
+    -- the failure published after payment confirms by the results (a carry-over), its rollback sends it back (CURRENT)
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM pg_temp.v779_result(sp2, 'ZZV 402', SP, 2, 10, 15);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM registration.summer_reconcile_student(sp2, S);
+    m_type := m_type || ' | by results ' || (SELECT e.entry_type FROM registration.course_registration cr JOIN registration.entry e ON e.registration_id = cr.id WHERE cr.student_id = sp2 AND cr.semester = 3);
+    PERFORM set_config('moaum.maintenance', 'on', true);
+    UPDATE assessment.score_sheet sh SET stage = 'ENTRY', published_at = NULL, senate_minute = NULL FROM catalogue.offering o WHERE o.id = sh.offering_id AND o.course_code = 'ZZV 402' AND o.session = SP;
+    PERFORM set_config('moaum.maintenance', '', true);
+    PERFORM registration.summer_reconcile_student(sp2, S);
+    m_type := m_type || ' | rolled back ' || (SELECT e.entry_type FROM registration.course_registration cr JOIN registration.entry e ON e.registration_id = cr.id WHERE cr.student_id = sp2 AND cr.semester = 3);
+    -- V674 still forces the first and second semesters of the same student, and a CCE spillover student's third semester
+    cc := pg_temp.v779_student('991803', prog, SP, 500, false, 'CCE');
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (gen_random_uuid(), sp1, S, 1, 400, 'DRAFT') RETURNING id INTO v_reg;
+    INSERT INTO catalogue.offering (id, course_code, session, semester) VALUES (gen_random_uuid(), 'ZZV 101', S, 1) RETURNING id INTO v_off;
+    INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status) VALUES (v_reg, v_off, 3, 'CURRENT', 'REGISTERED');
+    m_forced := 'semester 1 ' || (SELECT e.entry_type || '/' || coalesce(e.added_as, '-') FROM registration.entry e WHERE e.registration_id = v_reg AND e.offering_id = v_off);
+    INSERT INTO registration.course_registration (id, student_id, session, semester, level, status) VALUES (gen_random_uuid(), cc, S, 3, 400, 'DRAFT') RETURNING id INTO v_reg;
+    INSERT INTO catalogue.offering (id, course_code, session, semester, stream) VALUES (gen_random_uuid(), 'ZZV 102', S, 3, 'CCE') RETURNING id INTO v_off;
+    INSERT INTO registration.entry (registration_id, offering_id, units, entry_type, status) VALUES (v_reg, v_off, 2, 'CURRENT', 'REGISTERED');
+    m_forced := m_forced || ' | CCE third semester ' || (SELECT e.entry_type || '/' || coalesce(e.added_as, '-') FROM registration.entry e WHERE e.registration_id = v_reg AND e.offering_id = v_off)
+             || ' | spillover ' || finance.is_spillover(cc) || ' summer for ' || registration.is_summer_for(cc, S, 3);
+
+    -- a course of both semesters failed in the first semester of the session is taken again in the Summer
+    bo := pg_temp.v779_student('991804', prog, SP, 400);
+    PERFORM pg_temp.v779_result(bo, 'ZZV 201', S, 1, 10, 15);
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', bo::text, true);
+    m_both := (SELECT x.evidence || '/' || x.both_semesters || '/' || x.selectable FROM registration.summer_selectable(bo, S) x WHERE x.course_code = 'ZZV 201');
+    PERFORM registration.summer_select(bo, S, ARRAY['ZZV 201']);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(registration.summer_reference(bo, S), 'Bank transfer', 'check V779 bo');
+    m_both := m_both || ' | registered ' || coalesce((SELECT string_agg(e.entry_type || '/' || e.status, ',') FROM registration.course_registration cr JOIN registration.entry e ON e.registration_id = cr.id
+                                                          JOIN catalogue.offering o ON o.id = e.offering_id WHERE cr.student_id = bo AND cr.semester = 3 AND o.course_code = 'ZZV 201'), 'none')
+           || ' issues ' || (SELECT count(*) FROM registration.summer_issue WHERE student_id = bo);
+
+    -- the tables: on the audit spine; the history is write-once but goes with its student
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    -- a student the Office authorised, who selected the named course (confirmed at once: a row of history), then a row of history that is neither changed nor deleted, and goes with its student
+    del := pg_temp.v779_student('991807', prog, SP, 200);
+    PERFORM registration.summer_authorise(S, del, ARRAY['ZZV 410'], 'The Senate approved a deficiency course before graduation', false);
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', del::text, true);
+    PERFORM registration.summer_select(del, S, ARRAY['ZZV 410']);
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    SELECT id INTO mid FROM registration.summer_selection_review WHERE selection_id IN (SELECT id FROM registration.summer_selection WHERE student_id = del) LIMIT 1;
+    m_tables := (SELECT string_agg(t || ':' || EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid = t::regclass AND tgname = 'trg_audit_' || replace(t, '.', '_')), ',' ORDER BY t)
+                   FROM unnest(ARRAY['registration.summer_selection', 'registration.summer_selection_review', 'registration.summer_exam_override']) t);
+    BEGIN UPDATE registration.summer_selection_review SET note = 'edited' WHERE id = mid; m_tables := m_tables || ' | update allowed';
+    EXCEPTION WHEN check_violation THEN m_tables := m_tables || ' | update ' || split_part(SQLERRM, ':', 1); END;
+    BEGIN DELETE FROM registration.summer_selection_review WHERE id = mid; m_tables := m_tables || ' delete allowed';
+    EXCEPTION WHEN check_violation THEN m_tables := m_tables || ' delete ' || split_part(SQLERRM, ':', 1); END;
+    SELECT count(*) INTO v_n FROM registration.summer_selection_review WHERE selection_id IN (SELECT id FROM registration.summer_selection WHERE student_id = del);
+    PERFORM set_config('moaum.maintenance', 'on', true);
+    DELETE FROM people.student WHERE id = del;
+    PERFORM set_config('moaum.maintenance', '', true);
+    m_tables := m_tables || ' | history rows ' || v_n || ' then with the student gone ' || (SELECT count(*) FROM registration.summer_selection_review WHERE id = mid)
+             || ' selections ' || (SELECT count(*) FROM registration.summer_selection WHERE student_id = del);
+
+    -- a course merged into another carries its selection; a student who holds both blocks the merge
+    INSERT INTO catalogue.course (code, title, units, semester, level, dept_code, kind, state) VALUES
+        ('ZZV 910', 'Check merged course', 3, 1, 400, dept, 'Core', 'LIVE'), ('ZZV 911', 'Check merged course', 3, 1, 400, dept, 'Core', 'LIVE');
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('ZZV 910', prog, 400, 'Core'), ('ZZV 911', prog, 400, 'Core');
+    ma := pg_temp.v779_student('991805', prog, SP, 400); mb := pg_temp.v779_student('991806', prog, SP, 400);
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM set_config('moaum.actor_id', ma::text, true); PERFORM registration.summer_select(ma, S, ARRAY['ZZV 911']);
+    PERFORM set_config('moaum.actor_id', mb::text, true); PERFORM registration.summer_select(mb, S, ARRAY['ZZV 910', 'ZZV 911']);
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    BEGIN PERFORM catalogue.merge_course('ZZV 910', 'ZZV 911', 'The same course under two codes', false); m_merge := 'merged with a student holding both';
+    EXCEPTION WHEN check_violation THEN m_merge := split_part(SQLERRM, ':', 1); END;
+    DELETE FROM registration.summer_charge WHERE student_id = mb AND course_code = 'ZZV 911'; DELETE FROM registration.summer_selection WHERE student_id = mb AND course_code = 'ZZV 911';
+    PERFORM catalogue.merge_course('ZZV 910', 'ZZV 911', 'The same course under two codes', false);
+    m_merge := m_merge || ' | then merged: ' || (SELECT string_agg(x.course_code, ',' ORDER BY x.student_id) FROM registration.summer_selection x WHERE x.student_id IN (ma, mb))
+            || ' charge of the first ' || (SELECT string_agg(c.course_code, ',') FROM registration.summer_charge c WHERE c.student_id = ma AND c.kind = 'COURSE');
+
+    -- every function that reads sets or results carries jit = off
+    m_jit := (SELECT count(*) || ' of ' || cardinality(v.names) FROM (SELECT ARRAY['summer_eligibility_of', 'summer_eligibility', 'summer_results_of', 'summer_evidence', 'summer_selectable', 'summer_select', 'summer_selection_passed',
+                    'summer_reconcile_core', 'summer_reconcile_student', 'summer_reconcile', 'summer_identify', 'summer_roster', 'summer_queue', 'summer_queue_ids', 'summer_unverified', 'summer_report', 'summer_students',
+                    'summer_carry_students', 'summer_summary', 'summer_confirmation', 'summer_tell', 'summer_verify'] AS names) v
+                JOIN pg_proc p ON p.pronamespace = 'registration'::regnamespace AND p.proname = ANY (v.names) AND 'jit=off' = ANY (p.proconfig) GROUP BY v.names);
+    m_jit := m_jit || ' | custom plans ' || (SELECT count(*) || ' of ' || cardinality(v.names) FROM (SELECT ARRAY['summer_queue', 'summer_queue_ids', 'summer_roster', 'summer_report'] AS names) v
+                JOIN pg_proc p ON p.pronamespace = 'registration'::regnamespace AND p.proname = ANY (v.names) AND 'plan_cache_mode=force_custom_plan' = ANY (p.proconfig) GROUP BY v.names);
+    -- the functions that call others once a row keep the default plan: a custom plan reaches every function they call and plans each call again
+    m_jit := m_jit || ' | default plans ' || (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'registration'::regnamespace
+                AND p.proname IN ('summer_eligibility_of', 'summer_eligibility', 'summer_results_of', 'summer_evidence', 'summer_unverified', 'summer_identify', 'summer_carry_students', 'summer_students',
+                                  'summer_selectable', 'summer_reconcile', 'summer_reconcile_core', 'summer_verify', 'summer_summary', 'summer_confirmation', 'summer_tell')
+                AND NOT EXISTS (SELECT 1 FROM unnest(coalesce(p.proconfig, ARRAY[]::text[])) c WHERE c LIKE 'plan_cache_mode=%')) || ' of 15';
+    RAISE EXCEPTION 'the V779 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V779 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V779: a spillover student''s Summer entry is typed by its verification — CURRENT while pending, CARRYOVER once confirmed or confirmed by the results, CURRENT again on REOPEN or when the result it rested on is rolled back — and V674''s trigger does not force it to a declared carry-over',
+      coalesce(m_type = 'is_spillover true | paid pending CURRENT/- | confirmed CARRYOVER/- | reopened CURRENT/- | by results CARRYOVER | rolled back CURRENT', false), m_type);
+  PERFORM pg_temp.assert('V779: V674''s trigger still forces the same spillover student''s first and second semester entries to declared carry-overs, and a CCE spillover student''s third semester',
+      coalesce(m_forced = 'semester 1 CARRYOVER/CARRY_OVER_DECLARED | CCE third semester CARRYOVER/CARRY_OVER_DECLARED | spillover true summer for false', false), m_forced);
+  PERFORM pg_temp.assert('V779: a course of both semesters failed in the first semester of the session is selectable and registers in the Summer (V735''s exemption of semester 3 from the rule of one registration a session), with no issue left for the desk',
+      coalesce(m_both = 'RESULT_FAILED/true/true | registered CARRYOVER/APPROVED issues 0', false), m_both);
+  PERFORM pg_temp.assert('V779: the selections, their history and the examination overrides are on the audit spine; a row of history is neither changed nor deleted and goes with its student',
+      coalesce(m_tables = 'registration.summer_exam_override:true,registration.summer_selection:true,registration.summer_selection_review:true | update SUMMER_REVIEW_KEPT delete SUMMER_REVIEW_KEPT | history rows 1 then with the student gone 0 selections 0', false), m_tables);
+  PERFORM pg_temp.assert('V779: a course merged into another carries the selections and the charges of its students; a student who holds both courses blocks the merge',
+      coalesce(m_merge = 'MERGE_CONFLICT | then merged: ZZV 910,ZZV 910 charge of the first ZZV 910', false), m_merge);
+  PERFORM pg_temp.assert('V779: every function of the Summer that reads sets or results — the eligibility, the results and the evidence, the pool, the selection, the reconcile, the identification, the desk''s roster, queue and report, the gate''s count, the summary, the confirmation, the notices, the decision — carries jit = off, the four whose parameters decide their plan (the queue, its ids, the roster, the report) keep a custom plan, and the functions that call others a row at a time keep the default plan',
+      coalesce(m_jit = '22 of 22 | custom plans 4 of 4 | default plans 15 of 15', false), m_jit);
+END $$;
+
+-- ── V779 (9): the desk's reads. In 9922/9923 (its Summer): two departments of two faculties, three students — A1 selects one course (pending, unpaid), A2, recorded at 300 and
+--          placed at 400 by the engine, holds a failure published before it and pays two courses (one confirmed by the results, one pending), B1 of the other department selects
+--          one. The roster, the queue and the report agree with the rows: the totals, each filter (faculty, department, programme, the Summer level, the payment and registration
+--          states, the verification state, the evidence, the flag, the basis, the search), the scope a head of department or a dean is held to, the figures of the Summer one
+--          by one, the figures of a faculty added up equal the figures of the whole; none of the three reads a result or a carry-over a student at a time. ──
+DO $$
+DECLARE
+    SP text := '9921/9922'; S text := '9922/9923'; who uuid := gen_random_uuid(); prog text := 'C97919'; prog2 text := 'C97920'; dept text; dept2 text; fac text; fac2 text;
+    a1 uuid; a2 uuid; b1 uuid; refa2 text; sel uuid; j jsonb; v_err text; since timestamptz;
+    m_roster text; m_filters text; m_queue text; m_report text; m_sum text; m_text text; m_money text; v_preview numeric;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check V779', true);
+    dept := pg_temp.v779_world(SP, S, prog);
+    -- the other students of the database (earlier checks leave some) are out of this block's Summer: identification and the desk's figures read everyone
+    UPDATE people.student SET status = 'DORMANT' WHERE status IN ('ACTIVE', 'PROBATION');
+    SELECT p.faculty_code INTO fac FROM ref.programme p WHERE p.code = prog;
+    SELECT p.dept_code, p.faculty_code INTO dept2, fac2 FROM ref.programme p JOIN ref.faculty f ON f.code = p.faculty_code
+     WHERE p.category = 'UNDER GRADUATE' AND NOT coalesce(p.archived, false) AND p.dept_code IS NOT NULL AND p.faculty_code <> fac AND coalesce(f.college_code, '') <> 'CHS' ORDER BY p.code LIMIT 1;
+    INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, final_level, duration_years, matric_code) VALUES (prog2, 'B.Sc. Summer Check Two', dept2, fac2, 'UNDER GRADUATE', 0, 400, 4, 'ZSY');
+    INSERT INTO catalogue.course_offer (course_code, programme_code, level, basis) VALUES ('ZZV 301', prog2, 300, 'Core'), ('ZZV 401', prog2, 400, 'Core');
+    a1 := pg_temp.v779_student('991901', prog, SP, 400);
+    a2 := pg_temp.v779_student('991902', prog, SP, 300);
+    b1 := pg_temp.v779_student('991903', prog2, SP, 400);
+    PERFORM pg_temp.v779_result(a2, 'ZZV 401', SP, 1, 10, 15);
+    UPDATE people.academic_position SET computed_level = 400 WHERE student_id = a2;
+    PERFORM set_config('moaum.actor_office', 'student', true);
+    PERFORM set_config('moaum.actor_id', a1::text, true); PERFORM registration.summer_select(a1, S, ARRAY['ZZV 301']);
+    PERFORM set_config('moaum.actor_id', a2::text, true); PERFORM registration.summer_select(a2, S, ARRAY['ZZV 301', 'ZZV 401']); refa2 := registration.summer_reference(a2, S);
+    PERFORM set_config('moaum.actor_id', b1::text, true); PERFORM registration.summer_select(b1, S, ARRAY['ZZV 301']);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(refa2, 'Bank transfer', 'check V779 a2');
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    UPDATE people.academic_position SET computed_level = 400 WHERE student_id = a2;
+    PERFORM registration.summer_identify(S, clock_timestamp(), 5000);
+    -- the roster
+    SELECT string_agg(split_part(x.matric_no, '/', 4) || ' ' || x.total || ' L' || x.level || '/' || x.summer_level || ' ' || x.category || ' sel ' || x.selected || ' pend ' || x.pending || ' conf ' || x.confirmed || ' ' || x.payment_state
+                      || ' reg ' || x.courses_registered || ' units ' || x.units || ' due ' || (x.programme_fee_due + x.course_fees_due) || ' paid ' || (x.programme_fee_paid + x.course_fees_paid) || ' results ' || x.results,
+                      ' ; ' ORDER BY x.matric_no) INTO m_roster
+      FROM registration.summer_roster(S, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 50, 0) x;
+    m_filters := 'faculty ' || (SELECT count(*) FROM registration.summer_roster(S, fac, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 50, 0))
+              || ' other faculty ' || (SELECT count(*) FROM registration.summer_roster(S, fac2, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 50, 0))
+              || ' dept ' || (SELECT count(*) FROM registration.summer_roster(S, NULL, dept2, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 50, 0))
+              || ' programme ' || (SELECT count(*) FROM registration.summer_roster(S, NULL, NULL, prog, NULL, NULL, NULL, NULL, NULL, NULL, 50, 0))
+              || ' Summer level 400 ' || (SELECT count(*) FROM registration.summer_roster(S, NULL, NULL, NULL, 400, NULL, NULL, NULL, NULL, NULL, 50, 0))
+              || ' recorded 300 as 300 ' || (SELECT count(*) FROM registration.summer_roster(S, NULL, NULL, NULL, 300, NULL, NULL, NULL, NULL, NULL, 50, 0))
+              || ' paid ' || (SELECT count(*) FROM registration.summer_roster(S, NULL, NULL, NULL, NULL, NULL, 'PAID', NULL, NULL, NULL, 50, 0))
+              || ' unpaid ' || (SELECT count(*) FROM registration.summer_roster(S, NULL, NULL, NULL, NULL, NULL, 'UNPAID', NULL, NULL, NULL, 50, 0))
+              || ' registered ' || (SELECT count(*) FROM registration.summer_roster(S, NULL, NULL, NULL, NULL, NULL, NULL, 'REGISTERED', NULL, NULL, 50, 0))
+              || ' not registered ' || (SELECT count(*) FROM registration.summer_roster(S, NULL, NULL, NULL, NULL, NULL, NULL, 'NOT_REGISTERED', NULL, NULL, 50, 0))
+              || ' search ' || (SELECT count(*) FROM registration.summer_roster(S, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '991902', 50, 0))
+              || ' page of one, total ' || (SELECT max(x.total) || '/' || count(*) FROM registration.summer_roster(S, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 1) x)
+              || ' eligible scope ' || (SELECT count(*) FROM registration.summer_roster(S, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'ELIGIBLE', NULL, 50, 0))
+              || ' all scope ' || (SELECT count(*) FROM registration.summer_roster(S, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'ALL', NULL, 50, 0))
+              || ' category ' || (SELECT count(*) FROM registration.summer_roster(S, NULL, NULL, NULL, NULL, 'FINAL_YEAR', NULL, NULL, NULL, NULL, 50, 0));
+    -- the queue
+    m_queue := 'all ' || (SELECT max(x.total) FROM registration.summer_queue(S, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 50, 0) x)
+            || ' pending ' || (SELECT max(x.total) FROM registration.summer_queue(S, NULL, NULL, NULL, NULL, 'PENDING_VERIFICATION', NULL, NULL, NULL, NULL, NULL, 50, 0) x)
+            || ' confirmed ' || (SELECT max(x.total) FROM registration.summer_queue(S, NULL, NULL, NULL, NULL, 'CONFIRMED_OUTSTANDING', NULL, NULL, NULL, NULL, NULL, 50, 0) x)
+            || ' failed ' || (SELECT max(x.total) FROM registration.summer_queue(S, NULL, NULL, NULL, NULL, NULL, 'RESULT_FAILED', NULL, NULL, NULL, NULL, 50, 0) x)
+            || ' no result ' || (SELECT max(x.total) FROM registration.summer_queue(S, NULL, NULL, NULL, NULL, NULL, 'NO_RESULT', NULL, NULL, NULL, NULL, 50, 0) x)
+            || ' by carry-over ' || (SELECT max(x.total) FROM registration.summer_queue(S, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'CARRY_OVER', NULL, NULL, 50, 0) x)
+            || ' paid ' || (SELECT max(x.total) FROM registration.summer_queue(S, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'PAID', NULL, 50, 0) x)
+            || ' unpaid ' || (SELECT max(x.total) FROM registration.summer_queue(S, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'UNPAID', NULL, 50, 0) x)
+            || ' other faculty ' || (SELECT max(x.total) FROM registration.summer_queue(S, fac2, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 50, 0) x)
+            || ' Summer level 400 ' || (SELECT max(x.total) FROM registration.summer_queue(S, NULL, NULL, NULL, 400, NULL, NULL, NULL, NULL, NULL, NULL, 50, 0) x)
+            || ' search ' || (SELECT max(x.total) FROM registration.summer_queue(S, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'ZZV 401', 50, 0) x)
+            || ' ids ' || (SELECT max(x.total) || '/' || count(*) FROM registration.summer_queue_ids(S, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL) x)
+            || ' first ' || (SELECT x.state || '/' || x.evidence || '/' || coalesce(x.charge_state, '-') || '/' || x.entry_live FROM registration.summer_queue(S, NULL, NULL, NULL, NULL, 'CONFIRMED_OUTSTANDING', NULL, NULL, NULL, NULL, NULL, 1, 0) x);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    SELECT id INTO sel FROM registration.summer_selection WHERE student_id = a1;
+    UPDATE registration.summer_selection SET needs_review = true, review_flag = 'EVIDENCE_CHANGED', clarification_open = true, clarification_note = 'Which session?' WHERE id = sel;
+    m_queue := m_queue || ' | flagged ' || (SELECT max(x.total) FROM registration.summer_queue(S, NULL, NULL, NULL, NULL, NULL, NULL, 'REVIEW', NULL, NULL, NULL, 50, 0) x)
+            || ' clarified ' || (SELECT max(x.total) FROM registration.summer_queue(S, NULL, NULL, NULL, NULL, NULL, NULL, 'CLARIFICATION', NULL, NULL, NULL, 50, 0) x)
+            || ' first ' || (SELECT x.course_code || '/' || x.needs_review FROM registration.summer_queue(S, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 0) x);
+    -- the report: the figures of the whole, each one; the faculties added up equal it; no figure is null
+    SELECT string_agg(k || '=' || v, ' ' ORDER BY k) INTO m_report FROM (SELECT j.key AS k, j.value AS v FROM registration.summer_report(S, 'ALL', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL) r, jsonb_each_text(to_jsonb(r) - 'group_code' - 'group_name') j) q;
+    SELECT string_agg(x.k || '=' || x.s, ' ' ORDER BY x.k) INTO m_sum FROM (SELECT j.key AS k, sum(j.value::numeric) AS s FROM registration.summer_report(S, 'FACULTY', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL) r,
+                                                                                  jsonb_each_text(to_jsonb(r) - 'group_code' - 'group_name') j GROUP BY j.key) x;
+    m_sum := (CASE WHEN replace(m_report, '.00', '') = replace(m_sum, '.00', '') THEN 'faculties equal the whole' ELSE m_report || ' VERSUS ' || m_sum END)
+          || ' | groups ' || (SELECT string_agg(g, ',') FROM (SELECT 'FACULTY ' || count(*) g FROM registration.summer_report(S, 'FACULTY', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)
+                                                        UNION ALL SELECT 'DEPARTMENT ' || count(*) FROM registration.summer_report(S, 'DEPARTMENT', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)
+                                                        UNION ALL SELECT 'PROGRAMME ' || count(*) FROM registration.summer_report(S, 'PROGRAMME', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)
+                                                        UNION ALL SELECT 'LEVEL ' || count(*) FROM registration.summer_report(S, 'LEVEL', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)
+                                                        UNION ALL SELECT 'CATEGORY ' || count(*) FROM registration.summer_report(S, 'CATEGORY', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)) z)
+          || ' | scoped to the other faculty ' || (SELECT string_agg(r.group_code || ' selected ' || r.students_selected, ',') FROM registration.summer_report(S, 'FACULTY', fac2, NULL, NULL, NULL, NULL, NULL, NULL, NULL) r)
+          || ' | paid only ' || (SELECT r.students_selected || '/' || r.fees_paid FROM registration.summer_report(S, 'ALL', NULL, NULL, NULL, NULL, NULL, NULL, 'PAID', NULL) r)
+          || ' | registered only ' || (SELECT r.students_selected || '/' || r.registered_courses FROM registration.summer_report(S, 'ALL', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'REGISTERED') r)
+          || ' | Summer level 400 ' || (SELECT r.students_selected FROM registration.summer_report(S, 'ALL', NULL, NULL, NULL, 400, NULL, NULL, NULL, NULL) r)
+          || ' | pending only ' || (SELECT r.courses_selected || '/' || r.pending || '/' || r.confirmed FROM registration.summer_report(S, 'ALL', NULL, NULL, NULL, NULL, NULL, 'PENDING_VERIFICATION', NULL, NULL) r);
+    -- none of the three reads a result or a carry-over a student at a time
+    m_text := (SELECT string_agg(p.proname || ':' || (position('carryovers(' IN p.prosrc) > 0 OR position('summer_eligibility(' IN p.prosrc) > 0 OR position('summer_selectable(' IN p.prosrc) > 0
+                                                   OR position('summer_evidence(' IN p.prosrc) > 0 OR position('carryover_attempts(' IN p.prosrc) > 0 OR (p.proname <> 'summer_roster' AND position('student_results(' IN p.prosrc) > 0))::text, ',' ORDER BY p.proname)
+                 FROM pg_proc p WHERE p.pronamespace = 'registration'::regnamespace AND p.proname IN ('summer_roster', 'summer_queue', 'summer_report'));
+    -- the money a decision would hold, as the queue gives it for each row (the live course charge, the student's paid programme fee, how many of
+    -- the student's selections hold a live course charge), and the desk's preview of a decision on A1's and A2's rows summed as its dialog sums
+    -- them (the paid course charges, and the paid programme fee of a student whose chosen live rows are all their standing courses) against
+    -- what the decision credits; a decided row holds none
+    m_money := (SELECT string_agg(split_part(x.matric_no, '/', 4) || ' ' || x.course_code || ' ' || coalesce(x.charge_state, '-') || '/' || coalesce(x.charge_amount::text, '-')
+                                  || '/' || coalesce(x.programme_fee_paid::text, '-') || '/' || x.courses_standing, ', ' ORDER BY x.matric_no, x.course_code)
+                  FROM registration.summer_queue(S, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 50, 0) x);
+    WITH ch AS (SELECT x.* FROM registration.summer_queue(S, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 50, 0) x WHERE x.student_id IN (a1, a2)),
+         st AS (SELECT ch.student_id, max(ch.programme_fee_paid) AS fee, max(ch.courses_standing) AS standing,
+                       count(*) FILTER (WHERE ch.charge_state IN ('DUE', 'PAID')) AS chosen FROM ch GROUP BY ch.student_id)
+    SELECT coalesce((SELECT sum(ch.charge_amount) FROM ch WHERE ch.charge_state = 'PAID'), 0) + coalesce((SELECT sum(coalesce(st.fee, 0)) FROM st WHERE st.chosen = st.standing), 0)
+      INTO v_preview;
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    j := registration.summer_verify(ARRAY(SELECT x.id FROM registration.summer_selection x WHERE x.session = S AND x.student_id IN (a1, a2)), 'REJECT', 'These courses are not owed by the students', NULL);
+    m_money := m_money || ' | preview ' || v_preview || ' credited ' || (j ->> 'credited') || ' | after '
+            || (SELECT string_agg(split_part(x.matric_no, '/', 4) || ' ' || x.course_code || ' ' || x.state || '/' || coalesce(x.charge_amount::text, '-')
+                                  || '/' || coalesce(x.programme_fee_paid::text, '-') || '/' || x.courses_standing, ', ' ORDER BY x.matric_no, x.course_code)
+                  FROM registration.summer_queue(S, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 50, 0) x);
+    RAISE EXCEPTION 'the V779 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V779 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V779: the roster lists each student with the category, the selections by verification state, what is owed and paid, the payment and registration state and the results counted, and its total is the filtered set',
+      coalesce(m_roster = '991901 3 L400/400 FINAL_YEAR sel 1 pend 1 conf 0 UNPAID reg 0 units 3 due 55000.00 paid 0 results 0 ; 991902 3 L300/400 FINAL_YEAR sel 2 pend 1 conf 1 PAID reg 2 units 6 due 0 paid 60000.00 results 1 ; 991903 3 L400/400 FINAL_YEAR sel 1 pend 1 conf 0 UNPAID reg 0 units 3 due 55000.00 paid 0 results 0', false), m_roster);
+  PERFORM pg_temp.assert('V779: the roster filters by faculty, department, programme, the Summer level (not the recorded one), the payment and registration states, the category, a search and its scope (selected, eligible, everyone), and pages',
+      coalesce(m_filters = 'faculty 2 other faculty 1 dept 1 programme 2 Summer level 400 3 recorded 300 as 300 0 paid 1 unpaid 2 registered 1 not registered 2 search 1 page of one, total 3/1 eligible scope 3 all scope 3 category 3', false), m_filters);
+  PERFORM pg_temp.assert('V779: the verification queue totals every match and filters by verification state, evidence, flag, basis, payment, faculty, the Summer level and a search; the ids of a filter are the queue''s',
+      coalesce(m_queue = 'all 4 pending 3 confirmed 1 failed 1 no result 3 by carry-over 1 paid 2 unpaid 2 other faculty 1 Summer level 400 4 search 1 ids 4/4 first CONFIRMED_OUTSTANDING/RESULT_FAILED/PAID/true | flagged 1 clarified 1 first ZZV 301/true', false), m_queue);
+  PERFORM pg_temp.assert('V779: the report gives the figures of the Summer one by one (eligible and by category, missing history, selecting, courses by state, registered, payment states, fees paid and due, credits, selections no result bears on), the faculties added up equal the whole, a scope shows only its own, and the filters limit what they say they limit',
+      coalesce(m_report = 'clarifications=1 confirmed=1 courses_selected=4 credits_open=0 eligible=3 eligible_authorised=0 eligible_final_year=3 eligible_spillover=0 fees_due=110000.00 fees_paid=60000.00 flagged=1 missing_history_students=2 not_outstanding=0 pending=3 registered_courses=2 registered_students=1 rejected=0 selections_no_result=3 students_not_started=0 students_paid=1 students_part_paid=0 students_selected=3 students_unpaid=2 units_selected=12'
+                   AND m_sum = 'faculties equal the whole | groups FACULTY 2,DEPARTMENT 2,PROGRAMME 2,LEVEL 1,CATEGORY 1 | scoped to the other faculty AR selected 1 | paid only 1/60000.00 | registered only 1/2 | Summer level 400 3 | pending only 3/3/0', false), m_report || ' || ' || m_sum);
+  PERFORM pg_temp.assert('V779: neither the roster, the queue nor the report reads a carry-over, an eligibility or the evidence of a student at a time (the roster reads the Summer''s own results for the page it returns only)',
+      coalesce(m_text = 'summer_queue:false,summer_report:false,summer_roster:false', false), m_text);
+  PERFORM pg_temp.assert('V779: each queue row carries the money a decision would hold — its live course charge, the student''s paid programme fee and how many of the student''s selections hold a live course charge — and the desk''s preview summed from them (the paid course charges, and the programme fee of a student whose standing courses are all chosen) is what the decision credits; a decided row holds none',
+      coalesce(m_money = '991901 ZZV 301 DUE/5000.00/-/1, 991902 ZZV 301 PAID/5000.00/50000.00/2, 991902 ZZV 401 PAID/5000.00/50000.00/2, 991903 ZZV 301 DUE/5000.00/-/1'
+                      || ' | preview 60000.00 credited 60000.00 | after 991901 ZZV 301 REJECTED/-/-/0, 991902 ZZV 301 REJECTED/-/-/0, 991902 ZZV 401 REJECTED/-/-/0, 991903 ZZV 301 PENDING_VERIFICATION/5000.00/-/1', false), m_money);
+END $$;
+
+-- ── V779 (10): identifying and telling the students. In 9924/9925 (its Summer): five final-year students and one at 200 Level; the identification reads two a call and says how many are left,
+--          reads none the second time (nothing is read twice), and a student who has left the pool is read again and no longer eligible; the published results counted for each are
+--          kept (the missing-history figure). The notices: the Summer's opening no longer speaks of an outstanding course in any of its three bodies and no longer lists the figure, the
+--          review of a course has its template, the opening and the closing are queued behind receipts and password resets; the students are told in tranches walked by a cursor —
+--          past a student who has no usable address while the portal's own delivery is off — until none remains, and a repeat tells nobody twice. ──
+DO $$
+DECLARE
+    SP text := '9923/9924'; S text := '9924/9925'; who uuid := gen_random_uuid(); prog text := 'C97921'; dept text;
+    i1 uuid; i2 uuid; i3 uuid; i4 uuid; i5 uuid; i6 uuid; j jsonb; v_err text; since timestamptz; v_after uuid; told int; visited int; rounds int; rem bigint;
+    m_ident text; m_gone text; m_tpl text; m_tell text; m_again text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check V779', true);
+    dept := pg_temp.v779_world(SP, S, prog);
+    -- the other students of the database (earlier checks leave some) are out of this block's Summer: identification and the desk's figures read everyone
+    UPDATE people.student SET status = 'DORMANT' WHERE status IN ('ACTIVE', 'PROBATION');
+    i1 := pg_temp.v779_student('992401', prog, SP, 400); i2 := pg_temp.v779_student('992402', prog, SP, 400); i3 := pg_temp.v779_student('992403', prog, SP, 400);
+    i4 := pg_temp.v779_student('992404', prog, SP, 400); i5 := pg_temp.v779_student('992405', prog, SP, 400); i6 := pg_temp.v779_student('992406', prog, SP, 200);
+    PERFORM pg_temp.v779_result(i1, 'ZZV 401', SP, 1, 10, 15);
+    since := clock_timestamp();
+    j := registration.summer_identify(S, since, 2); m_ident := (j ->> 'read') || '/' || (j ->> 'left') || '/' || (j ->> 'eligible');
+    j := registration.summer_identify(S, since, 2); m_ident := m_ident || ' ' || (j ->> 'read') || '/' || (j ->> 'left') || '/' || (j ->> 'eligible');
+    j := registration.summer_identify(S, since, 2); m_ident := m_ident || ' ' || (j ->> 'read') || '/' || (j ->> 'left') || '/' || (j ->> 'eligible');
+    j := registration.summer_identify(S, since, 2); m_ident := m_ident || ' ' || (j ->> 'read') || '/' || (j ->> 'left') || '/' || (j ->> 'eligible');
+    m_ident := m_ident || ' | results ' || (SELECT string_agg(split_part(stu.matric_no, '/', 4) || '=' || c.results, ',' ORDER BY stu.matric_no) FROM registration.summer_candidate c JOIN people.student stu ON stu.id = c.student_id WHERE c.session = S)
+            || ' | the one at 200 Level is not in the pool ' || (SELECT count(*) FROM registration.summer_candidate c WHERE c.student_id = i6 AND c.session = S);
+    -- a student who leaves the pool is read again and is no longer eligible
+    UPDATE people.student SET status = 'SUSPENDED' WHERE id = i3;
+    since := clock_timestamp();
+    j := registration.summer_identify(S, since, 100);
+    m_gone := (j ->> 'read') || '/' || (j ->> 'left') || '/' || (j ->> 'eligible') || ' ' || (SELECT c.eligible || '/' || c.reason FROM registration.summer_candidate c WHERE c.student_id = i3 AND c.session = S);
+    -- the notices as the migration left them
+    m_tpl := (SELECT (position('[OUTSTANDING]' IN coalesce(email_body, '') || coalesce(sms_body, '') || coalesce(portal_body, '')) > 0)::text || '/' || ('OUTSTANDING' = ANY (variables))::text
+                  || '/' || priority || '/' || (position('final year or in spillover' IN email_body) > 0) || '/' || (position('the courses you owe' IN sms_body) > 0) || '/' || (position('the courses you owe' IN portal_body) > 0)
+               FROM platform.notice_template WHERE key = 'SUMMER_OPEN')
+          || ' | closing ' || (SELECT priority FROM platform.notice_template WHERE key = 'SUMMER_CLOSING')
+          || ' | reviewed ' || (SELECT t.mandatory || '/' || t.priority || '/' || cardinality(t.variables) || '/' || (position('[LINES]' IN t.portal_body) > 0) FROM platform.notice_template t WHERE t.key = 'SUMMER_COURSE_REVIEWED')
+          || ' | registered ' || (SELECT priority FROM platform.notice_template WHERE key = 'SUMMER_REGISTERED');
+    -- the students told in tranches: three of the five have an address, the portal's own delivery is off
+    UPDATE platform.notice_setting SET portal_delivery = false;
+    INSERT INTO people.student_contact (student_id, email) VALUES (i1, 'zz-check-1@example.com'), (i2, 'zz-check-2@example.com'), (i4, 'zz-check-4@example.com');
+    UPDATE people.student SET status = 'ACTIVE' WHERE id = i3;
+    PERFORM registration.summer_identify(S, clock_timestamp(), 100);
+    v_after := NULL; told := 0; visited := 0; rounds := 0; rem := -1;
+    LOOP
+        j := registration.summer_tell(S, 'OPEN', 2, v_after);
+        rounds := rounds + 1; told := told + (j ->> 'told')::int; visited := visited + (j ->> 'visited')::int; rem := (j ->> 'remaining')::bigint;
+        EXIT WHEN (j ->> 'next') IS NULL OR rounds > 10;
+        v_after := (j ->> 'next')::uuid;
+    END LOOP;
+    m_tell := rounds || ' tranches, visited ' || visited || ' told ' || told || ' remaining ' || rem || ' queued ' || (SELECT count(*) FROM platform.notice WHERE template_key = 'SUMMER_OPEN' AND about_id IN (i1, i2, i3, i4, i5, i6))
+           || ' at ' || (SELECT string_agg(DISTINCT priority, ',') FROM platform.notice WHERE template_key = 'SUMMER_OPEN' AND about_id IN (i1, i2, i3, i4, i5, i6));
+    v_after := NULL; told := 0; rounds := 0;
+    LOOP
+        j := registration.summer_tell(S, 'OPEN', 2, v_after);
+        rounds := rounds + 1; told := told + (j ->> 'told')::int;
+        EXIT WHEN (j ->> 'next') IS NULL OR rounds > 10;
+        v_after := (j ->> 'next')::uuid;
+    END LOOP;
+    m_again := 'again told ' || told || ' queued ' || (SELECT count(*) FROM platform.notice WHERE template_key = 'SUMMER_OPEN' AND about_id IN (i1, i2, i3, i4, i5, i6));
+    BEGIN PERFORM registration.summer_tell(S, 'OTHER', 2, NULL); m_again := m_again || ' | other allowed'; EXCEPTION WHEN check_violation THEN m_again := m_again || ' | ' || split_part(SQLERRM, ':', 1); END;
+    RAISE EXCEPTION 'the V779 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V779 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V779: the identification reads the students two a call, says how many are left, reads none twice and keeps the published results counted for each; a student of 200 Level is read and is not eligible',
+      coalesce(m_ident = '2/3/2 2/1/4 1/0/5 0/0/5 | results 992401=1,992402=0,992403=0,992404=0,992405=0 | the one at 200 Level is not in the pool 0', false), m_ident);
+  PERFORM pg_temp.assert('V779: a student who has left the pool is read again by the next identification and is no longer eligible',
+      coalesce(m_gone = '5/0/4 false/NOT_STUDYING', false), m_gone);
+  PERFORM pg_temp.assert('V779: the Summer''s opening notice no longer speaks of an outstanding course in any of its three bodies nor lists the figure, the review of a course has its template, and the opening and the closing are queued at low priority behind the receipts',
+      coalesce(m_tpl = 'false/false/LOW/true/true/true | closing LOW | reviewed true/NORMAL/6/true | registered NORMAL', false), m_tpl);
+  PERFORM pg_temp.assert('V779: the students are told in tranches walked by a cursor, past those with no usable address while the portal''s own delivery is off, until none remains; a repeat tells nobody twice; an unknown kind is refused',
+      coalesce(m_tell = '3 tranches, visited 5 told 3 remaining 0 queued 3 at LOW' AND m_again = 'again told 0 queued 3 | SUMMER_KIND', false), m_tell || ' | ' || m_again);
+END $$;
+
+-- ── V779 (11): the Office's question and the student's word, and who may do what. In 9926/9927 (its Summer): the Academic Office asks a student about a pending selection (ten to five hundred
+--          characters), the student is told and answers in a note kept on the history, a decision clears the question and a decided course is not asked about; a student's note is five hundred
+--          characters at most and is on their own selection; only the Academic Office or the Registry sets the ceiling (one to sixty courses, with a reason), asks, reconciles, records an
+--          override, decides — a bursar, a student and a head of department are each refused in their own word. ──
+DO $$
+DECLARE
+    SP text := '9925/9926'; S text := '9926/9927'; who uuid := gen_random_uuid(); prog text := 'C97922'; dept text;
+    a uuid; b uuid; sel uuid; sel2 uuid; j jsonb; v_err text; m_ask text := ''; m_note text := ''; m_office text := '';
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check V779', true);
+    dept := pg_temp.v779_world(SP, S, prog);
+    a := pg_temp.v779_student('992601', prog, SP, 400); b := pg_temp.v779_student('992602', prog, SP, 400);
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', a::text, true);
+    PERFORM registration.summer_select(a, S, ARRAY['ZZV 301', 'ZZV 401']);
+    PERFORM set_config('moaum.actor_id', b::text, true);
+    PERFORM registration.summer_select(b, S, ARRAY['ZZV 301']);
+    SELECT id INTO sel FROM registration.summer_selection WHERE student_id = a AND course_code = 'ZZV 301';
+    SELECT id INTO sel2 FROM registration.summer_selection WHERE student_id = a AND course_code = 'ZZV 401';
+    -- the Office asks
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    BEGIN PERFORM registration.summer_clarify(sel, 'too short'); m_ask := m_ask || 'short allowed,'; EXCEPTION WHEN check_violation THEN m_ask := m_ask || split_part(SQLERRM, ':', 1) || ','; END;
+    BEGIN PERFORM registration.summer_clarify(sel, repeat('x', 501)); m_ask := m_ask || 'long allowed,'; EXCEPTION WHEN check_violation THEN m_ask := m_ask || split_part(SQLERRM, ':', 1) || ','; END;
+    PERFORM registration.summer_clarify(sel, 'In which session and semester did you fail ZZV 301?');
+    m_ask := m_ask || 'asked ' || (SELECT x.clarification_open || '/' || x.state FROM registration.summer_selection x WHERE x.id = sel)
+          || ' told ' || (SELECT count(*) FROM platform.notice n WHERE n.about_id = a AND n.template_key = 'SUMMER_COURSE_REVIEWED' AND n.channel = 'PORTAL' AND n.body LIKE '%asks you%')
+          || ' on the page ' || (SELECT x.clarification_open || '/' || x.clarification_note FROM registration.summer_selectable(a, S) x WHERE x.course_code = 'ZZV 301');
+    -- the student answers
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', a::text, true);
+    PERFORM registration.summer_student_note(a, S, 'ZZV 301', '  The first semester of 2023/2024  ');
+    m_ask := m_ask || ' | answer ' || (SELECT x.student_note FROM registration.summer_selection x WHERE x.id = sel) || ' / history ' || (SELECT string_agg(v.action || ':' || v.via, ',' ORDER BY v.at) FROM registration.summer_selection_review v WHERE v.selection_id = sel)
+          || ' still open ' || (SELECT x.clarification_open FROM registration.summer_selection x WHERE x.id = sel);
+    -- a decision clears it, a decided course is not asked about
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM registration.summer_verify(ARRAY[sel], 'CONFIRM', NULL, NULL);
+    m_ask := m_ask || ' | confirmed, question open ' || (SELECT x.clarification_open FROM registration.summer_selection x WHERE x.id = sel);
+    PERFORM registration.summer_verify(ARRAY[sel2], 'REJECT', 'This course is not owed by the student', NULL);
+    BEGIN PERFORM registration.summer_clarify(sel2, 'Why did you select this course?'); m_ask := m_ask || ' | decided asked'; EXCEPTION WHEN check_violation THEN m_ask := m_ask || ' | decided ' || split_part(SQLERRM, ':', 1); END;
+    -- the student's note
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', a::text, true);
+    BEGIN PERFORM registration.summer_student_note(a, S, 'ZZV 301', repeat('y', 501)); m_note := 'long allowed'; EXCEPTION WHEN check_violation THEN m_note := split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM registration.summer_student_note(b, S, 'ZZV 401', 'not my course'); m_note := m_note || ' | another''s course allowed'; EXCEPTION WHEN check_violation THEN m_note := m_note || ' | ' || split_part(SQLERRM, ':', 1); END;
+    PERFORM registration.summer_student_note(a, S, 'zzv 301', repeat('z', 500));
+    m_note := m_note || ' | five hundred kept ' || (SELECT length(x.student_note) FROM registration.summer_selection x WHERE x.id = sel);
+    -- who may do what
+    FOREACH v_err IN ARRAY ARRAY['student', 'bursar', 'hod'] LOOP
+        PERFORM set_config('moaum.actor_office', v_err, true);
+        m_office := m_office || v_err || ':';
+        BEGIN PERFORM registration.summer_verify(ARRAY[sel], 'REOPEN', NULL, NULL); m_office := m_office || 'verify allowed '; EXCEPTION WHEN insufficient_privilege THEN m_office := m_office || 'verify ' || split_part(SQLERRM, ':', 1) || ' '; END;
+        BEGIN PERFORM registration.summer_clarify(sel2, 'Which session did you fail it in?'); m_office := m_office || 'clarify allowed '; EXCEPTION WHEN insufficient_privilege THEN m_office := m_office || 'clarify ok '; END;
+        BEGIN PERFORM registration.summer_set_ceiling(S, 5, 'a ceiling of five courses'); m_office := m_office || 'ceiling allowed '; EXCEPTION WHEN insufficient_privilege THEN m_office := m_office || 'ceiling ok '; END;
+        BEGIN PERFORM registration.summer_exam_override_set(S, 'OPEN', 'The Senate says the examinations go ahead'); m_office := m_office || 'override allowed '; EXCEPTION WHEN insufficient_privilege THEN m_office := m_office || 'override ok '; END;
+        BEGIN PERFORM registration.summer_reconcile(S, now(), 10); m_office := m_office || 'reconcile allowed;'; EXCEPTION WHEN insufficient_privilege THEN m_office := m_office || 'reconcile ok;'; END;
+    END LOOP;
+    PERFORM set_config('moaum.actor_office', 'registrar', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    m_office := m_office || ' registrar:';
+    BEGIN PERFORM registration.summer_set_ceiling(S, 61, 'a ceiling of sixty-one courses'); m_office := m_office || ' 61 allowed'; EXCEPTION WHEN check_violation THEN m_office := m_office || ' ' || split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM registration.summer_set_ceiling(S, 0, 'a ceiling of no courses'); m_office := m_office || ' 0 allowed'; EXCEPTION WHEN check_violation THEN m_office := m_office || ' ' || split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM registration.summer_set_ceiling(S, 5, 'five'); m_office := m_office || ' short reason allowed'; EXCEPTION WHEN check_violation THEN m_office := m_office || ' ' || split_part(SQLERRM, ':', 1); END;
+    PERFORM registration.summer_set_ceiling(S, 5, 'a ceiling of five courses');
+    BEGIN PERFORM registration.summer_exam_override_set(S, 'CLOSE', 'The Senate says the examinations go ahead'); m_office := m_office || ' act allowed'; EXCEPTION WHEN check_violation THEN m_office := m_office || ' ' || split_part(SQLERRM, ':', 1); END;
+    BEGIN PERFORM registration.summer_exam_override_set(S, 'OPEN', 'no'); m_office := m_office || ' override reason allowed'; EXCEPTION WHEN check_violation THEN m_office := m_office || ' ' || split_part(SQLERRM, ':', 1); END;
+    m_office := m_office || ' ceiling now ' || (SELECT max_courses FROM registration.summer_period WHERE session = S)
+             || ' override ' || (registration.summer_exam_override_set(S, 'RELEASE', 'The Senate says the sheets go ahead') ->> 'unverified');
+    RAISE EXCEPTION 'the V779 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V779 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V779: the Academic Office asks a student about a pending selection (ten to five hundred characters), the student is told and answers in a note kept on the history, a decision clears the question and a decided course is not asked about',
+      coalesce(m_ask = 'SUMMER_NOTE,SUMMER_NOTE,asked true/PENDING_VERIFICATION told 1 on the page true/In which session and semester did you fail ZZV 301? | answer The first semester of 2023/2024 / history CLARIFICATION_ASKED:OFFICER,CLARIFICATION_ANSWERED:STUDENT still open true | confirmed, question open false | decided SUMMER_DECIDED', false), m_ask);
+  PERFORM pg_temp.assert('V779: a student''s note is five hundred characters at most and is written on their own selection only',
+      coalesce(m_note = 'SUMMER_NOTE_LONG | SUMMER_NOT_YOURS | five hundred kept 500', false), m_note);
+  PERFORM pg_temp.assert('V779: only the Academic Office or the Registry decides, asks, reconciles, sets the ceiling (one to sixty courses, with a reason) and records an override (OPEN or RELEASE, with a reason): a student, a bursar and a head of department are each refused',
+      coalesce(m_office = 'student:verify SUMMER_OFFICE clarify ok ceiling ok override ok reconcile ok;bursar:verify SUMMER_OFFICE clarify ok ceiling ok override ok reconcile ok;hod:verify SUMMER_OFFICE clarify ok ceiling ok override ok reconcile ok; registrar: SUMMER_CEILING_RANGE SUMMER_CEILING_RANGE SUMMER_REASON SUMMER_ACT SUMMER_REASON ceiling now 5 override 0', false), m_office);
+END $$;
+
+-- ── V779 (12): the money of a decision through every cancellation (the review's F8). In 9928/9929 (its Summer): X pays one course and the programme fee, the Office rejects
+--          it, X selects another course (the programme fee's money comes back as a new paid charge, not charged again), the Office rejects that one unpaid, X selects a
+--          third, pays it, and the Office rejects it: at every step the paid charges and the open credits are the confirmed payments, each paid programme fee a decision
+--          cancels is credited once and open, the decision, its history and the student's mail name only money really credited, and the same decision or the same credit
+--          asked again changes nothing. Y's programme fee, credited once, is revived by a late payment of an older reference and taken again: it is credited again for
+--          that payment (one credit for the money each payment held on the charge). Z's programme fee whose money already stands as a credit is not credited a second
+--          time: the decision is refused SUMMER_CREDIT_EXISTS with nothing changed. ──
+-- the programme fee of a student counted (the block is one transaction: created_at is the same for every row, so nothing is told by its order)
+CREATE OR REPLACE FUNCTION pg_temp.v779_fee_state(p_student uuid) RETURNS text LANGUAGE sql AS $$
+    SELECT 'fee ' || count(*) FILTER (WHERE c.state = 'PAID') || ' paid ' || count(*) FILTER (WHERE c.state = 'DUE') || ' due ' || count(*) FILTER (WHERE c.state = 'CANCELLED') || ' cancelled'
+        || ', credits ' || (SELECT count(*) FILTER (WHERE x.state = 'OPEN') || ' open ' || count(*) FILTER (WHERE x.state = 'APPLIED') || ' applied'
+                              FROM registration.summer_credit x JOIN registration.summer_charge y ON y.id = x.source_charge_id AND y.kind = 'PROGRAMME' WHERE x.student_id = p_student)
+        || ', conserved ' || ((SELECT coalesce(sum(z.amount), 0) FROM registration.summer_charge z WHERE z.student_id = p_student AND z.state = 'PAID')
+                              + (SELECT coalesce(sum(z.amount), 0) FROM registration.summer_credit z WHERE z.student_id = p_student AND z.state = 'OPEN')
+                              = (SELECT coalesce(sum(z.amount), 0) FROM finance.payment_reference z WHERE z.student_id = p_student AND z.confirmed_at IS NOT NULL AND z.archived_at IS NULL
+                                    AND z.purpose LIKE 'Summer semester fees%'))
+      FROM registration.summer_charge c WHERE c.student_id = p_student AND c.kind = 'PROGRAMME';
+$$;
+DO $$
+DECLARE
+    SP text := '9927/9928'; S text := '9928/9929'; who uuid := gen_random_uuid(); prog text := 'C97923'; dept text;
+    x uuid; y uuid; z uuid; r1 text; r2 text; j jsonb; v_err text; v_before text; v_after text; v_ids uuid[];
+    m_cycle text; m_again text; m_late text; m_guard text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check V779', true);
+    dept := pg_temp.v779_world(SP, S, prog);
+    x := pg_temp.v779_student('992801', prog, SP, 400);
+    INSERT INTO people.student_contact (student_id, email) VALUES (x, 'zz.summer992801@example.com');
+    -- X: one course and the programme fee paid
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', x::text, true);
+    PERFORM registration.summer_select(x, S, ARRAY['ZZV 301']);
+    r1 := registration.summer_reference(x, S);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(r1, 'Bank transfer', 'check V779 x');
+    m_cycle := 'paid: ' || pg_temp.v779_fee_state(x);
+    -- the Office rejects it: the course and the programme fee credited
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    j := registration.summer_verify(ARRAY(SELECT id FROM registration.summer_selection WHERE student_id = x AND course_code = 'ZZV 301'), 'REJECT', 'This course is not in the programme of study', NULL);
+    m_cycle := m_cycle || ' | 301 rejected, credited ' || (j ->> 'credited') || ': ' || pg_temp.v779_fee_state(x);
+    -- X selects another course: the programme fee's money is a paid charge again, nothing more to pay for it
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', x::text, true);
+    j := registration.summer_select(x, S, ARRAY['ZZV 401']);
+    m_cycle := m_cycle || ' | 401 selected, due ' || (j ->> 'due') || ' fee ' || (j ->> 'programmeFeeState') || ' fee due ' || (j ->> 'programmeFeeDue') || ': ' || pg_temp.v779_fee_state(x);
+    -- the Office rejects the unpaid course: its last course gone, the programme fee is credited again
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    j := registration.summer_verify(ARRAY(SELECT id FROM registration.summer_selection WHERE student_id = x AND course_code = 'ZZV 401'), 'REJECT', 'This course is not in the programme of study', NULL);
+    m_cycle := m_cycle || ' | 401 rejected unpaid, credited ' || (j ->> 'credited') || ': ' || pg_temp.v779_fee_state(x);
+    -- a third course: not charged the programme fee again; paid; rejected
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', x::text, true);
+    j := registration.summer_select(x, S, ARRAY['ZZV 402']);
+    m_cycle := m_cycle || ' | 402 selected, due ' || (j ->> 'due') || ' fee ' || (j ->> 'programmeFeeState') || ' fee due ' || (j ->> 'programmeFeeDue') || ': ' || pg_temp.v779_fee_state(x);
+    r2 := registration.summer_reference(x, S);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(r2, 'Bank transfer', 'check V779 x2');
+    m_cycle := m_cycle || ' | 402 paid: ' || pg_temp.v779_fee_state(x);
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    j := registration.summer_verify(ARRAY(SELECT id FROM registration.summer_selection WHERE student_id = x AND course_code = 'ZZV 402'), 'REJECT', 'This course is not in the programme of study', NULL);
+    m_cycle := m_cycle || ' | 402 rejected, credited ' || (j ->> 'credited') || ': ' || pg_temp.v779_fee_state(x)
+        || ' | every cancelled fee credited once ' || (NOT EXISTS (SELECT 1 FROM registration.summer_charge c WHERE c.student_id = x AND c.kind = 'PROGRAMME' AND c.state = 'CANCELLED'
+                                                                     AND (SELECT count(*) FROM registration.summer_credit cr WHERE cr.source_charge_id = c.id) <> 1))
+        || ' | history ' || (SELECT string_agg(s.course_code || ':' || v.money_effect || ':' || v.credit_amount, ', ' ORDER BY s.course_code)
+                               FROM registration.summer_selection_review v JOIN registration.summer_selection s ON s.id = v.selection_id WHERE s.student_id = x AND v.action = 'REJECTED')
+        || ' | mail ' || (SELECT string_agg(substring(n.body FROM '₦[0-9,.]+ of what you paid is held as a Summer credit'), ', ' ORDER BY substring(n.body FROM '₦[0-9,.]+'))
+                            FROM platform.notice n WHERE n.about_id = x AND n.template_key = 'SUMMER_COURSE_REVIEWED' AND n.channel = 'EMAIL')
+        || ' | the account''s credit ' || (registration.summer_account(x, S) ->> 'credit');
+    -- the same decision again, and the credit of each cancelled programme fee asked for again: nothing changes
+    v_ids := ARRAY(SELECT id FROM registration.summer_selection WHERE student_id = x);
+    v_before := (SELECT string_agg(c.kind || ':' || coalesce(c.course_code, '-') || ':' || c.state || ':' || (c.paid_reference_id IS NOT NULL), ',' ORDER BY c.kind, c.course_code, c.state) FROM registration.summer_charge c WHERE c.student_id = x)
+             || ' | ' || (SELECT count(*) || '/' || sum(cr.amount) || '/' || count(*) FILTER (WHERE cr.state = 'OPEN') FROM registration.summer_credit cr WHERE cr.student_id = x)
+             || ' | ' || (SELECT count(*) FROM registration.summer_selection_review v WHERE v.selection_id = ANY (v_ids))
+             || ' | ' || (SELECT count(*) FROM platform.notice n WHERE n.about_id = x)
+             || ' | ' || (SELECT count(*) FROM registration.entry_removal er WHERE er.student_id = x)
+             || ' | ' || (SELECT string_agg(s.course_code || '=' || s.state, ',' ORDER BY s.course_code) FROM registration.summer_selection s WHERE s.student_id = x);
+    j := registration.summer_verify(v_ids, 'REJECT', 'This course is not in the programme of study', NULL);
+    m_again := 'decided ' || (j ->> 'decided') || ' unchanged ' || (j ->> 'unchanged') || ' credited ' || (j ->> 'credited') || ' refused ' || jsonb_array_length(j -> 'refused')
+            || ' | the credit asked again answers its own ' || (SELECT bool_and(registration.summer_credit_for_charge(cr.source_charge_id, cr.reference_id, 'asked again') = cr.id)
+                                                                 FROM registration.summer_credit cr WHERE cr.student_id = x AND cr.source = 'DECISION');
+    v_after := (SELECT string_agg(c.kind || ':' || coalesce(c.course_code, '-') || ':' || c.state || ':' || (c.paid_reference_id IS NOT NULL), ',' ORDER BY c.kind, c.course_code, c.state) FROM registration.summer_charge c WHERE c.student_id = x)
+             || ' | ' || (SELECT count(*) || '/' || sum(cr.amount) || '/' || count(*) FILTER (WHERE cr.state = 'OPEN') FROM registration.summer_credit cr WHERE cr.student_id = x)
+             || ' | ' || (SELECT count(*) FROM registration.summer_selection_review v WHERE v.selection_id = ANY (v_ids))
+             || ' | ' || (SELECT count(*) FROM platform.notice n WHERE n.about_id = x)
+             || ' | ' || (SELECT count(*) FROM registration.entry_removal er WHERE er.student_id = x)
+             || ' | ' || (SELECT string_agg(s.course_code || '=' || s.state, ',' ORDER BY s.course_code) FROM registration.summer_selection s WHERE s.student_id = x);
+    m_again := m_again || ' | nothing changed ' || (v_before = v_after) || ' | ' || v_after;
+
+    -- Y: the reference drawn for two courses is left for a second one after a course is taken off; the second is paid, its course rejected (the programme fee
+    -- credited), then the first is paid late (the programme fee revived on it with the course taken off), and that course rejected: the fee credited again
+    y := pg_temp.v779_student('992802', prog, SP, 400);
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', y::text, true);
+    PERFORM registration.summer_select(y, S, ARRAY['ZZV 301', 'ZZV 401']);
+    r1 := registration.summer_reference(y, S);
+    PERFORM registration.summer_unselect(y, S, 'ZZV 301');
+    r2 := registration.summer_reference(y, S);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(r2, 'Bank transfer', 'check V779 y2');
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    j := registration.summer_verify(ARRAY(SELECT id FROM registration.summer_selection WHERE student_id = y AND course_code = 'ZZV 401'), 'REJECT', 'This course is not in the programme of study', NULL);
+    m_late := '401 rejected, credited ' || (j ->> 'credited') || ': ' || pg_temp.v779_fee_state(y);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(r1, 'Bank transfer', 'check V779 y1 late');
+    m_late := m_late || ' | the older reference paid late: ' || pg_temp.v779_fee_state(y)
+           || ' revived on it ' || (SELECT bool_and(c.paid_reference_id = (SELECT id FROM finance.payment_reference WHERE reference = r1)) FROM registration.summer_charge c WHERE c.student_id = y AND c.state = 'PAID');
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    j := registration.summer_verify(ARRAY(SELECT id FROM registration.summer_selection WHERE student_id = y AND course_code = 'ZZV 301'), 'REJECT', 'This course is not in the programme of study', NULL);
+    m_late := m_late || ' | 301 rejected, credited ' || (j ->> 'credited') || ': ' || pg_temp.v779_fee_state(y)
+           || ' | the fee''s charges ' || (SELECT count(*) FROM registration.summer_charge c WHERE c.student_id = y AND c.kind = 'PROGRAMME')
+           || ', its credits ' || (SELECT count(*) || ' of ' || count(DISTINCT cr.reference_id) || ' payments' FROM registration.summer_credit cr JOIN registration.summer_charge c ON c.id = cr.source_charge_id AND c.kind = 'PROGRAMME' WHERE cr.student_id = y);
+
+    -- Z: the money of a paid programme fee already stands as a credit (as the reinstatement in place left it before this fix): the decision that would take
+    -- the fee is refused, nothing changed
+    z := pg_temp.v779_student('992803', prog, SP, 400);
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', z::text, true);
+    PERFORM registration.summer_select(z, S, ARRAY['ZZV 301']);
+    r1 := registration.summer_reference(z, S);
+    PERFORM set_config('moaum.actor_office', 'bursar', true);
+    PERFORM finance.confirm_payment(r1, 'Bank transfer', 'check V779 z');
+    INSERT INTO registration.summer_credit (student_id, session, reference_id, amount, state, settled_at, settled_note, source, source_charge_id, note)
+    SELECT c.student_id, c.session, c.paid_reference_id, c.amount, 'APPLIED', now(), 'Reinstated as the programme fee: check V779', 'DECISION', c.id, 'check V779: a credit that already stands'
+      FROM registration.summer_charge c WHERE c.student_id = z AND c.kind = 'PROGRAMME';
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    j := registration.summer_verify(ARRAY(SELECT id FROM registration.summer_selection WHERE student_id = z), 'REJECT', 'This course is not in the programme of study', NULL);
+    m_guard := 'decided ' || (j ->> 'decided') || ' credited ' || (j ->> 'credited') || ' refused ' || coalesce((SELECT string_agg(e ->> 'code', ',') FROM jsonb_array_elements(j -> 'refused') e), '-')
+            || ' | charges ' || (SELECT string_agg(coalesce(c.course_code, 'PROGRAMME') || ':' || c.state, ',' ORDER BY c.course_code NULLS FIRST) FROM registration.summer_charge c WHERE c.student_id = z)
+            || ' credits ' || (SELECT count(*) FROM registration.summer_credit cr WHERE cr.student_id = z)
+            || ' state ' || (SELECT s.state FROM registration.summer_selection s WHERE s.student_id = z)
+            || ' entry ' || coalesce((SELECT string_agg(e.status, ',') FROM registration.course_registration r JOIN registration.entry e ON e.registration_id = r.id WHERE r.student_id = z AND r.semester = 3), '-')
+            || ' history ' || (SELECT count(*) FROM registration.summer_selection_review v JOIN registration.summer_selection s ON s.id = v.selection_id WHERE s.student_id = z AND v.action = 'REJECTED');
+    RAISE EXCEPTION 'the V779 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V779 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V779: a programme fee selected back after a decision and taken again by later ones is credited again each time: at every step the paid charges and the open credits are the confirmed payments, each paid programme fee a decision cancels is credited once and open, it is never charged a second time while its money is held, and the decision, its history, the student''s mail and the account name only money really credited',
+      coalesce(m_cycle = 'paid: fee 1 paid 0 due 0 cancelled, credits 0 open 0 applied, conserved true'
+                      || ' | 301 rejected, credited 55000.00: fee 0 paid 0 due 1 cancelled, credits 1 open 0 applied, conserved true'
+                      || ' | 401 selected, due 5000.00 fee PAID fee due 0: fee 1 paid 0 due 1 cancelled, credits 0 open 1 applied, conserved true'
+                      || ' | 401 rejected unpaid, credited 50000.00: fee 0 paid 0 due 2 cancelled, credits 1 open 1 applied, conserved true'
+                      || ' | 402 selected, due 5000.00 fee PAID fee due 0: fee 1 paid 0 due 2 cancelled, credits 0 open 2 applied, conserved true'
+                      || ' | 402 paid: fee 1 paid 0 due 2 cancelled, credits 0 open 2 applied, conserved true'
+                      || ' | 402 rejected, credited 55000.00: fee 0 paid 0 due 3 cancelled, credits 1 open 2 applied, conserved true'
+                      || ' | every cancelled fee credited once true | history ZZV 301:CREDITED:55000.00, ZZV 401:CREDITED:50000.00, ZZV 402:CREDITED:55000.00'
+                      || ' | mail ₦50,000.00 of what you paid is held as a Summer credit, ₦55,000.00 of what you paid is held as a Summer credit, ₦55,000.00 of what you paid is held as a Summer credit'
+                      || ' | the account''s credit 60000.00', false), m_cycle);
+  PERFORM pg_temp.assert('V779: the same decision again, and the credit of each cancelled charge asked for again, change nothing — no charge, credit, history row, notice or removal is written',
+      coalesce(m_again = 'decided 0 unchanged 3 credited 0 refused 0 | the credit asked again answers its own true | nothing changed true'
+                      || ' | COURSE:ZZV 301:CANCELLED:false,COURSE:ZZV 401:CANCELLED:false,COURSE:ZZV 402:CANCELLED:false,PROGRAMME:-:CANCELLED:false,PROGRAMME:-:CANCELLED:false,PROGRAMME:-:CANCELLED:false'
+                      || ' | 5/160000.00/3 | 3 | 10 | 2 | ZZV 301=REJECTED,ZZV 401=REJECTED,ZZV 402=REJECTED', false), m_again);
+  PERFORM pg_temp.assert('V779: a programme fee credited by a decision, revived by a late payment of an older reference and taken by a second decision is credited again for that payment — one credit for the money each payment held on the charge — while a decision that would take a fee whose money already stands as a credit is refused SUMMER_CREDIT_EXISTS with nothing changed',
+      coalesce(m_late = '401 rejected, credited 55000.00: fee 0 paid 0 due 1 cancelled, credits 1 open 0 applied, conserved true'
+                     || ' | the older reference paid late: fee 1 paid 0 due 0 cancelled, credits 1 open 0 applied, conserved true revived on it true'
+                     || ' | 301 rejected, credited 55000.00: fee 0 paid 0 due 1 cancelled, credits 2 open 0 applied, conserved true | the fee''s charges 1, its credits 2 of 2 payments'
+                   AND m_guard = 'decided 0 credited 0 refused SUMMER_CREDIT_EXISTS | charges PROGRAMME:PAID,ZZV 301:PAID credits 1 state PENDING_VERIFICATION entry APPROVED history 0', false), m_late || ' || ' || m_guard);
+END $$;
+
+-- ── V779 (13): the review's second round. In 9930/9931 (its Summer): the programme fee follows the last course whatever takes it — a student who paid the
+--          programme fee and one course, had that course decided against and holds a second course unpaid loses the second by the student's own unselect, by a
+--          pass taken back at the draw of a reference, at the student's reconcile or at the confirmation of its payment, or by the Summer closing: each time the paid
+--          programme fee is cancelled and its money is ONE open Summer credit (an unpaid programme fee is only cancelled), and the money is conserved at every
+--          step; the student who selects again in the same open window has it reinstated, and the credit that reinstatement settled is never reopened by the
+--          Bursar (SUMMER_CREDIT_REINSTATED) while a credit the Bursar settled by hand still is. ──
+CREATE OR REPLACE FUNCTION pg_temp.v779_b1(p uuid) RETURNS text LANGUAGE sql AS $$
+    SELECT 'prog ' || coalesce((SELECT string_agg(c.state, ',' ORDER BY c.state) FROM registration.summer_charge c WHERE c.student_id = p AND c.kind = 'PROGRAMME'), '-')
+        || ' live ' || (SELECT count(*) FROM registration.summer_charge c WHERE c.student_id = p AND c.kind = 'COURSE' AND c.state <> 'CANCELLED')
+        || ' credits ' || coalesce((SELECT string_agg(x.source || '/' || x.amount || '/' || x.state, ',' ORDER BY x.source, x.amount, x.state) FROM registration.summer_credit x WHERE x.student_id = p), '-')
+        || ' conserved ' || ((SELECT coalesce(sum(z.amount), 0) FROM registration.summer_charge z WHERE z.student_id = p AND z.state = 'PAID')
+                             + (SELECT coalesce(sum(z.amount), 0) FROM registration.summer_credit z WHERE z.student_id = p AND z.state = 'OPEN')
+                             = (SELECT coalesce(sum(z.amount), 0) FROM finance.payment_reference z WHERE z.student_id = p AND z.confirmed_at IS NOT NULL AND z.archived_at IS NULL
+                                   AND z.purpose LIKE 'Summer semester fees%'));
+$$;
+-- a student who paid the programme fee and ZZV 301, had ZZV 301 rejected and holds ZZV 401 unpaid
+CREATE OR REPLACE FUNCTION pg_temp.v779_b1_setup(p uuid, p_session text, p_who uuid) RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', p::text, true);
+    PERFORM registration.summer_select(p, p_session, ARRAY['ZZV 301']);
+    PERFORM set_config('moaum.actor_office', 'bursar', true); PERFORM set_config('moaum.actor_id', p_who::text, true);
+    PERFORM finance.confirm_payment(registration.summer_reference(p, p_session), 'Bank transfer', 'check V779 13');
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', p::text, true);
+    PERFORM registration.summer_select(p, p_session, ARRAY['ZZV 401']);
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', p_who::text, true);
+    PERFORM registration.summer_verify(ARRAY(SELECT id FROM registration.summer_selection WHERE student_id = p AND course_code = 'ZZV 301'), 'REJECT', 'This course is not in the programme of study', NULL);
+END $$;
+DO $$
+DECLARE
+    SP text := '9929/9930'; S text := '9930/9931'; who uuid := gen_random_uuid(); prog text := 'C97925'; dept text;
+    u uuid; d uuid; rc uuid; k uuid; c uuid; x uuid; q uuid; r2 text; v_err text; v_cr uuid; v_hand uuid; v_before text;
+    m_routes text; m_reinst text; m_kept text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check V779', true);
+    dept := pg_temp.v779_world(SP, S, prog);
+    u := pg_temp.v779_student('993001', prog, SP, 400); d := pg_temp.v779_student('993002', prog, SP, 400); rc := pg_temp.v779_student('993003', prog, SP, 400);
+    k := pg_temp.v779_student('993004', prog, SP, 400); c := pg_temp.v779_student('993005', prog, SP, 400); x := pg_temp.v779_student('993006', prog, SP, 400);
+    q := pg_temp.v779_student('993007', prog, SP, 400);
+    PERFORM pg_temp.v779_b1_setup(u, S, who); PERFORM pg_temp.v779_b1_setup(d, S, who); PERFORM pg_temp.v779_b1_setup(rc, S, who);
+    PERFORM pg_temp.v779_b1_setup(k, S, who); PERFORM pg_temp.v779_b1_setup(c, S, who);
+    m_routes := 'held ' || pg_temp.v779_b1(u);
+    -- U unselects ZZV 401
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', u::text, true);
+    PERFORM registration.summer_unselect(u, S, 'ZZV 401');
+    m_routes := m_routes || ' | unselect ' || pg_temp.v779_b1(u);
+    -- D: a pass of ZZV 401 is published, the draw of a reference takes it back
+    PERFORM pg_temp.v779_result(d, 'ZZV 401', SP, 1, 30, 40);
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', d::text, true);
+    r2 := registration.summer_reference(d, S);
+    m_routes := m_routes || ' | draw ' || coalesce(r2, 'null') || ' ' || pg_temp.v779_b1(d)
+             || ' ' || (SELECT state FROM registration.summer_selection WHERE student_id = d AND course_code = 'ZZV 401');
+    -- RC: the same pass, taken back by the student's reconcile
+    PERFORM pg_temp.v779_result(rc, 'ZZV 401', SP, 1, 30, 40);
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', rc::text, true);
+    r2 := registration.summer_reconcile_student(rc, S) ->> 'changed';
+    m_routes := m_routes || ' | reconcile ' || r2 || ' ' || pg_temp.v779_b1(rc)
+             || ' ' || (SELECT state FROM registration.summer_selection WHERE student_id = rc AND course_code = 'ZZV 401');
+    -- K: the reference for ZZV 401 drawn, the pass published, the payment confirmed: the confirmation takes the course back
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', k::text, true);
+    r2 := registration.summer_reference(k, S);
+    PERFORM pg_temp.v779_result(k, 'ZZV 401', SP, 1, 30, 40);
+    PERFORM set_config('moaum.actor_office', 'bursar', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM finance.confirm_payment(r2, 'Bank transfer', 'check V779 13 k');
+    m_routes := m_routes || ' | confirmation ' || pg_temp.v779_b1(k);
+    -- Q: nothing paid, ZZV 301 and ZZV 401 selected, both unselected: the unpaid programme fee is only cancelled
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', q::text, true);
+    PERFORM registration.summer_select(q, S, ARRAY['ZZV 301', 'ZZV 401']);
+    PERFORM registration.summer_unselect(q, S, 'ZZV 301'); PERFORM registration.summer_unselect(q, S, 'ZZV 401');
+    m_routes := m_routes || ' | unpaid ' || pg_temp.v779_b1(q);
+
+    -- U selects again in the same window: the credit of the programme fee reinstated, the Bursar cannot reopen it; a credit settled by hand reopens
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', u::text, true);
+    PERFORM registration.summer_select(u, S, ARRAY['ZZV 402']);
+    m_reinst := 'selected again ' || pg_temp.v779_b1(u);
+    SELECT cr.id INTO v_cr FROM registration.summer_credit cr WHERE cr.student_id = u AND cr.state = 'APPLIED';
+    SELECT cr.id INTO v_hand FROM registration.summer_credit cr WHERE cr.student_id = u AND cr.state = 'OPEN' AND cr.amount = 5000;
+    v_before := (SELECT string_agg(cr.id || cr.state || coalesce(cr.settled_note, ''), ',' ORDER BY cr.id) FROM registration.summer_credit cr WHERE cr.student_id = u);
+    PERFORM set_config('moaum.actor_office', 'bursar', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    BEGIN
+        PERFORM registration.summer_credit_reopen(v_cr, 'Reopened by the Bursar for the review');
+        m_reinst := m_reinst || ' | reopen allowed';
+    EXCEPTION WHEN OTHERS THEN
+        m_reinst := m_reinst || ' | reopen ' || SQLSTATE || ' ' || split_part(SQLERRM, ':', 1);
+    END;
+    m_reinst := m_reinst || ' unchanged ' || (v_before = (SELECT string_agg(cr.id || cr.state || coalesce(cr.settled_note, ''), ',' ORDER BY cr.id) FROM registration.summer_credit cr WHERE cr.student_id = u))
+             || ' | ' || pg_temp.v779_b1(u);
+    PERFORM registration.summer_credit_settle(v_hand, 'REFUNDED', 'Refunded through the refund desk');
+    m_reinst := m_reinst || ' | settled by hand ' || (SELECT state FROM registration.summer_credit WHERE id = v_hand);
+    m_reinst := m_reinst || ', reopened ' || registration.summer_credit_reopen(v_hand, 'Refunded in error, the voucher was never paid');
+
+    -- C last: the Summer closes while ZZV 401 is unpaid
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM registration.summer_set_period(S, 'CLOSED', current_date - 10, current_date - 1, current_date + 20, current_date + 25, current_date + 30, NULL, NULL, NULL, 'check V779 closed');
+    m_routes := m_routes || ' | close ' || pg_temp.v779_b1(c);
+    m_kept := 'no PAID programme fee without a live course ' || (NOT EXISTS (SELECT 1 FROM registration.summer_charge p WHERE p.session = S AND p.kind = 'PROGRAMME' AND p.state = 'PAID'
+                    AND NOT EXISTS (SELECT 1 FROM registration.summer_charge y WHERE y.student_id = p.student_id AND y.session = S AND y.kind = 'COURSE' AND y.state <> 'CANCELLED')))
+           || ' | every programme credit names its charge ' || (SELECT bool_and(cr.source = 'DECISION' AND cr.source_charge_id IS NOT NULL) FROM registration.summer_credit cr JOIN registration.summer_charge y ON y.id = cr.source_charge_id
+                                                                 WHERE y.session = S AND y.kind = 'PROGRAMME');
+    RAISE EXCEPTION 'the V779 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V779 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V779: the paid programme fee follows the last course whatever takes it — unselect, a pass taken back at the draw, at the reconcile or at the confirmation, the Summer closing — cancelled with its money one open Summer credit, the money conserved at every step; an unpaid programme fee is only cancelled',
+      coalesce(m_routes = 'held prog PAID live 1 credits DECISION/5000.00/OPEN conserved true'
+                      || ' | unselect prog CANCELLED live 0 credits DECISION/5000.00/OPEN,DECISION/50000.00/OPEN conserved true'
+                      || ' | draw null prog CANCELLED live 0 credits DECISION/5000.00/OPEN,DECISION/50000.00/OPEN conserved true NOT_OUTSTANDING'
+                      || ' | reconcile 1 prog CANCELLED live 0 credits DECISION/5000.00/OPEN,DECISION/50000.00/OPEN conserved true NOT_OUTSTANDING'
+                      || ' | confirmation prog CANCELLED live 0 credits DECISION/5000.00/OPEN,DECISION/50000.00/OPEN,PAYMENT/5000.00/OPEN conserved true'
+                      || ' | unpaid prog CANCELLED live 0 credits - conserved true'
+                      || ' | close prog CANCELLED live 0 credits DECISION/5000.00/OPEN,DECISION/50000.00/OPEN conserved true'
+               AND m_kept = 'no PAID programme fee without a live course true | every programme credit names its charge true', false), m_routes || ' || ' || m_kept);
+  PERFORM pg_temp.assert('V779: a student who selects again in the same window has the programme fee''s credit reinstated, and that credit is never reopened (SUMMER_CREDIT_REINSTATED, 23514, nothing changed) while a credit the Bursar settled by hand still is',
+      coalesce(m_reinst = 'selected again prog CANCELLED,PAID live 1 credits DECISION/5000.00/OPEN,DECISION/50000.00/APPLIED conserved true'
+                      || ' | reopen 23514 SUMMER_CREDIT_REINSTATED unchanged true | prog CANCELLED,PAID live 1 credits DECISION/5000.00/OPEN,DECISION/50000.00/APPLIED conserved true'
+                      || ' | settled by hand REFUNDED, reopened OPEN', false), m_reinst);
+END $$;
+
+-- ── V779 (14): a revoked authorisation and the examination session's identity. In 9936/9937 (its Summer, exams dated): R at 200 Level, in the Summer only by the
+--          Academic Office's authorisation, selects and pays two authorised courses (confirmed by the authorisation, registered as carry-overs); T, authorised the same
+--          way, selects one and pays nothing. The authorisations are revoked: the examination gate counts R's two paid courses at once, R's own reconcile sends both
+--          back to the Office (pending, their entries CURRENT, flagged EVIDENCE_CHANGED with one FLAGGED row each), the desk's tranche flags T's unpaid one (its charge
+--          stays), a second reconcile changes nothing, and once the Office confirms a course it is not flagged again and the gate no longer counts it. The Summer's
+--          examination session cannot be stepped round by its identity: a draft row made a resit, opened and made the Summer's again is refused SUMMER_EXAM_IDENTITY,
+--          so is an opened Summer row given another kind or semester, while an opened Summer row's dates and another sitting's identity are edited freely. ──
+DO $$
+DECLARE
+    SP text := '9935/9936'; S text := '9936/9937'; who uuid := gen_random_uuid(); prog text := 'C97926'; dept text;
+    r uuid; t uuid; ex uuid; ex1 uuid; j jsonb; v_err text; v_ids uuid[];
+    m_rev text; m_again text; m_office text; m_id text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check V779', true);
+    dept := pg_temp.v779_world(SP, S, prog);
+    r := pg_temp.v779_student('993601', prog, SP, 200); t := pg_temp.v779_student('993602', prog, SP, 200);
+    PERFORM registration.summer_authorise(S, r, ARRAY['ZZV 401', 'ZZV 402'], 'Approved by the Senate for a final attempt', false);
+    PERFORM registration.summer_authorise(S, t, ARRAY['ZZV 401'], 'Approved by the Senate for a final attempt', false);
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', r::text, true);
+    PERFORM registration.summer_select(r, S, ARRAY['ZZV 401', 'ZZV 402']);
+    PERFORM set_config('moaum.actor_office', 'bursar', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM finance.confirm_payment(registration.summer_reference(r, S), 'Bank transfer', 'check V779 14 r');
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', t::text, true);
+    PERFORM registration.summer_select(t, S, ARRAY['ZZV 401']);
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    m_rev := 'paid ' || (SELECT string_agg(s.course_code || ':' || s.state || '/' || s.verified_via, ',' ORDER BY s.course_code) FROM registration.summer_selection s WHERE s.student_id = r)
+          || ' gate ' || registration.summer_unverified(S);
+    PERFORM registration.summer_authorise(S, r, NULL, NULL, true);
+    PERFORM registration.summer_authorise(S, t, NULL, NULL, true);
+    m_rev := m_rev || ' | revoked: gate ' || registration.summer_unverified(S);
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', r::text, true);
+    j := registration.summer_reconcile_student(r, S);
+    m_rev := m_rev || ' | R reconciles ' || (j ->> 'changed')
+          || ': ' || (SELECT string_agg(s.course_code || ':' || s.state || '/' || coalesce(s.review_flag, '-') || '/' || (SELECT count(*) FROM registration.summer_selection_review v WHERE v.selection_id = s.id AND v.action = 'FLAGGED'), ',' ORDER BY s.course_code)
+                       FROM registration.summer_selection s WHERE s.student_id = r)
+          || ' entries ' || (SELECT string_agg(o.course_code || ':' || e.entry_type || ':' || e.status, ',' ORDER BY o.course_code) FROM registration.course_registration cr JOIN registration.entry e ON e.registration_id = cr.id
+                               JOIN catalogue.offering o ON o.id = e.offering_id WHERE cr.student_id = r AND cr.semester = 3)
+          || ' gate ' || registration.summer_unverified(S);
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    j := registration.summer_reconcile(S, clock_timestamp() + interval '1 hour', 400);
+    m_rev := m_rev || ' | the desk: flagged ' || (j ->> 'flagged') || ' reverted ' || (j ->> 'reverted')
+          || ' T ' || (SELECT s.state || '/' || coalesce(s.review_flag, '-') FROM registration.summer_selection s WHERE s.student_id = t)
+          || ' charge ' || (SELECT string_agg(coalesce(c.course_code, 'PROGRAMME') || ':' || c.state, ',' ORDER BY c.course_code NULLS FIRST) FROM registration.summer_charge c WHERE c.student_id = t);
+    -- a second run changes nothing
+    v_ids := ARRAY(SELECT id FROM registration.summer_selection WHERE student_id IN (r, t));
+    j := registration.summer_reconcile(S, clock_timestamp() + interval '1 hour', 400);
+    m_again := 'again flagged ' || (j ->> 'flagged') || ' reverted ' || (j ->> 'reverted') || ' history ' || (SELECT count(*) FROM registration.summer_selection_review v WHERE v.selection_id = ANY (v_ids));
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', r::text, true);
+    j := registration.summer_reconcile_student(r, S);
+    m_again := m_again || ' student ' || (j ->> 'changed');
+    -- the Office confirms ZZV 401 of R: not flagged again, the gate counts one
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    j := registration.summer_verify(ARRAY(SELECT id FROM registration.summer_selection WHERE student_id = r AND course_code = 'ZZV 401'), 'CONFIRM', NULL, NULL);
+    PERFORM registration.summer_reconcile(S, clock_timestamp() + interval '1 hour', 400);
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', r::text, true);
+    PERFORM registration.summer_reconcile_student(r, S);
+    m_office := 'confirmed ' || (j ->> 'decided') || ': ' || (SELECT s.state || '/' || s.verified_via || '/' || coalesce(s.review_flag, '-') FROM registration.summer_selection s WHERE s.student_id = r AND s.course_code = 'ZZV 401')
+             || ' gate ' || registration.summer_unverified(S);
+
+    -- the examination session's identity: the Summer closed, one paid course still unverified
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM registration.summer_set_period(S, 'CLOSED', current_date - 10, current_date - 1, current_date + 20, current_date + 25, current_date + 30, NULL, NULL, NULL, 'check V779 closed');
+    SELECT id INTO ex FROM assessment.exam_session WHERE session = S AND semester = 3 AND kind = 'MAIN' AND stream = 'REGULAR';
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    BEGIN PERFORM assessment.open_exam_session(ex); m_id := 'opened directly';
+    EXCEPTION WHEN check_violation THEN m_id := 'direct ' || split_part(SQLERRM, ':', 1); END;
+    UPDATE assessment.exam_session SET kind = 'RESIT' WHERE id = ex;
+    PERFORM assessment.open_exam_session(ex);
+    m_id := m_id || ' | made a resit and opened ' || (SELECT state FROM assessment.exam_session WHERE id = ex);
+    BEGIN UPDATE assessment.exam_session SET kind = 'MAIN' WHERE id = ex; m_id := m_id || ' | made the Summer''s again';
+    EXCEPTION WHEN check_violation THEN m_id := m_id || ' | made the Summer''s again ' || SQLSTATE || ' ' || split_part(SQLERRM, ':', 1); END;
+    -- the resit put back to draft and made the Summer's again (allowed while a draft), opened under an override, then its kind or semester changed
+    UPDATE assessment.exam_session SET state = 'DRAFT', opened_at = NULL WHERE id = ex;
+    UPDATE assessment.exam_session SET kind = 'MAIN' WHERE id = ex;
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM registration.summer_exam_override_set(S, 'OPEN', 'The Senate has fixed the examinations for this week');
+    PERFORM set_config('moaum.actor_office', 'ict', true);
+    PERFORM assessment.open_exam_session(ex);
+    BEGIN UPDATE assessment.exam_session SET kind = 'RESIT' WHERE id = ex; m_id := m_id || ' | opened Summer made a resit';
+    EXCEPTION WHEN check_violation THEN m_id := m_id || ' | opened Summer made a resit ' || split_part(SQLERRM, ':', 1); END;
+    BEGIN UPDATE assessment.exam_session SET semester = 2 WHERE id = ex; m_id := m_id || ' | opened Summer made semester 2';
+    EXCEPTION WHEN check_violation OR unique_violation THEN m_id := m_id || ' | opened Summer made semester 2 ' || split_part(SQLERRM, ':', 1); END;
+    UPDATE assessment.exam_session SET session = S, semester = 3, kind = 'MAIN', stream = 'REGULAR', exams_to = exams_to + 1, sheets_due = sheets_due + 1 WHERE id = ex;
+    m_id := m_id || ' | dates edited ' || (SELECT state || '/' || kind FROM assessment.exam_session WHERE id = ex);
+    INSERT INTO assessment.exam_session (id, session, semester, kind, exams_from, exams_to, sheets_due, stream) VALUES (gen_random_uuid(), S, 1, 'MAIN', current_date, current_date + 3, current_date + 5, 'REGULAR')
+    RETURNING id INTO ex1;
+    PERFORM assessment.open_exam_session(ex1);
+    UPDATE assessment.exam_session SET kind = 'RESIT' WHERE id = ex1;
+    m_id := m_id || ' | another sitting ' || (SELECT state || '/' || kind FROM assessment.exam_session WHERE id = ex1);
+    RAISE EXCEPTION 'the V779 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V779 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V779: a revoked authorisation is not silent — the gate counts the paid courses it confirmed at once, the student''s reconcile sends them back to the Office (pending, the entries CURRENT, flagged EVIDENCE_CHANGED with one FLAGGED row each), the desk''s tranche flags an unpaid one and leaves its charge, a second run changes nothing, and a course the Office confirms is not flagged again',
+      coalesce(m_rev = 'paid ZZV 401:CONFIRMED_OUTSTANDING/AUTHORISATION,ZZV 402:CONFIRMED_OUTSTANDING/AUTHORISATION gate 0 | revoked: gate 2'
+                    || ' | R reconciles 2: ZZV 401:PENDING_VERIFICATION/EVIDENCE_CHANGED/1,ZZV 402:PENDING_VERIFICATION/EVIDENCE_CHANGED/1 entries ZZV 401:CURRENT:APPROVED,ZZV 402:CURRENT:APPROVED gate 2'
+                    || ' | the desk: flagged 0 reverted 1 T PENDING_VERIFICATION/EVIDENCE_CHANGED charge PROGRAMME:DUE,ZZV 401:DUE'
+               AND m_again = 'again flagged 0 reverted 0 history 9 student 0' AND m_office = 'confirmed 1: CONFIRMED_OUTSTANDING/OFFICER/- gate 1', false), m_rev || ' || ' || m_again || ' || ' || m_office);
+  PERFORM pg_temp.assert('V779: the Summer''s examination session is not stepped round by its identity — a row opened as a resit is not made the Summer''s again, an opened Summer row keeps its kind and semester (SUMMER_EXAM_IDENTITY), while its dates and another sitting''s identity are edited freely',
+      coalesce(m_id = 'direct SUMMER_VERIFICATION_PENDING | made a resit and opened OPEN | made the Summer''s again 23514 SUMMER_EXAM_IDENTITY'
+                   || ' | opened Summer made a resit SUMMER_EXAM_IDENTITY | opened Summer made semester 2 SUMMER_EXAM_IDENTITY | dates edited OPEN/MAIN | another sitting OPEN/RESIT', false), m_id);
+END $$;
+
+-- ── V779 (15): who identifies and tells, and what moves the identification. In 9938/9939 (its Summer): the Head of Department and the Bursar are refused the
+--          identification and the notices (SUMMER_OFFICE, 42501) and the Academic Office is not; a student who selects before any identification writes no
+--          candidate row (the desk's identifiedAt stays empty, the missing-history figure counts nobody); an identification walk started before a student selects and
+--          one authorised during it reads them both (their published results counted). ──
+DO $$
+DECLARE
+    SP text := '9937/9938'; S text := '9938/9939'; who uuid := gen_random_uuid(); prog text := 'C97927'; dept text;
+    a uuid; b uuid; c uuid; z uuid; j jsonb; v_err text; since timestamptz; o text;
+    m_office text; m_ident text;
+BEGIN
+  BEGIN
+    PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM set_config('moaum.actor_office', 'academic', true);
+    PERFORM set_config('moaum.reason', 'check V779', true);
+    dept := pg_temp.v779_world(SP, S, prog);
+    UPDATE people.student SET status = 'DORMANT' WHERE status IN ('ACTIVE', 'PROBATION');
+    a := pg_temp.v779_student('993801', prog, SP, 400); b := pg_temp.v779_student('993802', prog, SP, 400); c := pg_temp.v779_student('993803', prog, SP, 400);
+    z := pg_temp.v779_student('993804', prog, SP, 200);
+    m_office := '';
+    FOREACH o IN ARRAY ARRAY['hod', 'bursar'] LOOP
+        PERFORM set_config('moaum.actor_office', o, true);
+        BEGIN PERFORM registration.summer_identify(S, clock_timestamp(), 10); m_office := m_office || o || ' identify allowed, ';
+        EXCEPTION WHEN OTHERS THEN m_office := m_office || o || ' identify ' || SQLSTATE || ' ' || split_part(SQLERRM, ':', 1) || ', '; END;
+        BEGIN PERFORM registration.summer_tell(S, 'OPEN', 10, NULL); m_office := m_office || o || ' tell allowed, ';
+        EXCEPTION WHEN OTHERS THEN m_office := m_office || o || ' tell ' || SQLSTATE || ' ' || split_part(SQLERRM, ':', 1) || ', '; END;
+    END LOOP;
+    -- A selects before any identification
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', a::text, true);
+    PERFORM registration.summer_select(a, S, ARRAY['ZZV 301']);
+    m_ident := 'selected: candidates ' || (SELECT count(*) FROM registration.summer_candidate WHERE session = S) || ' identifiedAt ' || coalesce((SELECT max(evaluated_at)::text FROM registration.summer_candidate WHERE session = S), 'none')
+            || ' missing history ' || (SELECT missing_history_students FROM registration.summer_report(S, 'ALL', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL))
+            || ' printed category ' || coalesce(registration.summer_confirmation(a, S) -> 'student' ->> 'category', 'none');
+    -- a walk of one a call: B selects, Z is authorised during it
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM pg_temp.v779_result(c, 'ZZV 301', SP, 1, 10, 15);
+    since := clock_timestamp();
+    j := registration.summer_identify(S, since, 1); m_ident := m_ident || ' | walk ' || (j ->> 'read') || '/' || (j ->> 'left');
+    PERFORM set_config('moaum.actor_office', 'student', true); PERFORM set_config('moaum.actor_id', b::text, true);
+    PERFORM registration.summer_select(b, S, ARRAY['ZZV 301']);
+    PERFORM set_config('moaum.actor_office', 'academic', true); PERFORM set_config('moaum.actor_id', who::text, true);
+    PERFORM registration.summer_authorise(S, z, ARRAY['ZZV 401'], 'Approved by the Senate for a final attempt', false);
+    FOR i IN 1..6 LOOP
+        j := registration.summer_identify(S, since, 1); m_ident := m_ident || ' ' || (j ->> 'read') || '/' || (j ->> 'left');
+        EXIT WHEN (j ->> 'read')::int = 0;
+    END LOOP;
+    m_ident := m_ident || ' | results ' || (SELECT string_agg(split_part(stu.matric_no, '/', 4) || '=' || coalesce(cd.results::text, 'null'), ',' ORDER BY stu.matric_no)
+                                            FROM registration.summer_candidate cd JOIN people.student stu ON stu.id = cd.student_id WHERE cd.session = S)
+            || ' missing history ' || (SELECT missing_history_students FROM registration.summer_report(S, 'ALL', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL));
+    j := registration.summer_tell(S, 'OPEN', 10, NULL);
+    m_office := m_office || 'academic tell ' || (j ->> 'visited');
+    RAISE EXCEPTION 'the V779 check undoes its writes';
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err <> 'the V779 check undoes its writes' THEN RAISE; END IF;
+  END;
+  PERFORM pg_temp.assert('V779: the identification and the notices are the Academic Office''s and the Registry''s: the Head of Department and the Bursar are refused SUMMER_OFFICE (42501)',
+      coalesce(m_office = 'hod identify 42501 SUMMER_OFFICE, hod tell 42501 SUMMER_OFFICE, bursar identify 42501 SUMMER_OFFICE, bursar tell 42501 SUMMER_OFFICE, academic tell 4', false), m_office);
+  PERFORM pg_temp.assert('V779: only an identification moves identifiedAt and the missing-history figure — a selection writes no candidate row (the printed confirmation still names the category), and a walk reads a student who selects or is authorised while it runs',
+      coalesce(m_ident = 'selected: candidates 0 identifiedAt none missing history 0 printed category FINAL_YEAR | walk 1/2 1/2 1/1 1/0 0/0 | results 993801=0,993802=0,993803=1,993804=0 missing history 3', false), m_ident);
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

@@ -58,6 +58,7 @@ This volume describes every end-to-end business workflow the portal runs today, 
    - 5.7 What is not implemented
    - 5.8 Old-portal results re-uploaded with the course as taken (V771)
    - 5.9 A wrongly counted course taken off a registration (V772)
+   - 5.10 The Summer Semester: window, selection, payment, verification, examinations, credit (V735, V779)
 6. [Finance workflow](#6-finance-workflow)
    - 6.1 Fee schedule to charges
    - 6.2 Reference, payment, confirmation, receipt
@@ -799,6 +800,53 @@ A removal sticks. While it is APPLIED, nothing puts the course back but the undo
 
 A course taken off no longer counts on the transcript, the CGPA, the broadsheet, the GST/EPS fee readers or the ICT result monitor's exceptions. The student's change history on Student Edit lists every removal. Tested by `RegistrationCorrectionIT` and `lib/registration-corrections.test.ts`.
 
+### 5.10 The Summer Semester: window, selection, payment, verification, examinations, credit (V735, V779)
+
+A final-year or spillover student selects the courses they believe they still owe, from both semesters, pays and is registered; the Academic Office verifies each selection afterwards; the Summer's examinations wait until it has (`docs/summer-semester.md`). Counts quoted in that document were read on 24 November 2026 on the live-shaped copy migrated to main, and those not read again say so.
+
+```text
+period set (Academic Office) + fees published (Bursar) → identify the eligible → tell → period OPEN
+ → student selects  (pool: programme structure to its final level + detected carry-overs + authorised courses; ≤ 30 a call)
+      → DUE charges: the programme fee once + a course fee each (₦50,000 + n × ₦5,000 unless the Bursar stated others)
+      → a detected failure or a course the Office named → CONFIRMED_OUTSTANDING      anything else → PENDING_VERIFICATION
+ → one reference → payment → charges PAID → semester 3 registration (entries CURRENT while pending, CARRYOVER once confirmed)
+ → Reconcile with results ⟲   (pass: unpaid taken back / paid flagged;  failure: confirmed;  no result left: back to pending, flagged)
+ → Verification queue:  Confirm | Not outstanding | Reject | Reopen
+      unpaid, Not outstanding or Rejected → the DUE charge cancelled (no credit)
+      paid,   Not outstanding or Rejected → entry WITHDRAWN (RCR-…), charge CANCELLED, Summer credit OPEN → Bursar: Refunded | Applied
+      the last course gone, by any route (decision, unselect, close, draw, reconcile) → a PAID programme fee CANCELLED + one credit OPEN
+ → close the registration → the gate: no paid course Pending, flagged or already passed (or an override) → examinations OPEN
+ → sheets released → the results chain (§5.3) → a pass clears the carry-over
+```
+
+| Stage | Who starts / acts | Precondition / validation | Data created / changed | Status change | Notification | On refusal |
+|---|---|---|---|---|---|---|
+| Set the period | academic, registrar, dregistrar, super (`PUT /summer/{s}/{y}`; the ceiling `PUT …/ceiling`) | Dates in order; an OPEN period has both registration dates; a ceiling 1 to 60 with a reason of ten characters or more | `registration.summer_period` (categories, programmes, levels, `max_courses`) | PLANNED → OPEN → CLOSED | none | the SQL refusal (`SUMMER_OFFICE`, `SUMMER_CEILING_RANGE`, `SUMMER_REASON`) |
+| State and publish the fees | studentaccounts or bursar states; bursar (or super) publishes | A draft is never charged; a published statement is never changed | `finance.summer_fee` | DRAFT → PUBLISHED → WITHDRAWN | none | no selection can be made until published (`SUMMER_FEE_NOT_PUBLISHED`) |
+| Identify the eligible | setters (`POST …/identify`, 2,000 a call) | `registration.summer_eligibility_of`: undergraduate, ACTIVE or PROBATION, no approved award, final-year or spillover (or authorised), within the period's limits; reads no results | `registration.summer_candidate` (category, reason, results counted) | — | none | a student's reason is kept (`NOT_FINAL_OR_SPILLOVER`, `CATEGORY_NOT_IN_SUMMER`, …) |
+| Tell | setters (`POST …/tell`, tranches walked by a cursor) | The V739 window checks (`SUMMER_NOT_TO_TELL`) | `platform.notice` | — | SUMMER_OPEN, SUMMER_CLOSING (low priority), SUMMER_TIMETABLE | — |
+| Select | student (`POST /me/summer/select`) | The window open (`SUMMER_CLOSED`); eligible (`SUMMER_NOT_ELIGIBLE`); fees published; 1 to 30 different courses (`SUMMER_NO_COURSE`, `SUMMER_TOO_MANY`); within the ceiling (`SUMMER_CEILING`); each code in the pool (`SUMMER_COURSE_NOT_AVAILABLE`) and selectable (`SUMMER_COURSE_REFUSED`); an origin a real session and semester 1 or 2 (`SUMMER_ORIGIN_INVALID`) | `registration.summer_selection` and its evidence cache; DUE COURSE charges and one PROGRAMME charge (a paid programme fee whose credit is open is put back instead, and that credit closed for good; put back and cancelled again, it is credited again); the candidate row | selection PENDING_VERIFICATION, or CONFIRMED_OUTSTANDING by RESULTS or AUTHORISATION | none | nothing is selected |
+| Pay and register | student draws the reference; a gateway or the Bursary confirms | The reference covers exactly what is owed now (`SUMMER_REFERENCE_STALE`); a charge for a passed, ended or decided course is taken back, not paid | charges PAID; the semester 3 `course_registration` (approved by the payment) and its entries; `registration.summer_issue` for a course it cannot take | DUE → PAID | SUMMER_REGISTERED | the payment stands; the course is listed "Paid, not yet registered" |
+| Reconcile with results | the student's page (once after it renders); the desk (`POST …/reconcile`, 2,000 a call) | A selection Pending or Confirmed; a selection sat in its own Summer is skipped | the evidence cache; the selection moved or flagged; a DUE charge of a passed course cancelled | Pass, unpaid: → NOT_OUTSTANDING (results). Pass, paid: flagged `PASSED_ON_RECORD`. Failure on Pending: → CONFIRMED (results). Confirmed by results, no result left: → PENDING, flagged `EVIDENCE_CHANGED` | SUMMER_COURSE_REVIEWED, for an unpaid take-back | none |
+| Verify | setters (`POST …/selections/decide`, ≤ 200 ids) | Reason of ten characters or more for Not outstanding and Reject (`SUMMER_REASON`); not Confirm over a pass (`SUMMER_PASSED_CONFIRM`); a flagged-removed selection takes only Not outstanding and Reject (`SUMMER_ENTRY_REMOVED`); a paid decision is final (`SUMMER_DECIDED_PAID`); an unknown id is refused (`SUMMER_SELECTION_UNKNOWN`) | the state, `verified_via`, the reason, the entry's type; `registration.summer_selection_review` (`SVB-YYYY-NNNNN`); for a paid Not outstanding or Reject: `entry_removal` (`RCR-…`), the charge CANCELLED, the credit | PENDING ↔ CONFIRMED; → NOT_OUTSTANDING; → REJECTED; REOPEN → PENDING | SUMMER_COURSE_REVIEWED, one a student a batch | the id is refused with its reason; the rest of the call stands |
+| Ask the student | setters (`POST …/selections/{id}/clarify`); the student answers (`POST /me/summer/note`) | 10 to 500 characters; not a decided selection (`SUMMER_NOTE`, `SUMMER_DECIDED`); the answer at most 500 | the clarification on the selection; the history | none (a clarification is a flag) | SUMMER_COURSE_REVIEWED, worded as a question | — |
+| A paid course taken off by the Director of ICT | ict (Course Registration Correction, §5.9) | Without a mark: applied at once. With a mark: held for the Registry | the entry WITHDRAWN; the selection flagged `ENTRY_REMOVED`. An undo puts the entry back and leaves the flag: the next reconcile clears it | — | none | A removal a Summer decision made cannot be undone (`SUMMER_REMOVAL_HELD`) |
+| Settle a credit | bursar, super (`POST /finance/summer-credits/{id}/settle`; reopen `…/reopen`) | Refunded at any time; Applied by hand only while another PAID charge stands on the payment (`SUMMER_CREDIT_MOVE_IT`); a whole-payment credit by moving the payment; a reopen never for a credit a reinstatement of the programme fee closed (`SUMMER_CREDIT_REINSTATED`) | `registration.summer_credit` | OPEN → APPLIED / REFUNDED | none | — |
+| Close the registration | setters (the period CLOSED, or its closing date) | — | selected-and-unpaid courses taken back; open references closed; a student left with no course has a PAID programme fee cancelled and credited (a DUE one cancelled) | OPEN → CLOSED | none | — |
+| Open the examinations | setters (`POST …/exams/open`) | The registration window closed (`SUMMER_REGISTRATION_OPEN`); `registration.summer_unverified` is zero, or an override for the act stands and the count has not grown (`SUMMER_VERIFICATION_PENDING`) | `assessment.exam_session` OPEN (session, 3, MAIN, REGULAR), whose session, semester, kind and stream are then fixed once it is opened or released (`SUMMER_EXAM_IDENTITY`); `registration.summer_exam_override` | DRAFT → OPEN | SUMMER_TIMETABLE (tell) | the act is rolled back |
+| Release the score sheets | setters (`POST …/exams/release-sheets`) | The same gate, for the act RELEASE | `sheets_released_at` | — | none | the same |
+| Results | the results chain (§5.3, `Summer semester` in the scope bar) | The class's score sheets | the Summer's results | PUBLISHED | none | — |
+
+- **What the gate counts**: selections with a PAID course charge and a live entry that are Pending, flagged, or whose pass is on record now (read live at the moment of the act, never from the cache). An unpaid selection and a withdrawn entry are not counted.
+- **A withdrawn authorisation.** It takes no course back by itself. The next reconcile (the student's page or the desk's tranche) flags each live selection it brought in that the Office has not decided since (`EVIDENCE_CHANGED`, one `FLAGGED` history row) and sends one it confirmed back to Pending (its entry typed `CURRENT`); an unpaid one keeps its DUE charge until the Office decides it; the gate counts a paid one until then (one confirmed by the authorisation at once, read live).
+- **The programme fee follows the last course.** Whatever takes a student's last DUE or PAID course charge (a decision, an unselect, the close, the draw, a payment's confirmation, the reconcile: one trigger, `trg_summer_programme_follows`), a PAID programme fee is cancelled and becomes one OPEN Summer credit, never a refund; a DUE one is only cancelled. Paid charges plus open credits equal the student's confirmed Summer payments at every step.
+- **A payment after the gate.** A payment confirmed after the examinations open still registers the course (the payment must be honoured); it appears in the live count and the queue, and the next act refuses again.
+- **A decision on a paid course is final in V779.** Nothing reopens it; the Bursar refunds or applies the credit, and the Academic Office authorises the student for the course in a later Summer (owner question Q3).
+- **A paid, unverified course holds the student off the graduation queue** until it is decided or its result publishes (§8.1).
+- **A missing result is never a pass.** A student with no results on the portal is still eligible and still selects; the Office verifies.
+
+Left out of V779 and said plainly: an applied credit does not reduce the next Summer's fee (the existing mechanics, `docs/summer-semester.md`), a SIWES course is not offered in the Summer (owner question Q1), and Rule A (the carry-over clearance) comes after. Tested by `SummerSemesterIT`, `SummerVerificationIT` and the V779 block of `db/check.sql`.
+
 ---
 
 ## 6. Finance workflow
@@ -1286,6 +1334,7 @@ The items below are the stages that a reader of the screens might take for worki
 | Postgraduate | Appeal or reopen of a declined application; desk notices; offer-letter QR verifier; supervisor / panel / roster edits; Research Desk award button without a minute | NOT IMPLEMENTED / PARTIALLY IMPLEMENTED / defect |
 | Matriculation | Preview and history-search screens; faculty scope on the list; "Fees" column; stale run text | PARTIALLY IMPLEMENTED / PLACEHOLDER |
 | Registration | Notices on approve / return; HOD overload; probation unit ceiling; LOCKED status; office-created registration UI | NOT IMPLEMENTED / CONFIGURED BUT UNUSED |
+| Summer Semester | A reversal of a decision on a paid course; a Summer credit applied automatically to the next Summer's fee; a hold on a payment that has only an open decision credit; the carry-over clearance (Rule A); SIWES re-sits (owner questions Q1 to Q3) | NOT IMPLEMENTED (decisions awaited) |
 | Results | Publication notice; correction path after a CORRECTED query; late-sheet reminders; office-per-stage enforcement in SQL; held-script ownership; CBT delivery; College notices and configuration screens | NOT IMPLEMENTED / PLACEHOLDER |
 | Finance | Scheduled GL sync; bank-credit REVERSED; executed refund / withdrawal payouts; Quickteller WebPAY and Pay on Quickteller live verification; Finance Controller and PG Secretary access to fee setup; Student 360 finance card | NOT IMPLEMENTED / PARTIALLY IMPLEMENTED / PLACEHOLDER |
 | Deferment / transfer / biodata | `/verify/deferment` route; deferment settings screen; transfer notices; transfer letter fee and wording; biodata-change producer | NOT IMPLEMENTED / CONFIGURED BUT UNUSED |

@@ -29,6 +29,11 @@ import org.springframework.transaction.PlatformTransactionManager;
  * desk reads the student with the programme and course fees apart — a Head of another department sees none of it; the Academic Office
  * authorises a 200 Level student for a named course, a reader may not; the Summer's classes are on the allocation desk under semester 3.
  * The test makes its session CURRENT (an IT database has none of its own) and puts the calendar back.
+ *
+ * V779: the same journey under the new rules — what the page reads carries the evidence on record, the level and, once selected, the
+ * verification (a failure the results confirm is confirmed by them, no officer needed); the summary's formula is the server's own
+ * total; what is registered carries how it came in; a student's pool where the programme has no structure holds the carry-overs and
+ * the authorised courses alone; the identification counts the results it read.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "moaum.auth.hmac-secret=" + TestTokens.SECRET)
 @EnabledIfEnvironmentVariable(named = "DATABASE_URL", matches = ".+")
@@ -124,6 +129,9 @@ class SummerSemesterIT {
             assertThat(courses).extracting(x -> x.get("course_code"), x -> x.get("original_session"), x -> x.get("original_semester"), x -> x.get("selectable"))
                     .containsExactlyInAnyOrder(org.assertj.core.groups.Tuple.tuple(c1, before, 1, true), org.assertj.core.groups.Tuple.tuple(c2, before, 2, true),
                             org.assertj.core.groups.Tuple.tuple(c3, before, 1, true), org.assertj.core.groups.Tuple.tuple(c4, before, 2, true));
+            // V779: each course carries the evidence on record (here the failure) and how it came in; it has no verification before it is selected
+            // (the API leaves a null out, so the key is absent)
+            assertThat(courses).allSatisfy(x -> assertThat(x).containsKeys("evidence", "basis", "source", "selectable").containsEntry("evidence", "RESULT_FAILED").doesNotContainKey("verification"));
             assertThat(mine.get("fee")).isNull();
             ResponseEntity<Map> early = it.call(student(a), HttpMethod.POST, "/api/v1/me/summer/select", Map.of("session", session, "courses", List.of(c1)));
             assertThat(early.getStatusCode().value()).isEqualTo(422);
@@ -146,6 +154,12 @@ class SummerSemesterIT {
             Map<String, Object> account = (Map<String, Object>) chosen.getBody().get("account");
             assertThat(new BigDecimal(String.valueOf(account.get("due")))).isEqualByComparingTo("60000");
             assertThat((List<?>) chosen.getBody().get("registered")).isEmpty();
+            // V779: a failure on record confirms itself by the results, no officer; the summary's formula is the server's own total
+            List<Map<String, Object>> selectedRows = ((List<Map<String, Object>>) chosen.getBody().get("courses")).stream().filter(x -> List.of(c1, c2).contains(x.get("course_code"))).toList();
+            assertThat(selectedRows).hasSize(2).allSatisfy(x -> assertThat(x).containsEntry("verification", "CONFIRMED_OUTSTANDING").containsEntry("verified_via", "RESULTS").containsEntry("status", "SELECTED"));
+            Map<String, Object> summary = (Map<String, Object>) chosen.getBody().get("summary");
+            assertThat(summary).containsEntry("selected", 2).containsEntry("confirmed", 2).containsEntry("pending", 0);
+            assertThat(new BigDecimal(String.valueOf(((Map<String, Object>) summary.get("formula")).get("total")))).isEqualByComparingTo("60000");
             ResponseEntity<Map> ref = it.call(student(a), HttpMethod.POST, "/api/v1/me/summer/reference", Map.of("session", session));
             assertThat(ref.getStatusCode().value()).as(String.valueOf(ref.getBody())).isEqualTo(200);
             String reference = String.valueOf(ref.getBody().get("reference"));
@@ -158,6 +172,9 @@ class SummerSemesterIT {
             List<Map<String, Object>> registered = (List<Map<String, Object>>) paid.get("registered");
             assertThat(registered).extracting(x -> x.get("course_code"), x -> x.get("course_semester"), x -> x.get("original_session"), x -> x.get("registration_status"))
                     .containsExactlyInAnyOrder(org.assertj.core.groups.Tuple.tuple(c1, 1, before, "APPROVED"), org.assertj.core.groups.Tuple.tuple(c2, 2, before, "APPROVED"));
+            // V779: and how each came in and what the Academic Office has found of it
+            assertThat(registered).allSatisfy(x -> assertThat(x).containsEntry("basis", "CARRY_OVER").containsEntry("verification", "CONFIRMED_OUTSTANDING")
+                    .containsEntry("verified_via", "RESULTS").containsEntry("category_label", "Carry-over"));
             assertThat(jdbc.sql("SELECT count(*) FROM registration.course_registration WHERE student_id = :s AND session = :ss AND semester = 3")
                     .param("s", a).param("ss", session).query(Integer.class).single()).isEqualTo(1);
 
@@ -177,6 +194,7 @@ class SummerSemesterIT {
             // ── the desk: the student with the programme and course fees apart; a Head of another department sees none of it ──
             ResponseEntity<Map> identified = it.call(ItSupport.token("academic"), HttpMethod.POST, path + "/identify", Map.of("limit", 2000));
             assertThat(identified.getStatusCode().value()).as(String.valueOf(identified.getBody())).isEqualTo(200);
+            assertThat(identified.getBody()).containsKeys("read", "left", "eligible", "since", "results");
             Map<String, Object> desk = it.get(ItSupport.token("academic"), path + "/students").getBody();
             Map<String, Object> rowA = ((List<Map<String, Object>>) desk.get("rows")).stream().filter(r -> String.valueOf(a).equals(String.valueOf(r.get("student_id")))).findFirst().orElseThrow();
             assertThat(new BigDecimal(String.valueOf(rowA.get("programme_fee_paid")))).isEqualByComparingTo("50000");
@@ -195,6 +213,7 @@ class SummerSemesterIT {
             ResponseEntity<Map> granted = it.call(ItSupport.token("academic"), HttpMethod.POST, path + "/authorise", grant);
             assertThat(granted.getStatusCode().value()).as(String.valueOf(granted.getBody())).isEqualTo(200);
             assertThat((Map<String, Object>) granted.getBody().get("eligibility")).containsEntry("eligible", true).containsEntry("category", "AUTHORISED");
+            // V779: the programme has no structure here, so the pool holds that one course alone
             assertThat((List<Map<String, Object>>) it.get(student(d), "/api/v1/me/summer?session=" + session).getBody().get("courses"))
                     .extracting(x -> x.get("course_code"), x -> x.get("basis")).containsExactly(org.assertj.core.groups.Tuple.tuple(c1, "AUTHORISED"));
 

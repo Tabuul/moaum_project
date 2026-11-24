@@ -1,5 +1,6 @@
 import { api } from "@/lib/api";
 import { semesterName } from "@/lib/student-portal";
+import { printVerificationWord } from "@/lib/summer";
 import { Note } from "@/components/proto/ui";
 import { LegacyNote } from "../LegacyNote";
 
@@ -7,7 +8,10 @@ export const dynamic = "force-dynamic";
 
 interface Course { course_code: string; title: string; units: number; entry_type: string; kind?: string;
   /** the code the course was taken under, as the course form prints it (the title arrives as taken); missing on an older answer */
-  codeAsTaken?: string | null }
+  codeAsTaken?: string | null;
+  /** V779: a Summer course's verification by the Academic Office (the state), null for any other course; the public page says whether a
+   *  Summer course is verified yet, and never calls a pending one a carry-over */
+  verification?: string | null }
 interface RegVerify {
   genuine: boolean; limited?: boolean; legacy?: boolean; number?: string; name?: string; matricNo?: string | null; programme?: string | null; level?: number;
   session?: string; semester?: number; status?: string; approvedOn?: string | null; units?: number; courses?: Course[];
@@ -15,8 +19,10 @@ interface RegVerify {
   summer?: boolean;
 }
 
-/** the academic type shown: GST, Elective or Core (Core/Required → Core), Carryover flagged */
+/** the academic type shown: GST, Elective or Core (Core/Required → Core), Carryover flagged; V779: a Summer course shows whether the Academic Office
+ *  has verified it (Pending verification, Confirmed outstanding) instead — its type is the verification's, never "carry-over" for a pending one */
 function courseType(co: Course): string {
+  if (co.verification) return printVerificationWord(co.verification);
   if ((co.entry_type ?? "").toUpperCase() === "CARRYOVER") return "Carryover";
   const k = (co.kind ?? "").toLowerCase();
   if (k === "gst") return "GST";

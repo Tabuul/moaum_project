@@ -12,7 +12,7 @@ import type { OutstandingFees } from "@/lib/outstanding-fees";
 import { showTransferCard, type TransferFeeView } from "@/lib/transfer-fee";
 import { StudySession } from "./StudySession";
 import { SummerCard } from "./SummerCard";
-import type { MySummer } from "@/lib/summer";
+import type { MySummerCard } from "@/lib/summer";
 import { SiwesCard } from "./SiwesCard";
 import type { MySiwes } from "@/lib/siwes";
 
@@ -34,12 +34,13 @@ export default async function Page() {
   }
   // V314: the GST & EPS card — the fee, whether it is paid, and whether the GST/EPS courses are registered or locked
   // V727: the transfer card — the fee, what is paid here and on the old portal, the balance — only with an application or old-portal credit
-  // V735: the Summer Semester card — read only where the menu carries the Summer page (registration.summer_area)
+  // V735: the Summer Semester card — read only where the menu carries the Summer page (registration.summer_area); V779: the slim card read
+  // (the summary, the period, the eligibility and the fee), never the Summer page's own, which reads the pool and the results
   // V752: the SIWES card — read only where the menu carries the SIWES page (siwesArea)
   const [gst, mine, summer, siwes] = await Promise.all([
     api<GstView>(`/api/v1/me/gst?session=${encodeURIComponent(loaded.student.session)}`),
     api<TransferFeeView>("/api/v1/me/transfer"),
-    loaded.student.summerArea ? api<MySummer>("/api/v1/me/summer") : null,
+    loaded.student.summerArea ? api<MySummerCard>("/api/v1/me/summer/card") : null,
     loaded.student.siwesArea ? api<MySiwes>("/api/v1/me/siwes") : null,
   ]);
   // only what the card reads reaches the page (the programmes list the transfer page offers stays behind)

@@ -1,6 +1,6 @@
 import type { Problem } from "@/lib/api";
 import { Note } from "@/components/proto/ui";
-import { humanTitle } from "@/lib/problem-title";
+import { humanTitle, problemRemedy } from "@/lib/problem-title";
 import { LISTED_PROBLEMS, listedProblem } from "@/lib/problem-list";
 import Link from "next/link";
 
@@ -12,8 +12,9 @@ import Link from "next/link";
 export function ProblemNotice({ problem }: { problem: Problem }) {
   // V681: a refusal naming many programmes at once is listed, one a line
   const listed = problem.code && LISTED_PROBLEMS.has(problem.code) ? listedProblem(problem.detail) : null;
+  const remedy = problemRemedy(problem);
   return (
-    <Note kind="bad" title={humanTitle(problem.title)}>
+    <Note kind="bad" title={humanTitle(problem.title, undefined, problem.code)}>
       {listed ? (
         <>
           {listed.lead}:
@@ -23,10 +24,10 @@ export function ProblemNotice({ problem }: { problem: Problem }) {
           {listed.tail ? <>{listed.tail[0].toUpperCase() + listed.tail.slice(1)}.</> : null}
         </>
       ) : problem.detail}
-      {problem.remedy && (
+      {remedy && (
         <>
           {" "}
-          <b>What to do:</b> {problem.remedy.message} <span className="sub2">&mdash; {problem.remedy.office}</span>
+          <b>What to do:</b> {remedy.message} <span className="sub2">&mdash; {remedy.office}</span>
         </>
       )}
       {problem.code === "BIODATA_COMPLETION_REQUIRED" ? <>{" "}<Link className="lnk b600" href="/student/biodata">Complete your biodata</Link></> : null}

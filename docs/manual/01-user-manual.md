@@ -45,6 +45,7 @@ This volume is for the people who use the portal without administering it: stude
    - 3.22 [Notifications](#322-notifications)
    - 3.23 [Postgraduate students](#323-postgraduate-students)
    - 3.24 [College of Health Sciences students](#324-college-of-health-sciences-students)
+   - 3.25 [Summer Semester](#325-summer-semester)
 4. [Applicant manual](#4-applicant-manual)
    - 4.1 [Undergraduate applicants: the ten stages](#41-undergraduate-applicants-the-ten-stages)
    - 4.2 [Postgraduate applicants](#42-postgraduate-applicants)
@@ -249,7 +250,8 @@ Start here
 5. A read-only **Student details** card (name, numbers, programme, level, status).
 6. **Quick tiles**: My results, Fees & payments, Graduation (final year) or My documents, Deferment, Hostel and **Course form** — the last is enabled only once your registration is approved.
 7. A **carryover warning** naming the courses you owe.
-8. **Notices sent to you** — the last 30 messages the portal sent you, with channel and state.
+8. A **Summer Semester card**, only when you are eligible for the Summer or have selected a course in it (§3.25): "Summer Semester 2025/2026 · SPILLOVER STUDENT" (or FINAL-YEAR STUDENT), what to do next, a line of counts (selected, pending verification, confirmed, not outstanding or rejected, registered, units, payable), **Print** (once you have selected a course) and **Open**; for rejected courses it sends you to the page for the reasons.
+9. **Notices sent to you** — the last 30 messages the portal sent you, with channel and state.
 
 ### 3.2 Profile, password and biodata
 
@@ -486,7 +488,7 @@ Academic
 
 **Result Broadsheet** `/student/broadsheet` is your whole history, one panel per published semester (CA, exam, total, grade, points and the summary line). **Print broadsheet** produces the PDF; it carries no QR.
 
-**Carryover** `/student/carryover` lists the non-elective courses you failed (0 points on a published sheet) and have not since passed, with the session failed in. They are added to your next registration automatically whenever the course is offered; a failed elective is never a carryover. "How a repeat is scored" is explanatory text.
+**Carryover** `/student/carryover` lists the non-elective courses you failed (0 points on a published sheet) and have not since passed, with the session failed in. They are added to your next registration automatically whenever the course is offered; a failed elective is never a carryover. "How a repeat is scored" is explanatory text. A final-year or spillover student may take the courses they owe in the Summer Semester instead of waiting for them to be offered again (§3.25).
 
 > **Placeholder:** The **Official transcript** button on the Results screen is disabled with the text "Arrives with the credentials module". That text is stale: transcripts are requested under **My Documents** (§3.20).
 
@@ -731,6 +733,88 @@ From 200 Level an MB;BS student is routed on sign-in to the **College dashboard*
 - **CA recorded so far**, **Fees by session**, **Semesters at your level** and the **results history with decisions**.
 
 > **Note:** The College sends no notices of its own (no email on a decision, a resit or graduation). Read the dashboard.
+
+### 3.25 Summer Semester
+
+> **Screenshot Required:** Summer Semester — `/student/summer` — the four tiles, the next-step note, "Fees and itemised calculation", the picker "Select your courses" and "My selections" with their verification pills.
+
+```text
+Academic
+ → Summer Semester
+```
+
+**What it is.** The Summer Semester is a third period of the session, beside the First and Second Semesters, with its own registration window and its own fees. A final-year or a spillover student selects the courses they believe they still owe, from the First and the Second Semester together, pays for them and is registered. The Academic Office then **verifies** each course against your record. You sit the courses in the Summer, and a pass clears the carry-over. The menu item and the dashboard card appear only when the Summer is yours.
+
+**Who may take it.** You may if you are an undergraduate of a regular programme (not CCE or postgraduate), your status is ACTIVE or probation, no award of yours is approved by Senate, and you are in one of these:
+
+| You are | The page calls you |
+|---|---|
+| In your final year: your level on record is your programme's final level, or the portal's reading of your academic position puts you there | FINAL-YEAR STUDENT |
+| In spillover: the portal's reading of your academic position counts spillover years or says spillover | SPILLOVER STUDENT |
+| Admitted by the Academic Office for an approved academic reason (the Office may name courses for you) | AUTHORISED BY THE ACADEMIC OFFICE |
+
+What decides it is your academic status. It is never your matriculation number, and never your level alone. **A missing result never keeps you out**: most past results are on the old portal, and the page says so ("Your earlier results may not all be on the portal yet. Select the courses you believe you still owe; the Academic Office will verify them. Nothing here says you owe nothing."). The Academic Office may also limit a Summer to some programmes, levels or categories; where it does and you are outside, the page says "Your programme is not among those this Summer Semester runs for." or "Your level is not among those this Summer Semester runs for." If you are in neither group, the page says "The Summer Semester is for students in their final year or in spillover." The Academic Office may authorise a student for an approved academic reason; ask it.
+
+**Select your courses.**
+
+1. Open **Summer Semester** `/student/summer`. The tiles show the Summer and its period, your category, "N courses · U units" selected, and what you owe now and what you have paid. The note under them says what to do next.
+2. In **Select your courses**, **search** by course code or title (a course you took under another code or title is found by that too), or filter by **Level**, **Semester** (Both, First, Second) and **Show** (All courses, My outstanding, Selected). Courses are listed under "400 Level", "300 Level" and so on, with their units, semester and fee.
+3. Tick every course you believe you still owe. You may tick courses of both semesters and of any level up to your programme's final level, whatever your result history on the portal. A course you cannot tick says why in the last column: *Passed*, *Its result this session is awaited*, *Registered*, *Selected — pay to register*, *SIWES is registered on its own page*, *Found not outstanding by the Academic Office*, *Rejected by the Academic Office*, *The course has ended; ask your department*. A course taught in both semesters that you took and failed in the First Semester of this session can be ticked: it registers in the Summer.
+4. For a course you tick you may answer **Where did you owe it?** with the session (or "Not sure") and the semester (First, Second, or "Not sure"). It is optional. It is kept with the course and printed on your confirmation.
+5. The bar at the foot says "N selected · U units · ₦50,000 + 4 × ₦5,000 = ₦70,000" (your own figures). Press **Select N courses**. You may select **up to 30 courses at a time**; beyond that the bar says "Select up to 30 at a time; select the rest afterwards", and you select the rest in another call.
+6. Check **My selections**. Each course is **Selected: unpaid**. You may **Remove** one that is unpaid.
+7. In **Fees and itemised calculation**, press **Pay** and pay the reference by card or USSD, Quickteller, or PayDirect at a bank, as for any fee. When the payment is confirmed the courses read **Registered** and you are told ("Your Summer Semester registration of 2025/2026").
+8. **Print** the confirmation (below).
+
+> **Note:** Nothing on the page decides whether a course may be selected: the portal does, when you press **Select**. If it refuses a course it says why next to the course.
+
+**The fees.** The Bursary states the Summer's fees for the session: a **programme fee** (₦50,000 unless the Bursary has stated another figure) charged **once** with your first course, and a **fee for each course** (₦5,000 unless stated otherwise). The page shows them as the Bursary published them, itemised: one row for the programme fee, one for each course you selected, and the sum, for example "₦50,000 + 4 × ₦5,000 = ₦70,000". A course you add after paying costs its fee alone. The programme fee is never charged twice. Until the Bursary has published the fees, the page says "The Bursary has not published the Summer Semester fees yet." and nothing can be selected.
+
+**You register and pay before the Academic Office verifies.** A course you have paid for is registered, whatever its verification status. The Academic Office checks it afterwards.
+
+**Verification status.** Each selected course carries one of four statuses, and the page shows who or what confirmed it beneath:
+
+| Status | What it means | What you do |
+|---|---|---|
+| **Student selected – pending verification** | You chose the course and no record has confirmed it yet. If you have paid, it is registered at your request, and printed "Pending verification" | Nothing, unless the Academic Office asks you something |
+| **Academically confirmed outstanding** — "Confirmed by your results", "Named by the Academic Office" or "Confirmed by the Academic Office" | The portal's results show you failed the course, the Academic Office named it for you, or an officer confirmed it | Nothing |
+| **Not outstanding – result verified** | A pass is on record, or an officer found you do not owe the course. The course is taken off your selection. The page shows the **reason** in full | If you paid: the fee is held as a Summer credit (below) |
+| **Rejected – incorrect course selection** | An officer found the selection wrong. The page shows the **reason** in full | The same |
+
+The page also shows, for each course, what the portal's own results say of it: *Confirmed by results (failed)*, *Result on record: passed*, *Result awaited*, or *No result on record*. *No result on record* means only that the portal holds nothing for the course; it is not a pass, and it is not a statement that you owe nothing.
+
+**Registration category.** Beside each course the page says how it came in: **Carry-over** (the portal's results say you owe it), **Authorised course** (the Academic Office named it), or **Student-selected course** (you chose it). A course you chose is never called a carry-over until a result or an officer says so.
+
+**Questions from the Academic Office.** The Office may ask you something about a selection ("Where did you owe this?"). You are told, the question appears with the course, and a box lets you answer in up to 500 characters. Your answer does not change the course's status; the Office reads it.
+
+**If a result arrives after you selected.** When you open the page, the portal reads your results again for the courses you selected. If a published **pass** is found for a course you selected:
+
+- **not yet paid**: the course is taken off your selection, it reads *Not outstanding – result verified*, and you are told;
+- **already paid**: nothing is taken away by itself. The course is marked for the Academic Office to decide, and the examinations of the Summer are held until it has.
+
+If a published **failure** is found for a course still pending, it reads *Academically confirmed outstanding*.
+
+**If the Academic Office withdraws its authorisation.** A course you selected because the Office named it is not taken away by itself. It is marked for the Office to decide and, if it was confirmed only because the Office named it, goes back to *Student selected – pending verification*; if you have not paid for it, it stays selected until the Office decides, and if you have paid, it stays registered until then.
+
+**If the Academic Office decides against a course you paid for.** The course is taken off your registration (never deleted) and its fee is **held for you as a Summer credit**. The Bursary applies it to your next Summer or refunds it. **Nothing is refunded automatically.** The page shows the credit, and the notice says the same. The decision on a paid course is final in this release: if you believe it is wrong, write to the Academic Office.
+
+**If no course of yours is left.** When the last course you selected goes, however it goes (you take it back, the registration closes before you paid for it, a pass on record takes it back, or the Office decides against it), a **programme fee you paid is held for you as a Summer credit** too; a programme fee you had not paid is simply cancelled. If you select a course again while the Summer is still open and before the Bursary has settled that credit, the programme fee you paid is used again and you are not charged it twice.
+
+**Print your confirmation.** Once you have selected a course, **Print** on the page or the dashboard card gives the **Summer Semester Registration Confirmation** (once you are registered), the **Summer Semester Selection Summary (registration pending)** (you have paid but a course is not on your registration yet: the Academic Office puts it right), or the **Summer Semester Selection Summary (payment outstanding)** (before you pay). It lists your courses with their units, original semester, registration category, registration status and verification status; the fees itemised; your payments with their receipt numbers; and the notice "Courses marked Pending verification are registered at your request and are not confirmed carry-overs until the Academic Office verifies them against your record. A course found not outstanding or rejected is taken off your registration and its fee is held for you as a Summer credit." A course the Office decided against is shown struck out with its reason. The QR is printed only once you are registered, and opens the public registration check for the Summer.
+
+| Message | Meaning |
+|---|---|
+| "Registration opens on 1 December 2026." / "Registration has not opened yet." / "Registration is closed." | The window. Courses selected and not paid when it closes are taken back |
+| "Registration is closed: remove the course you selected and did not pay; nothing more is taken." | You have an unpaid course after the close. **Remove** it |
+| "Pay ₦70,000 to register the courses you selected." | What you owe now |
+| "N course(s) registered, M waiting for the Academic Office to verify." | You have paid; the Office has not yet decided M of the courses |
+| "Nothing more can be selected now." | Every course you may take is selected, registered or decided |
+| "… is not a course you may register in the Summer Semester (it is not in your programme's structure, nor among your outstanding or authorised courses)" | The course is not in your pool. Search again |
+| "… cannot be registered (passed)" and similar | The course is in the list but cannot be selected; the word in brackets says why |
+| "the Summer allows at most N courses" | The Academic Office has set a ceiling on the courses a student holds. A course you already hold stays |
+| "choose at least one course" | Tick a course first |
+
+> **Note:** SIWES courses are not part of the Summer. They have their own page, `/student/siwes`, fee and semester (§3.5). CCE and postgraduate students do not take the Summer.
 
 ---
 
@@ -1129,6 +1213,7 @@ A Head of Department (`hod`) is bound to one department — the scope on the off
 | SIWES supervision | Students → SIWES Supervision `/siwes` | Pick the session, semester and SIWES course; assign a **Supervisor** from the department's lecturers to each student; record the **Practical /60** mark (a changed mark asks why). Inputs open only while the SIWES sheet is at Entry. |
 | Class lists | Students → Registered Students `/registration/class-list` | The roll, attendance register and timetable slots of any course the department owns (§5.3). |
 | Students | Students → Students `/students`; Records & Queries `/records` | The register of the department's students, a search box, and each student's record (Student 360). Read-only for an HOD. |
+| Summer Semester (read-only) | Academic → Summer Semester `/summer` | Your department's students taking the Summer (the roster with each student's category, selections, payment state and registration), the verification queue of your department's selections, the department's report with its figures, and the Summer's classes of your courses; each can be exported to CSV. You decide and set nothing: verifying a selection is the Academic Office's. A selection outside your department is not found. |
 | Deferments | Students → Deferments `/deferments` | Requests of the department's students. At **Submitted** press **Recommend to the Faculty**, **Request Correction** or **Reject** (a reason is required for the last two); **Confirm Return** when a deferred student returns. A request at another stage shows no buttons ("…is not this desk's act at that stage"). You are emailed when a request arrives ("A deferment request awaits the department") and when a return is due. |
 | Department clearance | Students → Department Clearance `/clearance` | Sign the DEPARTMENT unit for a candidate: **Clear**, or **Hold** naming the item outstanding ("A hold names the specific item outstanding."). You cannot sign another unit's item. **Notify held candidates** sends nothing (placeholder). |
 | Inter-departmental transfers | Students → Inter-Departmental Transfer `/transfers` | **Approve** or **Decline** (with a reason) an application at your desk: as the *current* department once the fee is confirmed ("This application is not ready at your desk. Awaiting payment."), or as the *new* department after the current one. The list itself is University-wide; only the buttons are yours. |
@@ -1151,6 +1236,7 @@ A Dean (`dean`) is bound to one faculty (the grant's scope, else the staff recor
 | Deferments | Students → Deferments `/deferments` | At **Department recommended**: **Recommend to the Registry**, **Request Correction** or **Reject**; **Confirm Return**. Emailed "A deferment request awaits the faculty". |
 | Faculty clearance | Students → Faculty Clearance `/clearance` | Sign the FACULTY unit (Clear / Hold naming the item). |
 | Students, class lists, records | Students → Students `/students`, Registered Students, Records & Queries | Faculty-wide, read-only. |
+| Summer Semester (read-only) | Academic → Summer Semester `/summer` | As for the HOD, across the faculty: the faculty's students, verification queue, report and classes, exportable to CSV. You decide and set nothing. |
 | Postgraduate admissions | Admissions → PG Admissions `/admissions/postgraduate` | At **Department recommended**: **Faculty: recommend** or **Decline** for the faculty's programmes. |
 | External examiners | Academic → External Examiners and the four related items | As for the HOD, with the faculty as reach. |
 | Course spaces, score entry | Academic → Course Spaces, Upload Material, Score Entry, My Score Sheets | A Dean may act in any course space of the faculty and reads every sheet; mark entry remains the lecturer's. |
@@ -1238,6 +1324,11 @@ Every notice is written to the portal's outbox and delivered by email (and SMS w
 |---|---|---|---|
 | Password reset requested | the account holder | Email + SMS | "Reset your MOAUM password" (applicants: "Reset your MOAUM application password") |
 | Payment confirmed (school fees, transcript, hostel, library fine, wallet top-up, transfer fee — any path) | student | Email + SMS | "Your payment is confirmed" / SMS "MOAUM: payment {ref} confirmed, receipt {no}." |
+| Summer Semester open (V735, V779; low priority) | every final-year and spillover student, and the authorised, of a Summer the Academic Office announces | Email + SMS | "The Summer Semester of {session} is open" |
+| Summer Semester registration closing | an eligible student who has not paid | Email + SMS | "The Summer Semester registration of {session} closes on {date}" |
+| Summer fees paid and courses registered | student | Email + SMS | "Your Summer Semester registration of {session}" |
+| Summer Semester examinations dated | the registered | Email + SMS | "The Summer Semester examinations of {session}" |
+| Summer courses reviewed (V779; mandatory) — the Academic Office decides courses of your selection, or asks you something, or a published result settles one; one notice for each decision batch | student | Email + SMS | "Your Summer Semester courses of {session} were reviewed" / SMS "MOAUM: your Summer Semester courses of {session} were reviewed. Open the portal to see the result." |
 | Overpaid school fees credited to your wallet (V781; mandatory) | student | Email + SMS | "Your overpaid school fees of ₦x are on your wallet" / SMS "MOAUM: ₦x you overpaid on {session} school fees is on your wallet (ref …), balance …. Apply it to your fees, or ask for a refund, on the Wallet page." |
 | Wallet credits of overpaid school fees requested (V781) | the Bursar's office holders | Email | "{n} wallet credit(s) of overpaid school fees wait for your approval ({batch})" |
 | Wallet credits of overpaid school fees decided (V781) | the officer who requested them | Email | "Wallet credits {batch}: {n} {approved and credited / returned for correction / rejected}" |
@@ -1298,6 +1389,7 @@ Every PDF is generated from the register at the moment you ask for it. Where a d
 |---|---|---|---|---|
 | **Payment receipt** | student | `/student/receipt/{reference}` → **Download PDF** | the payment is confirmed (before: "Not confirmed") | QR + 12-character check code → `/verify/receipt/{reference}?c=` — "Genuine — this receipt is on the Bursary's ledger" |
 | **Course registration form** | student | `/student/form` → **Download PDF** / **Print** | registration APPROVED | QR + check code → `/verify/registration` (answers only for an approved registration) |
+| **Summer Semester registration confirmation** (V779) | student | `/student/summer` → **Print**, or the dashboard card → **Print** | you have a live selection in the Summer. Titled "Summer Semester Registration Confirmation" once registered, "Summer Semester Selection Summary (registration pending)" when paid but not yet registered, and "Summer Semester Selection Summary (payment outstanding)" before payment | QR, printed only once you are registered → `/verify/registration` for semester 3 (genuine only for an approved registration; each course carries its verification word, never "carry-over" for a pending one) |
 | **Examination card** | student | `/student/exams` → **Download exam card** | approved registration **and** cleared for examinations under the scheme | QR + check code → `/verify/exam` (name, photo, courses, "Cleared" yes/no) |
 | **Statement of results (semester)** | student | `/student/results/{session}/{semester}` → **Download result slip** | the semester is published and not withheld | QR + check code → `/verify/results` (published grades, GPA, CGPA, minute) |
 | **Result broadsheet** (whole history) | student | `/student/broadsheet` → **Print broadsheet** | at least one published semester, not withheld | none |
@@ -1426,6 +1518,20 @@ Each entry gives the message you see, the real cause and what to do.
 | Help & Request unanswered for long | The office's desk (`/support`) is not on any office menu; requests to the Deputy Registrar cannot be addressed at all. | Raise a ticket for portal matters, or contact the office directly quoting the SR reference. |
 | "five requests are open already" | Five open requests. | Wait for an answer. |
 
+### 9.9 Cannot select or pay a Summer course
+
+| You see | Cause | Do |
+|---|---|---|
+| No **Summer Semester** in the menu | The Summer is not yours: you are not in your final year or in spillover, you are a CCE or postgraduate student, your status is not active, or no Summer is set for the session | Ask the Academic Office, which may authorise a student for an approved academic reason |
+| "The Bursary has not published the Summer Semester fees yet." | No statement of the Summer's fees is published for your programme | The Bursar publishes it on Summer Semester Fees. Ask the Bursary |
+| "Registration has not opened yet." / "Registration is closed." | The window | Wait for it, or ask the Academic Office. A course left unpaid at the close is taken back |
+| A course has no tick box and a reason beside it | Passed, its result is awaited, already registered or selected, a SIWES course, decided by the Academic Office, or ended | The reason is the answer. Passed and awaited are the portal's results; tell the Academic Office if you believe a result is wrong |
+| "… is not a course you may register in the Summer Semester …" | The code is not in your programme's structure up to its final level, nor among your carry-overs or the courses the Office named | Search the list again. Ask the Academic Office to name a course the structure does not hold |
+| "Select up to 30 at a time; select the rest afterwards" | The limit of one call | Select 30, then the rest |
+| Your course reads **Rejected** or **Not outstanding** | The Academic Office decided against it, and gave a reason | Read the reason on the course. If you paid, your fee is a Summer credit for the Bursary to apply or refund |
+| Paid, but a course is not registered | The registration could not take it (for example a course that ended since you chose it) | The Academic Office sees it under "Paid, not yet registered" and decides it. Your payment stands |
+| The reference will not pay: "This reference is no longer for what you owe, or the Summer Semester's registration has closed." | What you owe changed after the reference was drawn, or the window closed | Press **Pay** again for the reference for what you owe now. A payment already made is never charged again |
+
 ---
 
 ## 10 Frequently asked questions
@@ -1455,6 +1561,11 @@ Each entry gives the message you see, the real cause and what to do.
 23. **I saved a wrong mark. How do I change it?** You cannot on your own: submit and ask the Examinations Officer or HOD to return the sheet with a reason; then amend the row with a reason.
 24. **Where do I find my payslip?** Me → Leave & Payslip; approved or paid runs only, on screen (no PDF).
 25. **What is the ICT ticket number format and can I track it without signing in?** `TICK-YYYY-NNNNN`; yes, at `/track` with the number and the email on the ticket.
+26. **Why is there no Summer Semester in my menu?** It shows only while the Summer is yours: an undergraduate of a regular programme in your final year or in spillover, with an active record, in a session that has a Summer. Ask the Academic Office if you think you are one of these.
+27. **Must my results be on the portal for me to select a course?** No. Most past results are on the old portal. Select the courses you believe you still owe; the Academic Office verifies them against your record. A missing result is never read as a pass, and never as proof that you owe nothing.
+28. **Why did I have to pay before the Academic Office checked my course?** The Summer registers you when you pay, and the Office verifies afterwards. A course still marked *Pending verification* is registered at your request. If the Office finds it not outstanding or rejects it, it is taken off and your fee is held as a Summer credit.
+29. **I paid for a course the Academic Office rejected. Do I get my money back?** It is held for you as a Summer credit, and the Bursary applies it to your next Summer or refunds it. Nothing is refunded automatically. The page and the notice tell you the amount.
+30. **How many courses can I select, and what does it cost?** Up to 30 in one call; select the rest afterwards (the Academic Office may set a ceiling for a Summer). The Summer costs a programme fee once and a fee for each course, as the Bursary published them, for example ₦50,000 + 4 × ₦5,000 = ₦70,000.
 
 ---
 
@@ -1510,7 +1621,7 @@ STUDENT (undergraduate)                      /student
  Start here → Dashboard · School Fees — Pay First
  Academic   → Deferment · Course Registration · Registration History · Results
               Result Broadsheet · Result Query · Carryover · Inter-Departmental Transfer
-              My Documents
+              My Documents · Summer Semester (only while it is yours)
  Learning   → My Courses · Timetable · Attendance · Examinations
  Services   → Wallet & Funding · Hostel · Library · Identity Card · Health
               Help & Requests · ICT Support Tickets
@@ -1561,6 +1672,7 @@ HEAD OF DEPARTMENT                           /
               Score Sheets · Score Entry · Upload Results (bulk) · Who May Register It
               Course Spaces · Upload Material · My Teaching & Timetable
               External Examiners · Examiner Appointments · Project Assignments · Assessments · Examiner Reports
+              Summer Semester (read-only)
  Students   → Deferments · Department Clearance · Inter-Departmental Transfer · Records & Queries
               SIWES Supervision · Registered Students · Students
  Admissions → PG Admissions
@@ -1577,6 +1689,7 @@ DEAN                                         /
               Approval Chain · Graduation List · Score Entry · Upload Results (bulk) · My Score Sheets
               Who May Register It · Course Spaces · Upload Material · Research in the Faculty*
               External Examiners · Examiner Appointments · Project Assignments · Assessments · Examiner Reports
+              Summer Semester (read-only)
  Students   → Deferments · Faculty Clearance · Records & Queries · Students · Registered Students
  Admissions → PG Admissions
  Finance    → Faculty Budget · Requisitions

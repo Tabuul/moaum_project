@@ -13,7 +13,7 @@ import { DTable } from "@/components/proto/DTable";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { notify, notifyProblem } from "@/components/proto/Toast";
 import { day } from "@/lib/format";
-import { FEE_STATE_WORD, naira, num, type Money } from "@/lib/summer";
+import { FEE_STATE_WORD, REINSTATED_NOTE, creditItemWord, creditReopenable, creditSourceWords, naira, num, type Money, type Verification } from "@/lib/summer";
 
 export interface SummerFeeRow {
   id: string; session: string; programme_code: string | null; programme_name: string | null; programme_fee: Money; course_fee: Money;
@@ -24,10 +24,14 @@ export interface SummerCollection {
   session: string; programme_fees_paid: Money; programme_fees_paid_count: number; course_fees_paid: Money; course_fees_paid_count: number;
   programme_fees_due: Money; course_fees_due: Money;
 }
-/** V739: Summer money received beyond the charges it could pay */
+/** V739: Summer money received beyond the charges it could pay; V779: or the fee of a paid course the Academic Office found not outstanding
+ *  or rejected (source DECISION), whose entry was taken off the registration — the course, its state and the reason the Office gave — or
+ *  the paid programme fee once no Summer course of the student remains, by whatever route the last one went (its charge's kind PROGRAMME,
+ *  no course, the note saying how) */
 export interface SummerCredit {
   id: string; session: string; amount: Money; state: "OPEN" | "APPLIED" | "REFUNDED"; created_at: string; settled_at: string | null; settled_note: string | null;
   reference: string; receipt_no: string | null; number: string | null; name: string;
+  source?: "PAYMENT" | "DECISION"; note?: string | null; course_code?: string | null; charge_kind?: "PROGRAMME" | "COURSE" | null; selection_state?: Verification | null;
 }
 export interface SummerFeesView { fees: SummerFeeRow[]; collections: SummerCollection[]; programmes: { code: string; name: string }[]; credits?: SummerCredit[] }
 
@@ -148,12 +152,16 @@ export function SummerFees({ view, sessions, initialSession, actingOffice }: { v
 
       {view.credits?.length ? (
         <Panel title="Unapplied Summer payments" right={`${view.credits.filter((x) => x.state === "OPEN").length} open`}>
-          <PBody><div className="sub2">A payment confirmed after what it was for had changed — its courses taken back, or paid by another reference. The money is held here until the Bursar applies it to what the student owes or refunds it. A credit that is the whole of its payment is applied by moving the payment on the payment correction desk: the move records it here. A credit settled here in error can be reopened.</div></PBody>
-          <DTable cols={["Number", "Name", "Session", "Amount|num", "Reference", "Received", "State", "|mid"]} rows={view.credits.map((x) => [
+          <PBody><div className="sub2">Money the Summer holds for a student: a payment confirmed after what it was for had changed (its courses taken back, or paid by another reference), or the fee of a paid course the Academic Office found not outstanding or rejected, whose entry was taken off the registration, or the paid programme fee once no Summer course of the student remains. It is held here until the Bursar applies it to the student&rsquo;s next Summer or refunds it; nothing is refunded automatically. A refund goes through the refund process; a credit that is the whole of its payment is applied by moving the payment on the payment correction desk, and the move records it here. A programme fee credit the student&rsquo;s new selection in the same Summer used to pay the programme fee again is settled by that selection and is not reopened: the money pays the fee. A credit settled here in error can be reopened.</div></PBody>
+          <DTable cols={["Number", "Name", "Session", "Course", "Amount|num", "Source", "Reference", "Received", "State", "|mid"]} rows={view.credits.map((x) => { const w = creditSourceWords(x); return [
             <span key="n" className="tnum">{x.number ?? "—"}</span>,
             <span key="nm">{x.name}</span>,
             <span key="s" className="tnum">{x.session}</span>,
+            <span key="co" className="tnum">{creditItemWord(x)}</span>,
             <span key="a" className="tnum">{naira(x.amount)}</span>,
+            w.pill
+              ? <span key="so"><Pil kind="info">{w.pill}</Pil><span className="blk sub2">{w.line}</span></span>
+              : <span key="so" className="sub2">{w.line}</span>,
             <span key="r" className="tnum t-xs">{x.reference}{x.receipt_no ? ` · ${x.receipt_no}` : ""}</span>,
             <span key="d" className="sub2">{day(x.created_at)}</span>,
             x.state === "OPEN" ? <Pil key="st" kind="warn">OPEN</Pil> : <span key="st"><Pil kind="ok">{x.state}</Pil>{x.settled_note ? <span className="blk sub2">{x.settled_note}</span> : null}</span>,
@@ -162,11 +170,14 @@ export function SummerFees({ view, sessions, initialSession, actingOffice }: { v
                 <Btn kind="ghost" size="sm" disabled={busy !== null} onClick={() => { setSettling({ id: x.id, state: "APPLIED" }); setSnote(""); }}>Applied</Btn>
                 <Btn kind="ghost" size="sm" disabled={busy !== null} onClick={() => { setSettling({ id: x.id, state: "REFUNDED" }); setSnote(""); }}>Refunded</Btn>
               </span>
-            ) : x.state !== "OPEN" && mayApprove && !(x.settled_note ?? "").startsWith("Moved by a payment correction: ") ? (
+            ) : mayApprove && creditReopenable(x) ? (
               // V751: a credit settled by hand in error is reopened, with a reason
               <Btn key="x" kind="ghost" size="sm" disabled={busy !== null} onClick={() => { setSettling({ id: x.id, state: "REOPEN" }); setSnote(""); }}>Reopen</Btn>
+            ) : mayApprove && (x.settled_note ?? "").startsWith(REINSTATED_NOTE) ? (
+              // V779 (B2): the money pays the programme fee the student's new selection made PAID again; the database refuses its reopen
+              <span key="x" className="sub2">Pays the programme fee: not reopened</span>
             ) : <span key="x" />,
-          ])} />
+          ]; })} />
           {settling ? (
             <PBody>
               <div className="row" style={{ flexWrap: "wrap", alignItems: "flex-end", gap: "var(--s-2)" }}>

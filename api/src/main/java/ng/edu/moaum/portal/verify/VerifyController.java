@@ -469,14 +469,20 @@ class VerifyController {
         }
         java.util.UUID rid = (java.util.UUID) row.get("id");
         // a past course as the student took it: the title (and the code) an old-portal file stated, never today's catalogue
+        // V779: a Summer course carries the state of its verification (the Academic Office's), never a word about money or reasons
+        boolean summer = Boolean.TRUE.equals(row.get("summer"));
         List<Map<String, Object>> courses = jdbc.sql("""
-                SELECT c.code AS course_code, at.code_as_taken AS "codeAsTaken", coalesce(at.title, o.title, c.title) AS title, e.units, e.entry_type, c.kind
+                SELECT c.code AS course_code, at.code_as_taken AS "codeAsTaken", coalesce(at.title, o.title, c.title) AS title, e.units, e.entry_type, c.kind,
+                       sel.state AS verification
                   FROM registration.entry e
                   JOIN catalogue.offering o ON o.id = e.offering_id JOIN catalogue.course c ON c.code = o.course_code
                   LEFT JOIN catalogue.course_as_taken at ON at.id = e.as_taken_id
+                  LEFT JOIN registration.course_registration cr ON cr.id = e.registration_id
+                  LEFT JOIN registration.summer_selection sel ON CAST(:summer AS boolean) AND sel.student_id = cr.student_id
+                                                              AND sel.session = cr.session AND sel.course_code = c.code
                  WHERE e.registration_id = :r AND e.status IN ('REGISTERED','APPROVED')
                  ORDER BY (e.entry_type = 'CARRYOVER') DESC, c.code
-                """).param("r", rid).query().listOfRows();
+                """).param("r", rid).param("summer", summer).query().listOfRows();
         out.put("genuine", true);
         out.put("name", row.get("name"));
         out.put("matricNo", row.get("matric_no"));
