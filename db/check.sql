@@ -45676,7 +45676,7 @@ DO $$
 DECLARE
     SP text := '9907/9908'; S text := '9908/9909'; who uuid := gen_random_uuid(); prog text := 'C97912'; dept text;
     a uuid; b uuid; bs uuid; ref1 text; ref2 text; j jsonb; v_err text; msg text;
-    m_pool text; m_sel text; m_refuse text; m_money text; m_after text; m_entries text; m_fee text; m_norm text; m_siwes text;
+    m_pool text; m_sel text; m_refuse text; m_money text; m_after text; m_entries text; m_fee text; m_norm text; m_siwes text; m_awaited text;
 BEGIN
   BEGIN
     PERFORM set_config('moaum.actor_id', who::text, true);
@@ -45703,7 +45703,13 @@ BEGIN
     BEGIN PERFORM registration.summer_select(a, S, ARRAY['ZZV 999']); EXCEPTION WHEN check_violation THEN m_refuse := m_refuse || split_part(SQLERRM, ':', 1) || ','; END;
     BEGIN PERFORM registration.summer_select(a, S, ARRAY['ZZV 402']); EXCEPTION WHEN check_violation THEN m_refuse := m_refuse || split_part(SQLERRM, ':', 1) || ' ' || split_part(SQLERRM, '(', 2) || ','; END;
     BEGIN PERFORM registration.summer_select(a, S, ARRAY['MOAU-ZZV 420']); EXCEPTION WHEN check_violation THEN m_refuse := m_refuse || split_part(SQLERRM, ':', 1) || ' ' || split_part(SQLERRM, '(', 2) || ','; END;
-    BEGIN PERFORM registration.summer_select(a, S, ARRAY['ZZV 202']); EXCEPTION WHEN check_violation THEN m_refuse := m_refuse || split_part(SQLERRM, ':', 1) || ' ' || split_part(SQLERRM, '(', 2) || ','; END;
+    -- a course awaiting its result is selectable (V787): selected inside a block that is undone, so that the figures after it are those of the other courses
+    BEGIN
+      BEGIN PERFORM registration.summer_select(a, S, ARRAY['ZZV 202']);
+            m_awaited := 'selected ' || coalesce((SELECT string_agg(x.state || '/' || x.basis, ',') FROM registration.summer_selection x WHERE x.student_id = a AND x.course_code = 'ZZV 202'), '-');
+      EXCEPTION WHEN check_violation THEN m_awaited := 'refused ' || split_part(SQLERRM, ':', 1) || ' ' || split_part(SQLERRM, '(', 2); END;
+      RAISE EXCEPTION 'V787: the selection of ZZV 202 is undone';
+    EXCEPTION WHEN raise_exception THEN IF SQLERRM <> 'V787: the selection of ZZV 202 is undone' THEN RAISE; END IF; END;
     BEGIN PERFORM registration.summer_select(a, S, (SELECT array_agg('ZZX ' || n) FROM generate_series(1, 31) n)); EXCEPTION WHEN check_violation THEN m_refuse := m_refuse || split_part(SQLERRM, ':', 1) || ','; END;
     BEGIN PERFORM registration.summer_select(a, S, ARRAY['ZZV 301'], '[{"course":"ZZV 301","session":"1900/1901","semester":1}]'::jsonb); EXCEPTION WHEN check_violation THEN m_refuse := m_refuse || split_part(SQLERRM, ':', 1) || ','; END;
     BEGIN PERFORM registration.summer_select(a, S, ARRAY['ZZV 301'], '[{"course":"ZZV 301","session":"9907/9908","semester":3}]'::jsonb); EXCEPTION WHEN check_violation THEN m_refuse := m_refuse || split_part(SQLERRM, ':', 1) || ','; END;
@@ -45770,8 +45776,8 @@ BEGIN
     GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
     IF v_err <> 'the V779 check undoes its writes' THEN RAISE; END IF;
   END;
-  PERFORM pg_temp.assert('V779: with no history a student reads the programme''s structure of both semesters to the final level, never an elective, a deficiency course, an ended or a SIWES course, with a failed course outside the structure; a passed course, one passed through its twin and one awaiting its result are not selectable',
-      coalesce(m_pool || ' | siwes ' || m_siwes = 'ZZV 101 100 STRUCTURE NO_RESULT yes, ZZV 102 100 STRUCTURE NO_RESULT yes, ZZV 201 200 STRUCTURE NO_RESULT yes, ZZV 202 200 STRUCTURE RESULT_AWAITED RESULT_AWAITED, '
+  PERFORM pg_temp.assert('V779: with no history a student reads the programme''s structure of both semesters to the final level, never an elective, a deficiency course, an ended or a SIWES course, with a failed course outside the structure; a passed course and one passed through its twin are not selectable, and one awaiting its result is selectable like any other (V787)',
+      coalesce(m_pool || ' | siwes ' || m_siwes = 'ZZV 101 100 STRUCTURE NO_RESULT yes, ZZV 102 100 STRUCTURE NO_RESULT yes, ZZV 201 200 STRUCTURE NO_RESULT yes, ZZV 202 200 STRUCTURE RESULT_AWAITED yes, '
                    || 'ZZV 301 300 STRUCTURE NO_RESULT yes, MOAU-ZZV 420 400 STRUCTURE RESULT_PASSED PASSED, MOAU-ZZV 421 400 STRUCTURE NO_RESULT yes, '
                    || 'ZZV 401 400 CARRY_OVER RESULT_FAILED yes, ZZV 402 400 STRUCTURE RESULT_PASSED PASSED, ZZV 410 - CARRY_OVER RESULT_FAILED yes '
                    || '| siwes CARRY_OVER RESULT_FAILED SIWES_OWN_PAGE | SUMMER_COURSE_REFUSED siwes own page)', false),
@@ -45779,9 +45785,10 @@ BEGIN
   PERFORM pg_temp.assert('V779: a course no result confirms is a pending selection charged as STUDENT_SELECTED, a detected failure is confirmed by the results, and the origin the student gives is kept; two spellings of one code are one selection',
       coalesce(m_sel = 'ZZV 301 STUDENT_SELECTED PENDING_VERIFICATION - 9907/9908/2/STUDENT, ZZV 401 CARRY_OVER CONFIRMED_OUTSTANDING RESULTS 9907/9908/1/RESULTS, '
                    || 'ZZV 410 CARRY_OVER CONFIRMED_OUTSTANDING RESULTS 9907/9908/1/RESULTS' AND m_norm = '3 of 3', false), m_sel || ' | ' || m_norm);
-  PERFORM pg_temp.assert('V779: a code outside the pool, a passed course, one passed through its twin, one awaiting its result, 31 in a call, a wrong origin, the same course again and a fourth course under a ceiling of three are each refused with their own code',
-      coalesce(m_refuse = 'SUMMER_COURSE_NOT_AVAILABLE,SUMMER_COURSE_REFUSED passed),SUMMER_COURSE_REFUSED passed),SUMMER_COURSE_REFUSED result awaited),SUMMER_TOO_MANY,'
-                   || 'SUMMER_ORIGIN_INVALID,SUMMER_ORIGIN_INVALID,SUMMER_COURSE_REFUSED already selected),SUMMER_CEILING,', false), m_refuse);
+  PERFORM pg_temp.assert('V779: a code outside the pool, a passed course, one passed through its twin, 31 in a call, a wrong origin, the same course again and a fourth course under a ceiling of three are each refused with their own code; a course awaiting its result is not (V787): it is selected, pending the Academic Office, as a student''s own choice',
+      coalesce(m_refuse = 'SUMMER_COURSE_NOT_AVAILABLE,SUMMER_COURSE_REFUSED passed),SUMMER_COURSE_REFUSED passed),SUMMER_TOO_MANY,'
+                   || 'SUMMER_ORIGIN_INVALID,SUMMER_ORIGIN_INVALID,SUMMER_COURSE_REFUSED already selected),SUMMER_CEILING,'
+               AND m_awaited = 'selected PENDING_VERIFICATION/STUDENT_SELECTED', false), m_refuse || ' | ' || coalesce(m_awaited, '-'));
   PERFORM pg_temp.assert('V779: ₦50,000 + 3 × ₦5,000 is owed and the server''s own formula says so; a reference drawn twice leaves the self-selected course payable; paid, the pending course is registered as CURRENT, the confirmed as CARRYOVER at the programme''s units; a course added after payment costs its fee alone and the programme fee is never charged twice; the Bursary''s own figures are the next student''s',
       coalesce(m_money = '65000.00 formula 65000.00 programme DUE | drawn twice true payable true charges PROGRAMME:DUE,ZZV 301:DUE,ZZV 401:DUE,ZZV 410:DUE'
                    AND m_entries = 'ZZV 301 CURRENT 3 APPROVED, ZZV 401 CARRYOVER 3 APPROVED, ZZV 410 CARRYOVER 3 APPROVED level 400'

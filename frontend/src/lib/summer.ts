@@ -249,12 +249,12 @@ export const NOT_FINAL_OR_SPILLOVER_HINT = "The Academic Office may authorise a 
 /* ───────────────────────── a course: why it is or is not selectable ───────────────────────── */
 
 /** why a course is not selectable now: one word for each reason registration.summer_selectable gives, and no other (a course of both
- *  semesters held in the First or Second Semester of the session is selectable: V735's once-a-session rule lets a Summer entry repeat it) */
+ *  semesters held in the First or Second Semester of the session is selectable: V735's once-a-session rule lets a Summer entry repeat it; nor is a course whose result of
+ *  the session is awaited, since V787: that is the evidence's word, EVIDENCE_WORD, not a reason) */
 export const COURSE_REASON_WORD: Record<string, string> = {
   COURSE_UNKNOWN: "Not in the course catalogue",
   COURSE_ENDED: "The course has ended; ask your department",
   PASSED: "Passed",
-  RESULT_AWAITED: "Its result this session is awaited",
   ALREADY_REGISTERED: "Registered",
   ALREADY_SELECTED: "Selected — pay to register",
   SIWES_OWN_PAGE: "SIWES is registered on its own page",

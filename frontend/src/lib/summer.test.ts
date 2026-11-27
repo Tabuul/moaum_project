@@ -71,7 +71,9 @@ test("a course says where it was failed, or that the Academic Office named it", 
   assert.equal(failedInWord({ original_session: null, original_semester: 1, basis: "STUDENT_SELECTED" }), "First semester");
   assert.equal(failedInWord({ original_session: "2023/2024", original_semester: null, basis: "STUDENT_SELECTED" }), "2023/2024");
   assert.equal(semesterWord(3), "Summer");
-  assert.equal(courseReasonWord("RESULT_AWAITED"), "Its result this session is awaited");
+  assert.equal(courseReasonWord("PASSED"), "Passed");
+  // V787: a course whose result of the session is awaited is selectable: the database gives no reason for it, so there is no word for one
+  assert.equal(courseReasonWord("RESULT_AWAITED"), "RESULT_AWAITED");
   assert.equal(courseSemesterWord({ both_semesters: true, course_semester: 1 }), "Both");
   assert.equal(courseSemesterWord({ both_semesters: false, course_semester: 2 }), "Second");
 });
@@ -81,7 +83,7 @@ test("the course's reasons carry the words V779 adds, and the old ones", () => {
   assert.equal(COURSE_REASON_WORD.DECIDED_NOT_OUTSTANDING, "Found not outstanding by the Academic Office");
   assert.equal(COURSE_REASON_WORD.DECIDED_REJECTED, "Rejected by the Academic Office");
   // exactly the reasons registration.summer_selectable gives (its why-chain), each with a word; none the database never gives (F10)
-  const emitted = ["COURSE_UNKNOWN", "COURSE_ENDED", "ALREADY_REGISTERED", "ALREADY_SELECTED", "DECIDED_NOT_OUTSTANDING", "DECIDED_REJECTED", "SIWES_OWN_PAGE", "PASSED", "RESULT_AWAITED"];
+  const emitted = ["COURSE_UNKNOWN", "COURSE_ENDED", "ALREADY_REGISTERED", "ALREADY_SELECTED", "DECIDED_NOT_OUTSTANDING", "DECIDED_REJECTED", "SIWES_OWN_PAGE", "PASSED"];
   for (const k of emitted) assert.ok(COURSE_REASON_WORD[k], k);
   assert.deepEqual(Object.keys(COURSE_REASON_WORD).sort(), [...emitted].sort());
   assert.equal(courseReasonWord(null), "");

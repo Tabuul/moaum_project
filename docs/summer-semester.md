@@ -97,9 +97,8 @@ A course is shown in the pool, but cannot be selected, in these cases, each with
 | `DECIDED_REJECTED` | Rejected by the Academic Office | The same |
 | `SIWES_OWN_PAGE` | SIWES is registered on its own page | A SIWES course, from any source, is not offered in the Summer (Left out, Q1) |
 | `PASSED` | Passed | A published pass of the course or of its twin, before this Summer |
-| `RESULT_AWAITED` | Its result this session is awaited | Registered in the First or Second Semester of this session with no published result |
 
-These nine are the only reasons `registration.summer_selectable` gives. `ALREADY_REGISTERED` and `ALREADY_SELECTED` come before `SIWES_OWN_PAGE`, so a SIWES course an older Summer charged reads as registered.
+These eight are the only reasons `registration.summer_selectable` gives. A course whose result of this session is still awaited (registered in the First or Second Semester, no published result) is **not** among them: since V787 it is selectable like any other course of the pool (the University's word of 27 November 2026: no restriction on what a student picks), and its evidence reads *Result awaited*. `ALREADY_REGISTERED` and `ALREADY_SELECTED` come before `SIWES_OWN_PAGE`, so a SIWES course an older Summer charged reads as registered.
 
 **A course taught in both semesters and failed in the First Semester of this session is selectable**, and its Summer entry registers. The portal's once-a-session rule for such a course (`registration.entry_once_a_session`, V386) lets semester 3 through since V735, so the Summer may repeat a course of the session. While the course's result of this session is not published it reads `RESULT_AWAITED`, and once a pass is published it reads `PASSED`.
 
@@ -108,11 +107,11 @@ These nine are the only reasons `registration.summer_selectable` gives. `ALREADY
 | Evidence | Word | Means |
 |---|---|---|
 | `RESULT_PASSED` | Result on record: passed | A published pass before this Summer. The course is not selectable. Where it is already selected, the portal takes it back (§Reconcile) |
-| `RESULT_AWAITED` | Result awaited | Registered this session, no published result |
+| `RESULT_AWAITED` | Result awaited | Registered this session, no published result. The course is selectable (V787); the selection waits for the Academic Office like any a result does not confirm, and is taken back or flagged if the result then publishes as a pass |
 | `RESULT_FAILED` | Confirmed by results (failed) | A published F or absence the carry-over reader counts (never an elective) |
 | `NO_RESULT` | No result on record | The portal holds nothing for the course. This is not a pass and not proof of nothing owed |
 
-The precedence is PASSED, then AWAITED, then FAILED, then NO_RESULT.
+The precedence is PASSED, then AWAITED, then FAILED, then NO_RESULT. Only PASSED keeps a course from being selected.
 
 **How a student selects (Summer Semester `/student/summer`).** The picker has a search box (code, title, the as-taken code and title), filters for Level, Semester and Show (All courses, My outstanding, Selected), and groups the rows under "NNN Level" headings. A student ticks courses of both semesters at once. Each ticked course may carry an answer to "Where did you owe it?", the session (from the last six, or "Not sure") and the semester (First, Second, or "Not sure"), which is kept as the course's original semester and session and printed on the confirmation. The sticky bar says "N selected · U units · ₦ formula" and **Select N courses**.
 
