@@ -14,7 +14,8 @@
 --      the stage and category it reads are those of a postgraduate, and nobody else ever had one.
 --   2. Both functions, and the postgraduate stage readers, run with jit = off (V652, V663, V782): the database is PostgreSQL 17 with JIT
 --      on, and a statement whose estimate crosses jit_above_cost is compiled on every call, a cost that does not follow the work.
--- Nothing else changes: no table, no result, no other function.
+-- Nothing else changes: no table, no result, no other function. The file may be run by hand on a database first (the outage could not
+-- wait for the release): run again by db/migrate.sh it finds its change made and only sets what is already set.
 BEGIN;
 SELECT set_config('moaum.actor_id', '00000000-0000-0000-0000-000000000000', true),
        set_config('moaum.actor_office', 'bursar', true),
@@ -24,6 +25,11 @@ DO $v785$
 DECLARE d text; a text; b text;
 BEGIN
     d := pg_get_functiondef('finance.due_for_semester(uuid,text,integer)'::regprocedure);
+    -- run by hand on the live database before the release reached it (27 Nov 2026: CI could not run): already done, nothing to do
+    IF position('CASE WHEN people.is_postgraduate(s.entry_mode, pgp.category) THEN ARRAY[s.id] ELSE ''{}''::uuid[] END' IN d) > 0 THEN
+        RAISE NOTICE 'V785: finance.due_for_semester already asks the stage reader only for a postgraduate';
+        RETURN;
+    END IF;
     a := $a$LEFT JOIN LATERAL (SELECT x.stage_code, x.category FROM admissions.pg_fee_stages_of(p_session, ARRAY[s.id]) x) pgs ON true$a$;
     IF (length(d) - length(replace(d, a, ''))) / length(a) <> 1 THEN
         RAISE EXCEPTION 'V785: finance.due_for_semester is not as V651 left it (its postgraduate stage join is not there exactly once)';
