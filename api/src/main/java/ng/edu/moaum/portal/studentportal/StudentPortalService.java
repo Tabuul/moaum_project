@@ -830,11 +830,11 @@ public class StudentPortalService {
     private String schoolFeesPurpose(UUID id, String session, BigDecimal amount, Map<String, Object> pos) {
         String purpose = "School fees " + session;
         if (!repo.isSpillover(id)) return purpose;
-        Map<String, Object> panel = repo.spilloverPanel(id, session);
+        Map<String, Object> panel = repo.spilloverPanelLive(id, session);
         Object year = panel == null ? null : panel.get("year");
         BigDecimal paid = pos.get("paid") == null ? BigDecimal.ZERO : (BigDecimal) pos.get("paid");
         BigDecimal balance = pos.get("balance") == null ? BigDecimal.ZERO : (BigDecimal) pos.get("balance");
-        BigDecimal first = repo.dueForSemester(id, session, 1).subtract(paid).max(BigDecimal.ZERO);
+        BigDecimal first = repo.dueForSemesterLive(id, session, 1).subtract(paid).max(BigDecimal.ZERO);
         if (first.compareTo(BigDecimal.ONE) < 0) first = BigDecimal.ZERO;
         BigDecimal second = balance.subtract(first).max(BigDecimal.ZERO);
         String which = first.signum() > 0

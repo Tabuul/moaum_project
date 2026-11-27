@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 858
+\set EXPECTED 859
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -47683,6 +47683,22 @@ BEGIN
     PERFORM pg_temp.assert('V783: the eight functions V783 adds run with jit = off — each is there once and carries it',
         coalesce(n_names = cardinality(v_names) AND n_fn = n_names AND n_off = n_fn, false),
         format('names %s of %s | functions %s | jit off %s', n_names, cardinality(v_names), n_fn, n_off));
+END $$;
+
+-- ── V785: the student dashboard's fee reads made light again (the 27 November 2026 outage). due_for_semester asks the postgraduate stage
+--          reader only for a postgraduate (it answered nothing for anyone else and read their cycles every call), and it, the spillover panel
+--          and the two stage readers run with jit = off. The charge of a made-up postgraduate and of a made-up undergraduate is what the
+--          stage rule gives each; the block reads only. ──
+DO $$
+DECLARE n_off int; n_ask int; pg uuid; ug uuid; v_pg text; v_ug text;
+BEGIN
+    SELECT count(*) FILTER (WHERE 'jit=off' = ANY (p.proconfig)) INTO n_off FROM pg_proc p
+     WHERE p.oid IN ('finance.due_for_semester(uuid,text,integer)'::regprocedure, 'finance.spillover_panel(uuid,text)'::regprocedure,
+                     'admissions.pg_fee_stages_of(text,uuid[])'::regprocedure, 'admissions.pg_stages_of(text,uuid[])'::regprocedure);
+    SELECT count(*) INTO n_ask FROM pg_proc p WHERE p.oid = 'finance.due_for_semester(uuid,text,integer)'::regprocedure
+       AND p.prosrc LIKE '%CASE WHEN people.is_postgraduate(s.entry_mode, pgp.category) THEN ARRAY[s.id] ELSE ''{}''::uuid[] END%';
+    PERFORM pg_temp.assert('V785: the dashboard''s fee reads are light — due_for_semester asks the postgraduate stage reader only for a postgraduate, and it, the spillover panel and the two stage readers run with jit = off',
+        n_off = 4 AND n_ask = 1, format('jit off %s of 4 | postgraduate-only ask %s', n_off, n_ask));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

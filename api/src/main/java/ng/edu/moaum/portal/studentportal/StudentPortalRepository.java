@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
@@ -20,10 +21,40 @@ class StudentPortalRepository {
 
     private final FileObjects files;
     private final JdbcClient jdbc;
+    private final long feeCacheMillis;
 
-    StudentPortalRepository(FileObjects files, JdbcClient jdbc) {
+    StudentPortalRepository(FileObjects files, JdbcClient jdbc, @Value("${moaum.student-fee-cache-seconds:120}") long feeCacheSeconds) {
         this.jdbc = jdbc;
         this.files = files;
+        this.feeCacheMillis = Math.max(0, feeCacheSeconds) * 1000L;
+    }
+
+    /* The two dearest reads of a student's dashboard — finance.due_for_semester and finance.spillover_panel — kept per student for a
+     * short while (moaum.student-fee-cache-seconds, two minutes by default; 0 turns it off), so the dashboard, its outstanding-fees card
+     * and a reload do not each work them out again: on 27 November 2026 they were the database's load and timed the portal out. What a
+     * semester charges changes only with the fee setup or the student's registration, and the panel is a picture of the page; no payment
+     * is drawn or worded from a kept value (the *Live readers below). */
+    private record Kept(Object value, long at) {
+    }
+
+    private static final Object NOTHING = new Object();
+    private final java.util.concurrent.ConcurrentHashMap<String, Kept> feeKept = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private Object kept(String key, java.util.function.Supplier<Object> read) {
+        if (feeCacheMillis <= 0) {
+            return read.get();
+        }
+        long now = System.currentTimeMillis();
+        Kept k = feeKept.get(key);
+        if (k != null && now - k.at() < feeCacheMillis) {
+            return k.value() == NOTHING ? null : k.value();
+        }
+        Object v = read.get();
+        if (feeKept.size() > 100_000) {
+            feeKept.entrySet().removeIf(e -> now - e.getValue().at() >= feeCacheMillis);
+        }
+        feeKept.put(key, new Kept(v == null ? NOTHING : v, now));
+        return v;
     }
 
     /* ── the account ── */
@@ -312,8 +343,13 @@ class StudentPortalRepository {
         return jdbc.sql("SELECT * FROM finance.position(:s, :ses)").param("s", student).param("ses", session).query().singleRow();
     }
 
-    /** the cumulative charge up to and including a semester (whole-session items always count) */
+    /** the cumulative charge up to and including a semester (whole-session items always count); kept a short while (see kept) */
     java.math.BigDecimal dueForSemester(UUID student, String session, int semester) {
+        return (java.math.BigDecimal) kept("due|" + student + "|" + session + "|" + semester, () -> dueForSemesterLive(student, session, semester));
+    }
+
+    /** the same, read now: for what a payment is drawn and worded from */
+    java.math.BigDecimal dueForSemesterLive(UUID student, String session, int semester) {
         return jdbc.sql("SELECT finance.due_for_semester(:s, :ses, :sem)")
                 .param("s", student).param("ses", session).param("sem", semester)
                 .query(java.math.BigDecimal.class).single();
@@ -464,8 +500,18 @@ class StudentPortalRepository {
 
     /** V637: a spillover student's position for a session as the Fees page and dashboard show it (finance.spillover_panel); null when not in spillover */
     Map<String, Object> spilloverPanel(UUID student, String session) {
-        String text = jdbc.sql("SELECT finance.spillover_panel(:s, :ses)::text").param("s", student).param("ses", session).query(String.class).optional().orElse(null);
+        String text = (String) kept("spill|" + student + "|" + session, () -> spilloverPanelText(student, session));
         return text == null ? null : PANEL_JSON.readValue(text, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
+    }
+
+    /** the same, read now: for what a payment is worded from */
+    Map<String, Object> spilloverPanelLive(UUID student, String session) {
+        String text = spilloverPanelText(student, session);
+        return text == null ? null : PANEL_JSON.readValue(text, new tools.jackson.core.type.TypeReference<Map<String, Object>>() { });
+    }
+
+    private String spilloverPanelText(UUID student, String session) {
+        return jdbc.sql("SELECT finance.spillover_panel(:s, :ses)::text").param("s", student).param("ses", session).query(String.class).optional().orElse(null);
     }
 
     /** V651: a postgraduate student's stage in the session — the qualification, the stage (800 B — Year 2), fresh or returning, the
