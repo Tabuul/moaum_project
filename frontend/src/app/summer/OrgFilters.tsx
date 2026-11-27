@@ -5,29 +5,8 @@
  *  outside the office's bound); an office that sees the whole University chooses. */
 import { Field } from "@/components/proto/blocks";
 import { SearchSelect } from "@/components/proto/SearchSelect";
-import type { ScopeStructure } from "@/components/proto/ScopeBar";
+import type { OrgOptions } from "@/lib/summer-org";
 import { STUDENT_LEVELS } from "@/lib/levels";
-
-export interface OrgOption { code: string; name: string; faculty?: string; dept?: string }
-export interface OrgOptions { faculties: OrgOption[]; departments: OrgOption[]; programmes: OrgOption[] }
-
-/** the options the University's structure offers the office (the API scopes it to the office's own unit) */
-export function orgFromStructure(s: ScopeStructure | null | undefined): OrgOptions {
-  const out: OrgOptions = { faculties: [], departments: [], programmes: [] };
-  for (const f of s?.faculties ?? []) {
-    out.faculties.push({ code: f.code, name: f.name });
-    for (const d of f.departments ?? []) {
-      out.departments.push({ code: d.code, name: d.name, faculty: f.code });
-      for (const p of d.programmes ?? []) if (!p.archived) out.programmes.push({ code: p.code, name: p.name, faculty: f.code, dept: d.code });
-    }
-  }
-  return out;
-}
-
-/** the options a response carries (the queue's facets), none of them knowing its parent */
-export function orgFromFacets(f: { faculties: { code: string; name: string }[]; departments: { code: string; name: string }[]; programmes: { code: string; name: string }[] }): OrgOptions {
-  return { faculties: f.faculties, departments: f.departments, programmes: f.programmes };
-}
 
 export function OrgFilters({ idp, filters, onChange, org, levels }: {
   idp: string; filters: Record<string, string>; onChange: (patch: Record<string, string>) => void; org: OrgOptions; levels?: number[];

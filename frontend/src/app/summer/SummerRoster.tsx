@@ -18,7 +18,8 @@ import {
   categoryPill, deskHref, naira, notEligibleWord, num, paymentStateWords, plural, sessionPath, type SummerRosterView,
 } from "@/lib/summer";
 import { saveFile } from "./deskApi";
-import { OrgFilters, type OrgOptions } from "./OrgFilters";
+import { OrgFilters } from "./OrgFilters";
+import type { OrgOptions } from "@/lib/summer-org";
 
 const SCOPE_WORD: Record<string, string> = { SELECTED: "Students with a selection", ELIGIBLE: "Eligible students", ALL: "Every undergraduate" };
 

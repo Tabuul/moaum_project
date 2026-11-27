@@ -14,7 +14,8 @@ import { useQueryNav } from "@/lib/query-nav";
 import type { Problem } from "@/lib/api";
 import { STATE_FILTER_WORD, VERIFICATIONS, deskHref, naira, reportRow, reportTotal, scopeLine, sessionPath, type SummerReportView } from "@/lib/summer";
 import { saveFile } from "./deskApi";
-import { OrgFilters, type OrgOptions } from "./OrgFilters";
+import { OrgFilters } from "./OrgFilters";
+import type { OrgOptions } from "@/lib/summer-org";
 
 const GROUPS: { id: string; label: string; head: string }[] = [
   { id: "ALL", label: "Overall", head: "All students" }, { id: "FACULTY", label: "Faculty", head: "Faculty" }, { id: "DEPARTMENT", label: "Department", head: "Department" },

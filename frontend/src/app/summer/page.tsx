@@ -8,7 +8,7 @@ import {
   type SummerPeriod, type SummerReportView, type SummerRosterView, type SummerSelectionsView,
 } from "@/lib/summer";
 import { SummerDesk, type DeskData } from "./SummerDesk";
-import { orgFromStructure } from "./OrgFilters";
+import { orgFromStructure } from "@/lib/summer-org";
 import type { SummerAuthorisationToReview } from "./SummerPeriodActs";
 import type { SummerCourseRow } from "./SummerCourses";
 

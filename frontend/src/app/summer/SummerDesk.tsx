@@ -11,7 +11,7 @@ import { Btn, Note, Pil, Tabs } from "@/components/proto/ui";
 import { useQueryNav } from "@/lib/query-nav";
 import { DESK_VIEWS, deskHref, periodForWord, periodWords, type DeskView, type SummerIssue, type SummerPeriod, type SummerReportView, type SummerRosterView, type SummerSelectionsView } from "@/lib/summer";
 import { day } from "@/lib/format";
-import type { OrgOptions } from "./OrgFilters";
+import type { OrgOptions } from "@/lib/summer-org";
 import { SummerCourses, type SummerCourseRow } from "./SummerCourses";
 import { SummerPeriodActs, type SummerAuthorisationToReview } from "./SummerPeriodActs";
 import { SummerQueue } from "./SummerQueue";

@@ -22,7 +22,8 @@ import {
   type SummerDecideAnswer, type SummerReconcileAnswer, type SummerSelectionRow, type SummerSelectionsView,
 } from "@/lib/summer";
 import { call, read, saveFile, type DeskResult } from "./deskApi";
-import { OrgFilters, orgFromFacets } from "./OrgFilters";
+import { OrgFilters } from "./OrgFilters";
+import { orgFromFacets } from "@/lib/summer-org";
 import { SelectionDetail } from "./SelectionDetail";
 
 type Decision = "CONFIRM" | "NOT_OUTSTANDING" | "REJECT" | "REOPEN";
