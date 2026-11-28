@@ -22,6 +22,7 @@ register goes through `admissions.pg_admit`. A student already on the register, 
   Operators' Academic menus (PG Legacy Migration), with the Legacy PG migration figures on their dashboards and a button among
   the Database Operators' quick actions; the Bursar's Finance menu (Old PG Application Fees).
 - **Fees** paid on the old portal: a fee the old portal marked Verified is posted as it comes; an application fee only marked Paid is cleared by the portal itself when it can check it (V783); every other fee is verified by the Bursary or the PG Secretary only, never by the officer who uploaded it.
+- **Application fee payments in the Old Fees History layout** (V786, 24 November 2026): the Old-portal fees tab takes the Bursary's payment sheet as it is and clears each PG application fee by the applicant's application number (see "Application fee payments uploaded in the Old Fees History layout" below). Seven offices upload: `pgschool`, `pgsecretary`, `academic`, `ict`, `dbops`, `super` and `bursar`, so the Bursar, who does not migrate, uploads payments; a Database Operator uploads only on a grant over the whole University, as everywhere on this desk. Any other office is refused (`PGFEES_OFFICE`).
 - **ICT Support** (`ictagent`) has no access.
 
 | Step | What happens |
@@ -71,6 +72,7 @@ A batch and its rows are never deleted (a trigger refuses it). A row's values ar
 - **Fees.**
   - An application or acceptance fee marked **Verified** is posted as a confirmed `pg_fee_reference` under its old reference, with channel "Old portal". An acceptance fee accepts the offer, as the gateway's confirmation does.
   - **Since V783 (the University's word of 24 November 2026), an APPLICATION fee only marked Paid clears on its own** at the import, and the ones already held were cleared once when V783 was applied (`admissions.pg_legacy_fees_autoclear_held`, with the email). `admissions.pg_legacy_fee_autoclear` posts it exactly as a verification would (`admissions.pg_mig_post_fee`: a confirmed `pg_fee_reference`, channel "Old portal", the application's fee read as paid) when `admissions.pg_application_fee_hold` — one predicate, read by the import, the check and the desk's list — finds nothing against it: the old portal's own status word says it was paid (Paid, Successful, Success, Completed, Yes — the template offers Paid; a status of Not verified, Unverified, Pending or Awaiting verification or Requires review is held); the amount reaches the application fee of the application's session (`admissions.pg_fee_rule`; a part payment is held); the old reference is no other fee's (a postgraduate fee reference or another old-portal fee, V675's clash), was not rejected by an officer on another application, and is on none of the portal's other ledgers (an applicant's fee reference or receipt, a preliminary applicant's old-portal fee, an inter-university transfer fee, a JUPEB fee, a student's payment or receipt); the applicant has not paid the application fee on another application of theirs in the session (V694's two of name, date of birth and phone, looked for through the date of birth and phone first so an import chunk stays fast; the check reads it for a new applicant from the row's own name, date of birth and phone); and no application fee is confirmed on this portal for the application already. The row reads decided by "system" with the University's word as its note, the application gets an OLD_PORTAL_FEE_CLEARED event, the import's row note says "application fee cleared on its own" (or "application fee held: <why>"), the applicant's own once-only migration notice says the fee is recorded, and a fee cleared after the import emails the applicant once (the event key an officer's verification uses, so never twice). The check warns (FEE_UNDER_REVIEW) only of a fee that will be held, and says why. An acceptance fee is never cleared on its own, and a fee marked Verified is posted exactly as before (no amount or reference test: the uploader's word). No posted postgraduate fee has a reversal door, as before.
+  - **Since V786, an application fee payment can also come from a sheet in the Old Fees History layout** (below): it is recorded as an old-portal application fee stated Paid and goes through the same clearing, so the rules above are the rules of that upload too.
   - A fee that fails a check, or an acceptance fee only **Paid**, is held (`admissions.pg_legacy_fee`, REQUIRES_REVIEW), the desk's Old-portal fees tab giving the reason of an application fee (`hold_reason`). The applicant is not asked to pay it again: `admissions.pg_new_fee_reference` refuses with PG_FEE_UNDER_REVIEW, and the portal says why.
   - The Bursary or the PG Secretary verifies or rejects a held fee (`admissions.pg_legacy_fee_decide`). The officer who uploaded it cannot (PGMIG_SAME_OFFICER). A verified acceptance applies the old portal's screening.
   - A fee already paid on this portal is held, never posted twice.
@@ -93,6 +95,61 @@ A batch and its rows are never deleted (a trigger refuses it). A row's values ar
   sign in on the old number, the new number or the email, with either number as the first password, and choose their own at once;
   an admitted one opens the student portal on the admission number first (docs/pg-migrated-applicant-first-sign-in.md). An
   applicant the migration links keeps their own password and is told to use "Forgot password" if they have not set one.
+
+## Application fee payments uploaded in the Old Fees History layout (V786)
+
+The University's word of 24 November 2026, with a sheet in the Bursary's Old Fees History layout whose rows are PG applicants' application fee payments: "I want to upload those payments in this format to solve my issue". The desk's **Old-portal fees** tab takes that sheet as it is (`admissions.pg_old_fees_upload`; `POST /api/v1/pg/migration/fees/payments`).
+
+The Old Fees History upload cannot do it. It finds the payer among the students (by matriculation number, an old one a correction replaced, or the admission number), and a PG applicant is not a student, so it holds the applicant's row as "no student" and clears nothing. V783's clearing was reached only through the migration template, whose required columns (the old application number, the names, the email, the session, the programme) a payment sheet does not carry.
+
+**Who uploads.** The seven offices named under "The desk": `pgschool`, `pgsecretary`, `academic`, `ict`, `dbops`, `super` and `bursar`. The database refuses any other (`PGFEES_OFFICE`).
+
+**The sheet.** The Old Fees History layout, read in the browser by the reader the Bursary's upload uses (`legacyFeeRows`, `frontend/src/lib/legacy-fees.ts`), so a heading is found by its words: Matriculation Number, Session, Semester, Level, Amount, Purpose/Payment Item, Payment Date, Channel, Reference. One row is one payment. A blank row, or a heading row repeated in the sheet, is passed over and not counted.
+
+| Column | What this upload reads |
+|---|---|
+| Matriculation Number (the first column) | The applicant's PG application number on this portal (`PG/YY/NNNNNN`) or the number the old portal gave the application (`admissions.pg_legacy_application`), capitals or not. An old number that more than one application carries is not guessed between: write this portal's number. |
+| Session | Informational. The fee is judged against the application's own session, never the file's; when the two differ the row's note says "the file says 2026/2027, the application is in 2025/2026" and the row is read all the same. As in the Old Fees History upload, the reader takes a row only when its session is written like 2026/2027. |
+| Semester, Level, Channel | Read with the sheet and not used. A cleared fee carries the channel "Old portal". |
+| Amount | Required. Digits and a decimal point are read; the naira sign and commas are ignored. |
+| Purpose/Payment Item | Must read **PG APPLICATION**: an item that says application and does not say acceptance. When the Purpose is empty the Note column is read in its place. |
+| Payment Date | Recorded as the fee's date of payment when it can be read. |
+| Reference | Required. The old payment reference (an Interswitch reference, for example). It is kept as the fee's old reference, tells one payment from another and is checked against the portal's other ledgers. |
+
+**Check, then Upload.**
+
+- A **Check** (`apply` false) does everything an Upload does inside a unit of work the database then undoes: no batch is made, no fee is recorded, no event is written and no email is sent. It answers each row as the Upload will, so the officer sees what will clear and what will be held before anything is written. The screen runs the Check as soon as the file is chosen.
+- The screen offers **Upload and clear** only after a Check of the same file, and only when the Check found a payment that will clear or be held. A tick box, on unless it is cleared, tells each applicant whose fee clears that it is recorded (`notify`).
+- A file is an Excel workbook (`.xlsx`) of at most 15 MB and 2,000 payments; a longer one is split. A row with something written in it but no number, or no session written like 2026/2027, is left out and named on the screen.
+- An **Upload** (`apply` true) writes one batch of kind FEES, COMPLETED, in the PG migration history with the other batches: its reference `PG-MIG/YYYY/NNNNNN`, the file name, the file's SHA-256 when it is sent, the number of rows sent, and the uploader's office. The batch stages no migration rows: the payments are its old-portal fees. Each payment that is neither refused nor already recorded is recorded as an old-portal application fee (`admissions.pg_legacy_fee`, kind APPLICATION, stated Paid, in the application's own session, with the date paid) and the clearing is run on it.
+- The report counts the rows read, cleared, held, already recorded and refused, and lists each row: the sheet's row number, the number, the application number and the applicant, the reference, the amount, the result, the reason and the note.
+
+**The result of each row.** A row that fails several tests is answered by the first of them, in this order: the item, the reference, the amount, the number.
+
+| Result | What it means |
+|---|---|
+| CLEARED | The fee is posted, exactly as V783 posts a Paid application fee: a confirmed fee reference with the channel "Old portal", the application reads its fee as paid and the applicant is not asked for it. The row reads decided by "system" and the application's trail says OLD_PORTAL_FEE_CLEARED. |
+| HELD | The payment is recorded but not posted. It waits on the Old-portal fees tab, with its reason, for the Bursary or the PG Secretary to verify or reject; the officer who uploaded it cannot (`PGMIG_SAME_OFFICER`). The applicant is not asked to pay it again meanwhile (`PG_FEE_UNDER_REVIEW`). |
+| ALREADY | The same payment (this reference, on this application) is already recorded and posted. Nothing is written. |
+| NOT_APPLICATION_FEE | The item is not a PG application fee: it names an acceptance fee, school fees or anything else, or the row names no item. Written nowhere. |
+| NO_REFERENCE | The row has no payment reference. Written nowhere. |
+| NO_AMOUNT | The row has no amount, or none above zero. Written nowhere. |
+| NOT_FOUND | No PG application has the number, neither on this portal nor on the old portal; or more than one application has that old number. Written nowhere. |
+| IS_STUDENT | No application has the number but a student does. A student's payments are recorded by the Bursary's Old Fees History upload. Written nowhere. |
+| CONFLICT | The reference is already recorded for another applicant. Written nowhere. |
+| REJECTED | An officer rejected this payment on this very application. An upload does not put it back. Written nowhere. |
+
+The last seven are refused and counted together as refused. The screen says the ten in words, in the order above: Clears (Cleared once uploaded), Held for an officer (Held), Already recorded, Not an application fee, No reference, No amount, Number not found, A student's number, Reference used for another applicant and Rejected before.
+
+**The rules.**
+
+- **One predicate.** The upload records each payment as Paid and calls the same `admissions.pg_legacy_fee_autoclear` that V783's import calls, which reads `admissions.pg_application_fee_hold`. A payment is therefore HELD, with that predicate's reason, when its amount is below the application fee of the application's session (or the session states none); when its reference is another fee's, is on another ledger of the portal (an applicant's fee reference, a preliminary applicant's old-portal fee, an inter-university transfer fee, a JUPEB fee, a student's payment) or was rejected by an officer on another application; when the applicant has paid the application fee on another application of theirs in the session; or when an application fee is already confirmed on this portal for the application. The old portal's status test cannot hold an uploaded payment, because the upload records every payment as Paid.
+- **A rejection stands.** A payment an officer rejected on an application is REJECTED when the same sheet brings it for that application, and is not recorded again. One rejected on another application and brought for this one is HELD with that reason.
+- **One reference, one applicant.** A reference recorded for another applicant is a CONFLICT and nothing is written. A reference repeated for the same application, in one file or in two, is recorded once.
+- **The same file again.** A payment already posted is ALREADY and changes nothing. One held before is not recorded a second time; its clearing is tried once more, because what held it (the session's application fee, a reference on another ledger, another application of the applicant) may have changed, and it is then CLEARED or HELD again.
+- **A student's number.** The sheet's first column is read among PG applications only. A student's number is refused as IS_STUDENT: the Bursary's Old Fees History upload records students' payments, and it finds the payer among the students only, which is why a PG applicant's row is held there as "no student".
+- **The applicant is told.** An applicant whose fee clears is emailed once, with the notice an officer's verification sends ("Your application fee paid on the old portal is recorded", its event key `pg-fee-verified:` followed by the fee's id), so never twice. A held payment is told when an officer verifies it. A Check sends nothing, and the email is left out when the tick box is cleared (`notify` false).
+- **Not changed.** V783's rules, the PG migration template and the Old Fees History upload.
 
 ## Figures
 

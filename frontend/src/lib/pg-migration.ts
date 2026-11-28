@@ -10,6 +10,8 @@ import { colName, type Cell, type ListValidation, type SheetSpec } from "./xlsx-
 export type ReportCell = string | number | null;
 
 export type Kind = "APPLICANTS" | "ADMITTED";
+/** what an upload on the desk is: a template's file (a Kind) or a file of application fee payments (V786) */
+export type BatchKind = Kind | "FEES";
 export interface Column { key: string; header: string; section: string; required: boolean; note: string | null }
 export interface TemplateData {
   kind: Kind; columns: Column[];
@@ -30,7 +32,7 @@ export interface MigrationRow {
   department_name: string | null; faculty_name: string | null;
 }
 export interface Summary {
-  id: string; reference: string; kind: Kind; state: string; fileName: string; rowsExpected: number; rowsStaged: number; notify: boolean;
+  id: string; reference: string; kind: BatchKind; state: string; fileName: string; rowsExpected: number; rowsStaged: number; notify: boolean;
   startedAt: string; startedBy: string | null; checkedAt: string | null; completedAt: string | null; abandonedReason: string | null;
   checked: number; ready: number; warnings: number; duplicates: number; conflicts: number; review: number; errors: number;
   newApplicants: number; existingApplicants: number; alreadyStudents: number; admitted: number;
@@ -45,7 +47,7 @@ export interface Summary {
 export const SHEET = { guide: "Guide", faculties: "Faculties", departments: "Departments", programmes: "Programmes", specialisations: "Specialisations",
   sessions: "Sessions", statuses: "Statuses" } as const;
 export const dataSheetName = (k: Kind) => (k === "ADMITTED" ? "Admitted PG Applicants" : "PG Applicants");
-export const kindWord = (k: Kind | string) => (k === "ADMITTED" ? "Admitted PG applicants" : "PG applicants");
+export const kindWord = (k: BatchKind | string) => (k === "ADMITTED" ? "Admitted PG applicants" : k === "FEES" ? "Application fee payments" : "PG applicants");
 /** the rows a template leaves for data under its header, each with its drop-downs */
 export const TEMPLATE_ROWS = 2000;
 /** the letterhead's rows above the column header */
@@ -239,7 +241,7 @@ export function reportLines(rows: MigrationRow[]): ReportCell[][] {
 export const HISTORY_HEAD = ["Batch reference", "Source", "File", "Total rows", "Created", "Updated", "Admitted", "Reconciled", "Duplicates", "Errors",
   "Started", "Completed", "Imported by", "Status"];
 export interface BatchLine {
-  id: string; reference: string; kind: Kind; state: string; file_name: string; rows_expected: number; started_at: string; completed_at: string | null;
+  id: string; reference: string; kind: BatchKind; state: string; file_name: string; rows_expected: number; started_at: string; completed_at: string | null;
   started_by: string | null; created: number; updated: number; reconciled: number; linked: number; unchanged: number; skipped: number; failed: number;
   admitted: number; duplicates: number; errors: number; conflicts: number; review: number; abandoned_reason: string | null;
 }

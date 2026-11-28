@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  SHEET, dataSheetName, firstProblem, historyLines, mayConfirmNew, progressWords, ranges, readFile, reportLines, safeCell, templateSheets,
+  SHEET, dataSheetName, firstProblem, historyLines, kindWord, mayConfirmNew, progressWords, ranges, readFile, reportLines, safeCell, templateSheets,
   type Column, type MigrationRow, type TemplateData,
 } from "./pg-migration.ts";
 
@@ -108,4 +108,15 @@ test("the history reads each upload in words", () => {
   assert.equal(l[2], "'=x.xlsx");
   assert.equal(l[9], 2);
   assert.equal(l[13], "Completed");
+});
+
+test("an upload of application fee payments is named in the history, with no applicant counted", () => {
+  assert.equal(kindWord("FEES"), "Application fee payments");
+  assert.equal(kindWord("APPLICANTS"), "PG applicants");
+  assert.equal(kindWord("ADMITTED"), "Admitted PG applicants");
+  const [l] = historyLines([{ id: "f", reference: "PG-MIG/2026/000012", kind: "FEES", state: "COMPLETED", file_name: "payments.xlsx", rows_expected: 7,
+    started_at: "2026-11-24T10:00:00Z", completed_at: "2026-11-24T10:00:01Z", started_by: "Bursar, A", created: 0, updated: 0, reconciled: 0, linked: 0,
+    unchanged: 0, skipped: 0, failed: 0, admitted: 0, duplicates: 0, errors: 0, conflicts: 0, review: 0, abandoned_reason: null }]);
+  assert.deepEqual([l[0], l[1], l[2], l[3], l[4], l[5], l[6], l[7], l[8], l[9], l[12], l[13]],
+    ["PG-MIG/2026/000012", "Application fee payments", "payments.xlsx", 7, 0, 0, 0, 0, 0, 0, "Bursar, A", "Completed"]);
 });

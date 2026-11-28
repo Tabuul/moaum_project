@@ -53,6 +53,10 @@ class PgMigrationController {
     private static final String MIGRATORS = "hasAnyAuthority('OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_academic','OFFICE_ict','OFFICE_dbops','OFFICE_super')";
     /* who verifies a fee paid on the old portal: the Bursary or the PG Secretary (the database refuses the officer who uploaded it) */
     private static final String FEE_DECIDERS = "hasAnyAuthority('OFFICE_pgsecretary','OFFICE_bursar','OFFICE_super')";
+    /* V786: who uploads PG applicants' application fee payments in the Old Fees History layout: the offices that migrate, and the
+       Bursary (admissions.pg_old_fees_upload refuses any other office with PGFEES_OFFICE) */
+    private static final String PAYMENT_UPLOADERS =
+            "hasAnyAuthority('OFFICE_pgschool','OFFICE_pgsecretary','OFFICE_academic','OFFICE_ict','OFFICE_dbops','OFFICE_super','OFFICE_bursar')";
 
     private static final int MAX_DOC = 8 * 1024 * 1024;
     private static final Set<String> STATUSES = Set.of("READY", "WARNING", "DUPLICATE_IN_FILE", "CONFLICT", "REQUIRES_REVIEW", "ERROR");
@@ -406,6 +410,58 @@ class PgMigrationController {
     Map<String, Object> decideFee(@PathVariable UUID id, @Valid @RequestBody DecideIn body) {
         return parseMap(jdbc.sql("SELECT admissions.pg_legacy_fee_decide(:f, :v, :n)::text")
                 .param("f", id).param("v", body.verify()).param("n", body.note()).query(String.class).single());
+    }
+
+    /* ── V786: application fee payments in the Old Fees History layout, checked and then uploaded ── */
+
+    /** a row of the Old Fees History sheet; the first column is the applicant's application number on this portal or the old portal's */
+    public record PaymentRow(@NotBlank @Size(max = 80) String matric, @Size(max = 40) String session, @Size(max = 40) String semester,
+                             @Size(max = 40) String level, @Size(max = 40) String amount, @Size(max = 200) String purpose,
+                             @Size(max = 40) String paidOn, @Size(max = 120) String receiptNo, @Size(max = 80) String channel,
+                             @Size(max = 500) String note, @Min(1) @Max(999999) Integer row) {
+        /** only what the sheet says, under the keys the database reads */
+        Map<String, Object> asJson() {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("matric", matric);
+            put(m, "session", session);
+            put(m, "semester", semester);
+            put(m, "level", level);
+            put(m, "amount", amount);
+            put(m, "purpose", purpose);
+            put(m, "paidOn", paidOn);
+            put(m, "receiptNo", receiptNo);
+            put(m, "channel", channel);
+            put(m, "note", note);
+            if (row != null) {
+                m.put("row", row);
+            }
+            return m;
+        }
+
+        private static void put(Map<String, Object> m, String key, String value) {
+            if (value != null && !value.isBlank()) {
+                m.put(key, value.trim());
+            }
+        }
+    }
+
+    /** "notify" is the sheet's word for whether the applicants whose fee clears are told; a record cannot have a component of that name */
+    public record PaymentsIn(@NotBlank @Size(max = 255) String fileName, @Size(max = 64) String sha256,
+                             @NotNull @Size(min = 1, max = 2000) List<@Valid PaymentRow> rows, boolean apply,
+                             @com.fasterxml.jackson.annotation.JsonProperty("notify") Boolean tell) {
+    }
+
+    /** a Check (apply false) answers each row as the upload will and writes nothing; an Upload (apply true) records the payments in one batch */
+    @PostMapping("/fees/payments")
+    @PreAuthorize(PAYMENT_UPLOADERS)
+    @Transactional
+    Map<String, Object> uploadPayments(@Valid @RequestBody PaymentsIn body) {
+        return parseMap(jdbc.sql("SELECT admissions.pg_old_fees_upload(:f, :s, :rows::jsonb, :apply, :tell)::text")
+                .param("f", body.fileName())
+                .param("s", body.sha256() == null || body.sha256().isBlank() ? null : body.sha256().trim().toLowerCase(), Types.VARCHAR)
+                .param("rows", mapper.writeValueAsString(body.rows().stream().map(PaymentRow::asJson).toList()))
+                .param("apply", body.apply()).param("tell", body.tell() == null || body.tell())
+                .query(String.class).single());
     }
 
     /* ── an old document's file, attached to the application through the PG documents ── */

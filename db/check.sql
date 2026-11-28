@@ -276,7 +276,7 @@ END $$;
 
 
 CREATE TEMP TABLE ran (name text);
-\set EXPECTED 859
+\set EXPECTED 865
 
 -- ── 1. no application role holds DELETE, anywhere ─────────────────────────
 DO $$
@@ -47706,6 +47706,162 @@ BEGIN
        AND p.prosrc LIKE '%CASE WHEN people.is_postgraduate(s.entry_mode, pgp.category) THEN ARRAY[s.id] ELSE ''{}''::uuid[] END%';
     PERFORM pg_temp.assert('V785: the dashboard''s fee reads are light — due_for_semester asks the postgraduate stage reader only for a postgraduate, and it, the spillover panel and the two stage readers run with jit = off',
         n_off = 4 AND n_ask = 1, format('jit off %s of 4 | postgraduate-only ask %s', n_off, n_ask));
+END $$;
+
+-- ── V786: PG applicants' application fees, uploaded in the old fees format, clear by application number ──
+-- Made-up applicants of a made-up session and programme (the portal's default application fee, ₦20,000). The sheet is the Old Fees History
+-- layout the way the University sent it: the application number where the matriculation number goes, the item PG APPLICATION, an
+-- Interswitch reference. A Check writes nothing and says what each row will do; the Upload does it — one fee cleared at the application's
+-- number, one at the number the old portal gave, one short held with its reason, a school-fees item or an acceptance fee, an unknown number, a student's number,
+-- a missing reference or amount refused; the header and the blank rows are not rows; a reference already recorded for another applicant a
+-- conflict, one an officer rejected for the same application not put back; the same file again changes nothing; and only the offices that
+-- migrate and the Bursar may upload. The block undoes its writes.
+CREATE OR REPLACE FUNCTION pg_temp.v786_app(p_session text, p_prog text, p_surname text, p_other text, p_dob date, p_phone text, p_email text, p_legacy text DEFAULT NULL, p_batch uuid DEFAULT NULL)
+RETURNS uuid LANGUAGE plpgsql AS $$
+DECLARE v_ap uuid; v_app uuid;
+BEGIN
+    INSERT INTO admissions.pg_applicant (session, surname, other_names, date_of_birth, email, phone, password_hash)
+    VALUES (p_session, p_surname, p_other, p_dob, p_email, p_phone, '$2a$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuvwxyz12345') RETURNING id INTO v_ap;
+    INSERT INTO admissions.pg_application (applicant_id, session, application_no, programme_code, entry_level, state, submitted_at)
+    VALUES (v_ap, p_session, 'PG/51/' || lpad(platform.next_number('PG_APPLICATION', 'UNIVERSITY', p_session)::text, 6, '0'), p_prog, 800, 'SUBMITTED', now())
+    RETURNING id INTO v_app;
+    IF p_legacy IS NOT NULL THEN
+        INSERT INTO admissions.pg_legacy_application (application_id, legacy_application_no, batch_id) VALUES (v_app, p_legacy, p_batch);
+    END IF;
+    RETURN v_app;
+END $$;
+
+DO $$
+DECLARE s0 text := '9852/9853'; who uuid := gen_random_uuid(); bur uuid := gen_random_uuid(); prog text := 'C97840'; v_dept text; v_fac text; v_err text;
+        mb uuid; a1 uuid; a2 uuid; a3 uuid; a4 uuid; a5 uuid; no1 text; no2 text; no3 text; no4 text; no5 text; st_id uuid;
+        rows1 jsonb; chk jsonb; app jsonb; again jsonb; by_bursar jsonb; refused_office text; refused_support text;
+        n_before int; n_after_check int; batches_after_check int; notices_after_check int;
+        f1 admissions.pg_legacy_fee; f3 admissions.pg_legacy_fee; paid1 boolean; paid2 boolean; paid3 boolean; mails1 int; mails2 int; held3_rows int; batches_apply int; batch_state text; batch_kind text;
+        res_chk text; res_app text; res_again text; n_notices_again int; n_fee_rows_again int;
+        f_rej admissions.pg_legacy_fee; rej_rows int; a6 uuid; no6 text; res_rej text;
+BEGIN
+    BEGIN
+        PERFORM set_config('moaum.reason', 'V786 check: PG application fee payments in the old fees format', true);
+        PERFORM set_config('moaum.actor_id', who::text, true);
+        PERFORM set_config('moaum.actor_office', 'pgschool', true);
+        INSERT INTO iam.person (id, staff_number, surname, given_names, email) VALUES
+            (who, 'CHK/V786/S', 'CHECKV786', 'School', NULL), (bur, 'CHK/V786/B', 'CHECKV786', 'Bursar', NULL);
+        INSERT INTO policy.academic_session (id, name, starts_on, ends_on) VALUES (gen_random_uuid(), s0, '9852-10-01', '9853-08-31') ON CONFLICT (name) DO NOTHING;
+        SELECT d.code, d.faculty_code INTO v_dept, v_fac FROM ref.department d ORDER BY d.code LIMIT 1;
+        INSERT INTO ref.programme (code, name, dept_code, faculty_code, category, min_score, pg_award, pg_research)
+        VALUES (prog, 'M.Sc. Check Fee Payments', v_dept, v_fac, 'POST GRADUATE', 0, 'MSC', false);
+        INSERT INTO people.student (id, matric_no, surname, other_names, programme_code, entry_mode, entry_session, entry_level, current_level, status, matriculated_at)
+        VALUES (gen_random_uuid(), 'CHK/PG/784/0001', 'CHECKPAYFEE', 'Already Student', prog, 'POSTGRADUATE', s0, 800, 800, 'ACTIVE', now()) RETURNING id INTO st_id;
+        mb := (admissions.pg_migration_open('APPLICANTS', 'x.xlsx', repeat('e', 64), 1, false) ->> 'id')::uuid;
+        a1 := pg_temp.v786_app(s0, prog, 'Checkpayfee', 'Cleared One', DATE '1990-01-02', '08030000791', 'v786.one@example.test');
+        a2 := pg_temp.v786_app(s0, prog, 'Checkpayfee', 'Old Number', DATE '1990-01-03', '08030000792', 'v786.two@example.test', 'OLDPAY/9852/0002', mb);
+        a3 := pg_temp.v786_app(s0, prog, 'Checkpayfee', 'Short Amount', DATE '1990-01-04', '08030000793', 'v786.three@example.test');
+        a4 := pg_temp.v786_app(s0, prog, 'Checkpayfee', 'Other Applicant', DATE '1990-01-05', '08030000794', 'v786.four@example.test');
+        a5 := pg_temp.v786_app(s0, prog, 'Checkpayfee', 'Unreferenced', DATE '1990-01-06', '08030000795', 'v786.five@example.test');
+        a6 := pg_temp.v786_app(s0, prog, 'Checkpayfee', 'Rejected Before', DATE '1990-01-07', '08030000796', 'v786.six@example.test');
+        SELECT application_no INTO no1 FROM admissions.pg_application WHERE id = a1;
+        SELECT application_no INTO no3 FROM admissions.pg_application WHERE id = a3;
+        SELECT application_no INTO no4 FROM admissions.pg_application WHERE id = a4;
+        SELECT application_no INTO no5 FROM admissions.pg_application WHERE id = a5;
+        SELECT application_no INTO no6 FROM admissions.pg_application WHERE id = a6;
+        -- an officer rejected this payment for a6 once
+        INSERT INTO admissions.pg_legacy_fee (batch_id, application_id, kind, legacy_reference, amount, session, purpose, stated_status, state, decided_by, decided_office, decided_at, decision_note)
+        VALUES (mb, a6, 'APPLICATION', 'PR784REJECTED01', 20000, s0, 'Application fee paid on the old portal', 'Paid', 'REJECTED', bur, 'bursar', now(), 'V786 check: not on the gateway record') RETURNING * INTO f_rej;
+        -- the sheet: the University's own row first, then the ones the checks are for; the header and a blank row are not rows
+        rows1 := jsonb_build_array(
+            jsonb_build_object('matric', 'Matriculation Number', 'session', 'Session', 'amount', 'Amount', 'purpose', 'Purpose/Payment Item', 'receiptNo', 'Reference'),
+            jsonb_build_object('matric', no1, 'session', s0, 'semester', '', 'level', '', 'amount', '20000', 'purpose', 'PG APPLICATION', 'paidOn', '2026-03-09', 'channel', 'Interswitch', 'receiptNo', 'PR784000000001', 'row', 2),
+            jsonb_build_object('matric', 'OLDPAY/9852/0002', 'session', s0, 'amount', '₦20,000', 'purpose', 'PG APPLICATION', 'paidOn', '10/03/2026', 'channel', 'Interswitch', 'receiptNo', 'PR784000000002', 'row', 3),
+            jsonb_build_object('matric', no3, 'session', s0, 'amount', '15000', 'purpose', 'PG APPLICATION', 'channel', 'Interswitch', 'receiptNo', 'PR784000000003', 'row', 4),
+            jsonb_build_object('matric', no4, 'session', s0, 'amount', '20000', 'purpose', 'SCHOOL FEES', 'channel', 'Interswitch', 'receiptNo', 'PR784000000004', 'row', 5),
+            jsonb_build_object('matric', 'PG/51/999999', 'session', s0, 'amount', '20000', 'purpose', 'PG APPLICATION', 'receiptNo', 'PR784000000005', 'row', 6),
+            jsonb_build_object('matric', 'CHK/PG/784/0001', 'session', s0, 'amount', '20000', 'purpose', 'PG APPLICATION', 'receiptNo', 'PR784000000006', 'row', 7),
+            jsonb_build_object('matric', no5, 'session', s0, 'amount', '20000', 'purpose', 'PG APPLICATION', 'receiptNo', '', 'row', 8),
+            jsonb_build_object('matric', no5, 'session', s0, 'amount', '', 'purpose', 'PG APPLICATION', 'receiptNo', 'PR784000000007', 'row', 9),
+            jsonb_build_object('matric', no4, 'session', s0, 'amount', '20000', 'purpose', 'PG APPLICATION', 'receiptNo', 'PR784000000001', 'row', 10),
+            jsonb_build_object('matric', no1, 'session', s0, 'amount', '20000', 'purpose', 'PG APPLICATION', 'receiptNo', 'PR784000000001', 'row', 11),
+            jsonb_build_object('matric', no6, 'session', s0, 'amount', '20000', 'purpose', 'PG APPLICATION', 'receiptNo', 'PR784REJECTED01', 'row', 12),
+            jsonb_build_object('matric', no4, 'session', s0, 'amount', '50000', 'purpose', 'PG ACCEPTANCE FEE (APPLICATION)', 'receiptNo', 'PR784000000008', 'row', 13),
+            jsonb_build_object('matric', '', 'session', '', 'amount', '', 'purpose', '', 'receiptNo', '', 'row', 14));
+
+        -- a Check writes nothing
+        n_before := (SELECT count(*) FROM admissions.pg_legacy_fee);
+        batches_after_check := (SELECT count(*) FROM admissions.pg_migration_batch WHERE kind = 'FEES');
+        chk := admissions.pg_old_fees_upload('payment upload single school fees history PG APPLICANT.xlsx', repeat('f', 64), rows1, false, true);
+        n_after_check := (SELECT count(*) FROM admissions.pg_legacy_fee);
+        batches_after_check := (SELECT count(*) FROM admissions.pg_migration_batch WHERE kind = 'FEES') - batches_after_check;
+        notices_after_check := (SELECT count(*) FROM platform.notice n WHERE n.event_key LIKE 'pg-fee-verified:%' AND n.about_id IN (a1, a2, a3));
+        res_chk := (SELECT string_agg((x->>'rowNo') || '=' || (x->>'result'), ',' ORDER BY (x->>'rowNo')::int) FROM jsonb_array_elements(chk->'results') x);
+
+        -- the Upload
+        app := admissions.pg_old_fees_upload('payment upload single school fees history PG APPLICANT.xlsx', repeat('f', 64), rows1, true, true);
+        res_app := (SELECT string_agg((x->>'rowNo') || '=' || (x->>'result'), ',' ORDER BY (x->>'rowNo')::int) FROM jsonb_array_elements(app->'results') x);
+        SELECT * INTO f1 FROM admissions.pg_legacy_fee WHERE legacy_reference = 'PR784000000001';
+        SELECT * INTO f3 FROM admissions.pg_legacy_fee WHERE legacy_reference = 'PR784000000003';
+        paid1 := (SELECT fee_confirmed_at IS NOT NULL FROM admissions.pg_application WHERE id = a1);
+        paid2 := (SELECT fee_confirmed_at IS NOT NULL FROM admissions.pg_application WHERE id = a2);
+        paid3 := (SELECT fee_confirmed_at IS NOT NULL FROM admissions.pg_application WHERE id = a3);
+        mails1 := (SELECT count(*) FROM platform.notice n WHERE n.event_key LIKE 'pg-fee-verified:%' AND n.about_id IN (a1, a2));
+        SELECT b.state, b.kind INTO batch_state, batch_kind FROM admissions.pg_migration_batch b WHERE b.id = (app->>'batchId')::uuid;
+        batches_apply := (SELECT count(*) FROM admissions.pg_migration_batch WHERE kind = 'FEES');
+        rej_rows := (SELECT count(*) FROM admissions.pg_legacy_fee WHERE upper(legacy_reference) = 'PR784REJECTED01');
+
+        -- the same file again: nothing twice
+        again := admissions.pg_old_fees_upload('payment upload single school fees history PG APPLICANT.xlsx', repeat('f', 64), rows1, true, true);
+        res_again := (SELECT string_agg((x->>'rowNo') || '=' || (x->>'result'), ',' ORDER BY (x->>'rowNo')::int) FROM jsonb_array_elements(again->'results') x);
+        n_notices_again := (SELECT count(*) FROM platform.notice n WHERE n.event_key LIKE 'pg-fee-verified:%' AND n.about_id IN (a1, a2));
+        n_fee_rows_again := (SELECT count(*) FROM admissions.pg_legacy_fee WHERE legacy_reference IN ('PR784000000001', 'PR784000000002', 'PR784000000003'));
+
+        -- who may upload: ICT Support no, the Bursar yes
+        PERFORM set_config('moaum.actor_office', 'ictagent', true);
+        BEGIN
+            PERFORM admissions.pg_old_fees_upload('x.xlsx', NULL, rows1, false, true);
+            refused_support := 'allowed';
+        EXCEPTION WHEN insufficient_privilege THEN refused_support := split_part(SQLERRM, ':', 1);
+        END;
+        PERFORM set_config('moaum.actor_id', bur::text, true);
+        PERFORM set_config('moaum.actor_office', 'bursar', true);
+        by_bursar := admissions.pg_old_fees_upload('x.xlsx', NULL, rows1, false, true);
+        refused_office := (by_bursar->>'rows') || '/' || (by_bursar->>'already');
+        RAISE EXCEPTION 'the V786 check undoes its writes';
+    EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM <> 'the V786 check undoes its writes' THEN v_err := SQLERRM; END IF;
+    END;
+    PERFORM pg_temp.assert('V786: a Check of the sheet in the old fees layout says what each row will do and writes nothing — the header and the blank row are not rows, the application number and the number the old portal gave both find the application, a school-fees item or an acceptance fee, an unknown number, a student''s number, a missing reference or amount are refused, a short payment is held, a reference recorded twice is the same payment, and no fee, batch or notice is left',
+        coalesce(v_err IS NULL
+        AND res_chk = '2=CLEARED,3=CLEARED,4=HELD,5=NOT_APPLICATION_FEE,6=NOT_FOUND,7=IS_STUDENT,8=NO_REFERENCE,9=NO_AMOUNT,10=CONFLICT,11=ALREADY,12=REJECTED,13=NOT_APPLICATION_FEE'
+        AND (chk->>'rows')::int = 12 AND (chk->>'cleared')::int = 2 AND (chk->>'held')::int = 1 AND (chk->>'already')::int = 1 AND (chk->>'refused')::int = 8
+        AND (chk->>'applied')::boolean = false AND chk->>'batchId' IS NULL AND n_before = n_after_check AND batches_after_check = 0 AND notices_after_check = 0, false),
+        format('err=%s | check %s | rows %s cleared %s held %s already %s refused %s | written: fees %s->%s batches %s notices %s', v_err, res_chk, chk->>'rows', chk->>'cleared', chk->>'held',
+               chk->>'already', chk->>'refused', n_before, n_after_check, batches_after_check, notices_after_check));
+    PERFORM pg_temp.assert('V786: the Upload does what the Check said — the payments at the two numbers are posted as confirmed old-portal fees, stamped by the system, each applicant emailed once, the short one is held on the Old-portal fees tab with its reason and no application is paid by it, and a batch of kind FEES is on record, completed',
+        coalesce(v_err IS NULL
+        AND res_app = res_chk AND (app->>'applied')::boolean AND f1.state = 'POSTED' AND f1.decided_office = 'system' AND f1.amount = 20000 AND f1.paid_on = DATE '2026-03-09' AND paid1 AND paid2 AND NOT paid3
+        AND f3.state = 'REQUIRES_REVIEW' AND mails1 = 2 AND batch_state = 'COMPLETED' AND batch_kind = 'FEES' AND batches_apply = 1
+        AND (app->'results'->2->>'reason') LIKE '%below the application fee of ₦20,000%', false),
+        format('err=%s | upload %s | fee1 %s %s %s paid %s %s %s | fee3 %s | mails %s | batch %s %s (%s) | reason %s', v_err, res_app, f1.state, f1.decided_office, f1.paid_on, paid1, paid2, paid3, f3.state,
+               mails1, batch_state, batch_kind, batches_apply, app->'results'->2->>'reason'));
+    PERFORM pg_temp.assert('V786: a payment an officer rejected for an application is not put back by an upload, a reference recorded for another applicant is a conflict, and neither writes a fee',
+        coalesce(v_err IS NULL AND res_app LIKE '%10=CONFLICT%' AND res_app LIKE '%12=REJECTED%' AND rej_rows = 1
+        AND (app->'results'->8->>'reason') LIKE 'this reference is already recorded for PG/51/%' AND (app->'results'->10->>'reason') LIKE 'an officer rejected this payment on PG/51/%V786 check: not on the gateway record%'
+        AND NOT EXISTS (SELECT 1 FROM admissions.pg_legacy_fee x WHERE x.application_id = a4 AND x.legacy_reference = 'PR784000000001'), false),
+        format('err=%s | %s | rejected rows %s | conflict=%s | rejected=%s', v_err, res_app, rej_rows, app->'results'->8->>'reason', app->'results'->10->>'reason'));
+    PERFORM pg_temp.assert('V786: the same file again changes nothing — the cleared are already recorded, the held is tried again and stays one row, no second email, and the batch of the second upload is a batch with no fee of its own',
+        coalesce(v_err IS NULL AND res_again = '2=ALREADY,3=ALREADY,4=HELD,5=NOT_APPLICATION_FEE,6=NOT_FOUND,7=IS_STUDENT,8=NO_REFERENCE,9=NO_AMOUNT,10=CONFLICT,11=ALREADY,12=REJECTED,13=NOT_APPLICATION_FEE'
+        AND (again->>'cleared')::int = 0 AND n_notices_again = 2 AND n_fee_rows_again = 3, false),
+        format('err=%s | again %s | cleared %s | emails %s | fee rows %s', v_err, res_again, again->>'cleared', n_notices_again, n_fee_rows_again));
+    PERFORM pg_temp.assert('V786: the offices that migrate and the Bursar upload the payments, ICT Support does not',
+        coalesce(v_err IS NULL AND refused_support = 'PGFEES_OFFICE' AND refused_office = '12/3', false),
+        format('err=%s | support=%s | bursar rows/already=%s', v_err, refused_support, refused_office));
+END $$;
+
+DO $$
+DECLARE n_fn int; n_off int;
+BEGIN
+    SELECT count(*), count(*) FILTER (WHERE 'jit=off' = ANY (p.proconfig)) INTO n_fn, n_off
+      FROM pg_proc p WHERE p.pronamespace = 'admissions'::regnamespace AND p.proname = 'pg_old_fees_upload';
+    PERFORM pg_temp.assert('V786: the upload runs with jit = off, as the set-based reads of V783 do',
+        coalesce(n_fn = 1 AND n_off = 1, false), format('functions %s | jit off %s', n_fn, n_off));
 END $$;
 
 -- ── result ────────────────────────────────────────────────────────────────

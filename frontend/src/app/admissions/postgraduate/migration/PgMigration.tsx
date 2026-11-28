@@ -2,7 +2,8 @@
 
 /** Old-portal PG applicants migrated (V675): download a template built from the PG application this portal holds, upload the
  *  filled file (sent and checked on the server a chunk at a time, nothing written but the check), read the preview and the error
- *  report, map an old programme, import what is ready with real progress, and follow the fees, documents and history. */
+ *  report, map an old programme, import what is ready with real progress, and follow the fees, documents and history. V786: the fees
+ *  tab also takes the Bursary's Old Fees History sheet of PG application fee payments, checked first and then uploaded. */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Problem } from "@/lib/api";
@@ -15,13 +16,17 @@ import {
   progressWords, ranges, readFile, reportLines, sha256Hex, stateWord, templateSheets,
   type BatchLine, type Kind, type MigrationRow, type Summary, type TemplateData,
 } from "@/lib/pg-migration";
+import {
+  PG_FEE_MAX_ROWS, pgFeeLeftWords, pgFeeMayUpload, pgFeePaymentRows, pgFeeSheet, pgFeeSummary, pgFeeWord,
+  type PgFeeApiRow, type PgFeeReport,
+} from "@/lib/pg-fee-payments";
 import { Btn, LinkBtn, Note, Panel, PBody, Pil, RoleLine, Tabs, Tiles, Two } from "@/components/proto/ui";
 import { Field, Modal } from "@/components/proto/blocks";
 import { DTable } from "@/components/proto/DTable";
 import { SearchSelect } from "@/components/proto/SearchSelect";
 import { ProblemNotice } from "@/components/ProblemNotice";
 import { notify, notifyProblem } from "@/components/proto/Toast";
-import { fileAsBase64, migGet, migPost } from "./mig-call";
+import { fileAsBase64, migGet, migPost, type Answer } from "./mig-call";
 
 export interface Figures {
   legacyApplicants: number; migrated: number; pending: number; offered: number; accepted: number; screened: number; students: number;
@@ -33,6 +38,8 @@ export interface ListPage { view: string; total: number; limit: number; offset: 
 /* V679: and the Director of ICT and the Database Operators (an operator over the whole University; the server holds the scope) */
 const MIGRATORS = ["pgschool", "pgsecretary", "academic", "ict", "dbops", "super"];
 const FEE_DECIDERS = ["pgsecretary", "bursar", "super"];
+/* V786: the offices that upload PG application fee payments (the server holds the same list) */
+const FEE_UPLOADERS = [...MIGRATORS, "bursar"];
 const HOME = "/admissions/postgraduate/migration";
 const SCHOOL = "REV. FR. MOSES ORSHIO ADASU UNIVERSITY, MAKURDI";
 const s = (v: unknown) => (v == null ? "" : String(v));
@@ -91,7 +98,7 @@ export function PgMigration({ office, figures, problem, batches, batch, view, li
       {tab === "upload" ? <UploadPanel mayMigrate={mayMigrate} onDone={(id) => { router.push(`${HOME}?batch=${id}`); setTab("batch"); }} /> : null}
       {tab === "batch" && batch ? <BatchPanel key={batch.id + batch.state + batch.imported} b={batch} mayMigrate={mayMigrate} refresh={() => router.refresh()} /> : null}
       {tab === "mapping" ? <MappingPanel mayMigrate={mayMigrate} /> : null}
-      {tab === "fees" ? <FeesPanel office={office} /> : null}
+      {tab === "fees" ? <FeesPanel office={office} refresh={() => router.refresh()} /> : null}
       {tab === "documents" ? <DocumentsPanel mayMigrate={mayMigrate} /> : null}
       {tab === "history" ? <HistoryPanel batches={batches} /> : null}
       {tab === "find" ? <FindPanel /> : null}
@@ -459,11 +466,12 @@ function MappingPanel({ mayMigrate }: { mayMigrate: boolean }) {
 }
 
 /* ── fees paid on the old portal ─────────────────────────────────────────────────────────────────────────────────────── */
-function FeesPanel({ office }: { office: string | null }) {
+function FeesPanel({ office, refresh }: { office: string | null; refresh: () => void }) {
   const [d, setD] = useState<ListPage | null>(null);
   const [err, setErr] = useState<Problem | null>(null);
   const [act, setAct] = useState<{ row: Record<string, unknown>; verify: boolean; note: string } | null>(null);
   const mayDecide = FEE_DECIDERS.includes(office ?? "");
+  const mayUpload = FEE_UPLOADERS.includes(office ?? "");
   async function load() { const r = await migGet<ListPage>("/list?view=fees&size=200"); if (r.ok) setD(r.data); else setErr(r.problem); }
   if (d === null && !err) void load();
   async function decide() {
@@ -485,6 +493,7 @@ function FeesPanel({ office }: { office: string | null }) {
         as on record once it has.
       </Note>
       {err ? <ProblemNotice problem={err} /> : null}
+      {mayUpload ? <PaymentsUpload onUploaded={() => { void load(); refresh(); }} /> : null}
       <Panel title="Old-portal fees to settle" right={<span className="sub2">{d ? `${d.total} in all` : ""}</span>}>
         {d && d.rows.length ? (
           <DTable cols={["Fee", "Applicant", "Old / new number", "Old reference", "Amount|num", "Paid on|mid", "Stated", "Standing|mid", "|num"]}
@@ -512,6 +521,118 @@ function FeesPanel({ office }: { office: string | null }) {
         </Modal>
       ) : null}
     </>
+  );
+}
+
+/* ── PG application fee payments, uploaded in the Old Fees History layout (V786): read, checked, then uploaded ────────── */
+interface PaymentsFile { name: string; sha: string; rows: PgFeeApiRow[]; left: number[] }
+
+function PaymentsUpload({ onUploaded }: { onUploaded: () => void }) {
+  const [busy, setBusy] = useState<[string, string] | null>(null);
+  const [err, setErr] = useState<Problem | null>(null);
+  const [file, setFile] = useState<PaymentsFile | null>(null);
+  const [report, setReport] = useState<PgFeeReport | null>(null);
+  const [tell, setTell] = useState(true);
+
+  async function send(f: PaymentsFile, apply: boolean): Promise<Answer<PgFeeReport>> {
+    try {
+      return await migPost<PgFeeReport>("/fees/payments", { fileName: f.name, sha256: f.sha, rows: f.rows, apply, notify: tell },
+        `PG application fee payments ${apply ? "uploaded" : "checked"}: ${f.name}`);
+    } catch {
+      return { ok: false, problem: { status: 0, title: "The connection to the portal dropped", detail: "The request never reached the server (network, timeout or an expired sign-in). Nothing was written; choose the file again." } };
+    }
+  }
+
+  async function choose(fl: File) {
+    setErr(null); setFile(null); setReport(null);
+    if (!/\.xlsx$/i.test(fl.name)) { setErr({ status: 422, title: "That file type is not accepted", detail: "Upload the payments as an Excel workbook (.xlsx)." }); return; }
+    if (fl.size > 15 * 1024 * 1024) { setErr({ status: 422, title: "The file is too large", detail: "A payments file is at most 15 MB; split a larger one." }); return; }
+    setBusy(["Reading the file…", "Reading and checking a file writes nothing."]);
+    try {
+      const buf = await fl.arrayBuffer();
+      const sheet = pgFeeSheet(await xlsxWorkbook(buf, { rowNumbers: true }));
+      if (!sheet) {
+        setErr({ status: 422, title: "The file is not the Old Fees History layout", detail: "It needs a Matriculation Number column, holding the PG application number, and a Session column. Use the sheet as the Bursary's Old Fees History takes it." });
+        return;
+      }
+      const read = pgFeePaymentRows(sheet.rows);
+      if (!read.rows.length) {
+        setErr({ status: 422, title: "The file has no payments", detail: [pgFeeLeftWords(read.left), "Each payment needs the PG application number under Matriculation Number and the session written like 2026/2027."].filter(Boolean).join(" ") });
+        return;
+      }
+      if (read.rows.length > PG_FEE_MAX_ROWS) {
+        setErr({ status: 422, title: "The file is too long", detail: `${read.rows.length.toLocaleString("en-GB")} payments; a file holds up to ${PG_FEE_MAX_ROWS.toLocaleString("en-GB")}. Split it.` });
+        return;
+      }
+      const f: PaymentsFile = { name: fl.name, sha: await sha256Hex(buf), rows: read.rows, left: read.left };
+      setFile(f);
+      setBusy([`Checking ${f.rows.length.toLocaleString("en-GB")} rows…`, "Reading and checking a file writes nothing."]);
+      const r = await send(f, false);
+      if (r.ok) setReport(r.data); else setErr(r.problem);
+    } catch (e) {
+      setErr({ status: 422, title: "The file could not be read", detail: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function upload() {
+    if (!file || !pgFeeMayUpload(report)) return;
+    setErr(null);
+    setBusy([`Uploading ${file.rows.length.toLocaleString("en-GB")} rows…`, "Each payment is recorded, and each fee that can clear is posted."]);
+    const r = await send(file, true);
+    setBusy(null);
+    if (!r.ok) { setErr(r.problem); return; }
+    setReport(r.data);
+    notify(`${r.data.batchReference ?? "Uploaded"}: ${pgFeeSummary(r.data)}.`);
+    onUploaded();
+  }
+
+  const applied = report?.applied ?? false;
+  const left = file ? pgFeeLeftWords(file.left) : "";
+  return (
+    <Panel title="Upload application fee payments">
+      <PBody>
+        <p className="sub2">
+          The file is the Bursary&rsquo;s Old Fees History sheet: the PG application number (PG/YY/NNNNNN) in the first column, the item PG APPLICATION, the Interswitch reference and the amount.
+          An application fee that reaches the session&rsquo;s application fee clears on its own; any other waits below with its reason.
+        </p>
+        <div className="row row--inline">
+          <label className={`btn btn--${file ? "secondary" : "primary"} btn--sm${busy ? " is-disabled" : ""}`}>
+            {file ? "Choose another file" : "Choose the payments file"}
+            <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden disabled={!!busy}
+              onChange={(e) => { const fl = e.target.files?.[0]; e.target.value = ""; if (fl) void choose(fl); }} />
+          </label>
+          {file ? <span className="sub2">{file.name}</span> : null}
+          {file && !applied ? <Btn kind="primary" onClick={upload} disabled={!!busy || !pgFeeMayUpload(report)}>Upload and clear</Btn> : null}
+        </div>
+        <label className="row row--inline sub2" style={{ marginTop: 8 }}>
+          <input type="checkbox" checked={tell} disabled={!!busy || applied} onChange={(e) => setTell(e.target.checked)} />
+          Tell each applicant whose fee clears that it is recorded
+        </label>
+        {busy ? <Note kind="info" title={busy[0]}>{busy[1]}</Note> : null}
+        {err ? <ProblemNotice problem={err} /> : null}
+        {left ? <Note kind="info" title="Some rows of the sheet were not read">{left}</Note> : null}
+        {report ? (
+          <div style={{ marginTop: 8 }}>
+            <b>{applied ? `Uploaded${report.batchReference ? ` as ${report.batchReference}` : ""}:` : "Checked:"}</b> {pgFeeSummary(report)}.
+            {!applied ? <div className="sub2">{pgFeeMayUpload(report) ? "Nothing is written until you press Upload and clear." : "Nothing in this file can be cleared or held, so there is nothing to upload."}</div> : null}
+          </div>
+        ) : null}
+      </PBody>
+      {report && report.results.length ? (
+        <DTable title="PG application fee payments" cols={["Sheet row|num", "Number", "Applicant", "Reference", "Amount|num", applied ? "What happened" : "What will happen"]}
+          rows={report.results.map((x) => {
+            const [word, kind] = pgFeeWord(x.result, applied);
+            return [
+              <span key="r" className="tnum">{x.rowNo}</span>, <span key="n" className="tnum">{x.number}</span>, <Two key="a" a={x.name ?? "—"} b={x.applicationNo ?? ""} />,
+              <span key="f" className="tnum">{x.reference || "—"}</span>, <span key="m" className="tnum">{x.amount == null ? "—" : naira(x.amount)}</span>,
+              <span key="s"><Pil kind={kind}>{word}</Pil>{x.reason ? <div className="sub2">{x.reason}</div> : null}{x.note ? <div className="sub2">{x.note}</div> : null}</span>,
+            ];
+          })}
+          texts={report.results.map((x) => `${x.rowNo} ${x.number} ${x.applicationNo ?? ""} ${x.name ?? ""} ${x.reference} ${pgFeeWord(x.result, applied)[0]}`)} />
+      ) : null}
+    </Panel>
   );
 }
 
@@ -568,7 +689,8 @@ function HistoryPanel({ batches }: { batches: BatchLine[] }) {
               <span key="u" className="tnum">{b.updated}</span>, <span key="a" className="tnum">{b.admitted}</span>, <span key="rc" className="tnum">{b.reconciled}</span>,
               <span key="d" className="tnum">{b.duplicates}</span>, <span key="e" className="tnum">{b.errors + b.failed}</span>,
               <span key="s" className="sub2">{when(b.started_at)}</span>, <span key="cp" className="sub2">{when(b.completed_at)}</span>, <span key="by">{b.started_by ?? "—"}</span>,
-              <Pil key="st" kind={st[1]}>{st[0]}</Pil>, <LinkBtn key="o" href={`${HOME}?batch=${b.id}`}>Open</LinkBtn>,
+              <Pil key="st" kind={st[1]}>{st[0]}</Pil>,
+              b.kind === "FEES" ? <span key="o" /> : <LinkBtn key="o" href={`${HOME}?batch=${b.id}`}>Open</LinkBtn>,
             ];
           })}
           texts={batches.map((b) => `${b.reference} ${b.file_name} ${b.started_by ?? ""} ${b.state}`)} />

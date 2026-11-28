@@ -240,6 +240,157 @@ class PgMigrationIT {
         assertThat(verified.get("decided_office")).isEqualTo("bursar");
     }
 
+    /**
+     * V786: the University's word of 24 November 2026, "i want to upload those payments in this format". A sheet in the Old Fees History
+     * layout whose first column is a PG applicant's application number: the School checks it (nothing is written), the Bursar uploads it,
+     * the fee that reaches the application fee is cleared by the system and a short one waits on the Bursary's desk with its reason; the
+     * same sheet again records nothing twice. ICT Support, and a Database Operator held to a department, are refused.
+     */
+    @Test
+    void aPaymentsSheetInTheOldFeesLayoutIsCheckedThenUploadedAndClearsPgApplicantsFees() {
+        int y = it.freePgYear(7600, 7790, 0, 0);
+        String session = y + "/" + (y + 1);
+        it.session(session, y);
+        String code = it.db(() -> jdbc.sql("""
+                SELECT 'C9' || lpad(g::text, 4, '0') FROM generate_series(8000, 9999) g
+                 WHERE NOT EXISTS (SELECT 1 FROM ref.programme p WHERE p.code = 'C9' || lpad(g::text, 4, '0')) ORDER BY random() LIMIT 1
+                """).query(String.class).single());
+        it.db(() -> jdbc.sql("""
+                INSERT INTO ref.programme (code, name, dept_code, faculty_code, min_score, archived, category, pg_award)
+                SELECT :c, :n, d.code, d.faculty_code, 0, false, 'POST GRADUATE', 'MSC' FROM ref.department d ORDER BY d.code LIMIT 1
+                """).param("c", code).param("n", "M.Sc. Payments Sheet Check " + y).update());
+        String school = it.officer("pgschool", "institution", "University");
+        String bursar = it.officer("bursar", "institution", "University");
+        String support = it.officer("ictagent", "institution", "University");
+        String dept = it.db(() -> jdbc.sql("SELECT dept_code FROM ref.programme WHERE code = :c").param("c", code).query(String.class).single());
+        String heldOperator = it.officer("dbops", "department", dept);
+
+        // two applicants of this portal, with no application fee yet: the sheet's payments are all the fee they have
+        String oldFull = "ITPG/" + y + "/0201", oldShort = "ITPG/" + y + "/0202", oldQuiet = "ITPG/" + y + "/0203";
+        List<Map<String, Object>> applicants = List.of(
+                row("legacyApplicationNo", oldFull, "lastName", "Paysheetit", "firstName", "Full", "email", "itpgpay" + y + "a@example.test",
+                        "session", session, "programmeCode", code),
+                row("legacyApplicationNo", oldShort, "lastName", "Paysheetit", "firstName", "Short", "email", "itpgpay" + y + "b@example.test",
+                        "session", session, "programmeCode", code),
+                row("legacyApplicationNo", oldQuiet, "lastName", "Paysheetit", "firstName", "Quiet", "email", "itpgpay" + y + "c@example.test",
+                        "session", session, "programmeCode", code));
+        Map<String, Object> mb = ok(it.call(school, HttpMethod.POST, M + "/batches", Map.of("kind", "APPLICANTS", "fileName", "payers.xlsx", "rows", 3, "tell", false)));
+        String mid = String.valueOf(mb.get("id"));
+        ok(it.call(school, HttpMethod.POST, M + "/batches/" + mid + "/rows", Map.of("first", 1, "rows", applicants)));
+        ok(it.call(school, HttpMethod.POST, M + "/batches/" + mid + "/check", Map.of("from", 1, "to", 3)));
+        ok(it.call(school, HttpMethod.POST, M + "/batches/" + mid + "/import", Map.of("from", 1, "to", 3)));
+        assertThat(((Number) ok(it.call(school, HttpMethod.POST, M + "/batches/" + mid + "/finish", Map.of())).get("created")).intValue()).isEqualTo(3);
+        java.util.function.Function<String, String> numberOf = old -> it.db(() -> jdbc.sql("""
+                SELECT a.application_no FROM admissions.pg_legacy_application l JOIN admissions.pg_application a ON a.id = l.application_id
+                 WHERE l.legacy_application_no = :o
+                """).param("o", old).query(String.class).single());
+        String fullNo = numberOf.apply(oldFull), shortNo = numberOf.apply(oldShort), quietNo = numberOf.apply(oldQuiet);
+        assertThat(fullNo).matches("PG/" + String.valueOf(y).substring(2) + "/\\d{6}");
+
+        // the sheet as the Old Fees History upload reads it: the application number where the matriculation number goes
+        String clear = "ITPAY-CLR-" + y, shortRef = "ITPAY-SHT-" + y, file = "payments-" + y + ".xlsx";
+        List<Map<String, Object>> sheet = List.of(
+                row("matric", fullNo, "session", session, "amount", "20000", "purpose", "PG APPLICATION", "paidOn", "2026-03-09", "channel", "Interswitch", "receiptNo", clear),
+                row("matric", shortNo, "session", session, "amount", "12000", "purpose", "PG APPLICATION", "paidOn", "2026-03-09", "channel", "Interswitch", "receiptNo", shortRef),
+                row("matric", "PG/" + String.valueOf(y).substring(2) + "/999999", "session", session, "amount", "20000", "purpose", "PG APPLICATION", "receiptNo", "ITPAY-NONE-" + y));
+        java.util.function.Function<Boolean, Map<String, Object>> body = apply -> {
+            Map<String, Object> b = new java.util.LinkedHashMap<>();
+            b.put("fileName", file);
+            b.put("rows", java.util.stream.IntStream.range(0, sheet.size()).mapToObj(i -> {
+                Map<String, Object> r = new java.util.LinkedHashMap<>(sheet.get(i));
+                r.put("row", i + 2);
+                return r;
+            }).toList());
+            b.put("apply", apply);
+            return b;
+        };
+        java.util.function.Function<String, Long> recorded = ref -> it.db(() -> jdbc.sql("SELECT count(*) FROM admissions.pg_legacy_fee WHERE legacy_reference = :r")
+                .param("r", ref).query(Long.class).single());
+
+        // ICT Support is not an uploader; a Database Operator held to a department does not work the University's migration
+        assertThat(it.call(support, HttpMethod.POST, M + "/fees/payments", body.apply(false)).getStatusCode().value()).isEqualTo(403);
+        ResponseEntity<Map> heldScope = it.call(heldOperator, HttpMethod.POST, M + "/fees/payments", body.apply(false));
+        assertThat(heldScope.getStatusCode().value()).isEqualTo(422);
+        assertThat(heldScope.getBody().get("code")).isEqualTo("SCOPE_UNIVERSITY");
+        // the database's own refusals reach the officer with their codes
+        Map<String, Object> notExcel = body.apply(false);
+        notExcel.put("fileName", "payments.csv");
+        ResponseEntity<Map> csv = it.call(school, HttpMethod.POST, M + "/fees/payments", notExcel);
+        assertThat(csv.getStatusCode().value()).isEqualTo(422);
+        assertThat(csv.getBody().get("code")).isEqualTo("PGFEES_FILE_TYPE");
+        Map<String, Object> noRows = body.apply(false);
+        noRows.put("rows", List.of());
+        assertThat(it.call(school, HttpMethod.POST, M + "/fees/payments", noRows).getStatusCode().value()).isEqualTo(400);
+
+        // the Check, by the School: each row as the upload will answer it, and nothing written
+        Map<String, Object> checked = ok(it.call(school, HttpMethod.POST, M + "/fees/payments", body.apply(false)));
+        assertThat(checked.get("applied")).isEqualTo(false);
+        assertThat(checked.get("batchId")).isNull();
+        assertThat(((Number) checked.get("rows")).intValue()).isEqualTo(3);
+        assertThat(((Number) checked.get("cleared")).intValue()).isEqualTo(1);
+        assertThat(((Number) checked.get("held")).intValue()).isEqualTo(1);
+        assertThat(((Number) checked.get("refused")).intValue()).isEqualTo(1);
+        List<Map<String, Object>> verdicts = (List<Map<String, Object>>) checked.get("results");
+        assertThat(verdicts).extracting(r -> r.get("result")).containsExactly("CLEARED", "HELD", "NOT_FOUND");
+        assertThat(verdicts).extracting(r -> ((Number) r.get("rowNo")).intValue()).containsExactly(2, 3, 4);
+        assertThat(verdicts.get(0).get("applicationNo")).isEqualTo(fullNo);
+        assertThat(String.valueOf(verdicts.get(1).get("reason"))).contains("below the application fee");
+        assertThat(recorded.apply(clear)).isZero();
+        assertThat(recorded.apply(shortRef)).isZero();
+        assertThat(it.db(() -> jdbc.sql("SELECT count(*) FROM admissions.pg_migration_batch WHERE file_name = :f").param("f", file).query(Long.class).single())).isZero();
+        assertThat(it.db(() -> jdbc.sql("SELECT fee_confirmed_at IS NOT NULL FROM admissions.pg_application WHERE application_no = :n").param("n", fullNo).query(Boolean.class).single())).isFalse();
+
+        // the Upload, by the Bursar: the same answers, written
+        Map<String, Object> uploaded = ok(it.call(bursar, HttpMethod.POST, M + "/fees/payments", body.apply(true)));
+        assertThat(uploaded.get("applied")).isEqualTo(true);
+        assertThat(uploaded.get("batchId")).isNotNull();
+        assertThat(String.valueOf(uploaded.get("batchReference"))).startsWith("PG-MIG/");
+        assertThat(((Number) uploaded.get("cleared")).intValue()).isEqualTo(1);
+        assertThat(((Number) uploaded.get("held")).intValue()).isEqualTo(1);
+        assertThat(((List<Map<String, Object>>) uploaded.get("results"))).extracting(r -> r.get("result")).containsExactly("CLEARED", "HELD", "NOT_FOUND");
+        Map<String, Object> cleared = it.db(() -> jdbc.sql("""
+                SELECT f.state, f.decided_office, f.decided_by IS NULL AS by_system, a.fee_confirmed_at IS NOT NULL AS paid
+                  FROM admissions.pg_legacy_fee f JOIN admissions.pg_application a ON a.id = f.application_id WHERE f.legacy_reference = :r
+                """).param("r", clear).query().singleRow());
+        assertThat(cleared.get("state")).isEqualTo("POSTED");
+        assertThat(cleared.get("decided_office")).isEqualTo("system");
+        assertThat(cleared.get("by_system")).isEqualTo(true);
+        assertThat(cleared.get("paid")).isEqualTo(true);
+        Map<String, Object> batch = it.db(() -> jdbc.sql("SELECT b.kind, b.state FROM admissions.pg_migration_batch b WHERE b.id = :b::uuid")
+                .param("b", String.valueOf(uploaded.get("batchId"))).query().singleRow());
+        assertThat(batch.get("kind")).isEqualTo("FEES");
+        assertThat(batch.get("state")).isEqualTo("COMPLETED");
+
+        // the short one waits on the Bursary's desk with its reason, and the cleared one is not there
+        List<Map<String, Object>> waiting = (List<Map<String, Object>>) ok(it.get(bursar, M + "/list?view=fees&size=500")).get("rows");
+        assertThat(waiting).extracting(r -> r.get("legacy_reference")).contains(shortRef).doesNotContain(clear);
+        Map<String, Object> shortRow = waiting.stream().filter(r -> shortRef.equals(r.get("legacy_reference"))).findFirst().orElseThrow();
+        assertThat(String.valueOf(shortRow.get("hold_reason"))).contains("below the application fee");
+
+        // the same sheet again: the cleared payment is already recorded, nothing is cleared or written twice
+        Map<String, Object> again = ok(it.call(bursar, HttpMethod.POST, M + "/fees/payments", body.apply(true)));
+        assertThat(((Number) again.get("cleared")).intValue()).isZero();
+        assertThat(((Number) again.get("already")).intValue()).isEqualTo(1);
+        assertThat(((List<Map<String, Object>>) again.get("results"))).extracting(r -> r.get("result")).containsExactly("ALREADY", "HELD", "NOT_FOUND");
+        assertThat(recorded.apply(clear)).isEqualTo(1L);
+        assertThat(recorded.apply(shortRef)).isEqualTo(1L);
+
+        // the applicant whose fee cleared is told, unless the officer asks for no notices
+        java.util.function.Function<String, Long> told = no -> it.db(() -> jdbc.sql("""
+                SELECT count(*) FROM platform.notice n JOIN admissions.pg_application a ON a.id = n.about_id
+                 WHERE a.application_no = :n AND n.event_key LIKE 'pg-fee-verified:%'
+                """).param("n", no).query(Long.class).single());
+        assertThat(told.apply(fullNo)).isPositive();
+        Map<String, Object> quiet = new java.util.LinkedHashMap<>();
+        quiet.put("fileName", "payments-quiet-" + y + ".xlsx");
+        quiet.put("rows", List.of(row("matric", quietNo, "session", session, "amount", "20000", "purpose", "PG APPLICATION", "receiptNo", "ITPAY-QUIET-" + y)));
+        quiet.put("apply", true);
+        quiet.put("notify", false);
+        Map<String, Object> hushed = ok(it.call(school, HttpMethod.POST, M + "/fees/payments", quiet));
+        assertThat(((Number) hushed.get("cleared")).intValue()).isEqualTo(1);
+        assertThat(told.apply(quietNo)).isZero();
+    }
+
     private ResponseEntity<Map> pgSignIn(String identifier, String password) {
         return it.anon(HttpMethod.POST, "/api/v1/pg/sign-in", Map.of("identifier", identifier, "password", password));
     }
